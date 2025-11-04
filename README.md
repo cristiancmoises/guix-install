@@ -103,6 +103,6 @@ Follow the visual guide below to see each step of the installation process.
 
 ## Welcome to GNU GUIX Universe! Have a nice day! Enjoy!  :)
 
-📜 License — BSD Zero Clause License (0BSD)
+📜 License — GNU GPL v3
 
     Copyright (C) 2025 Cristian Cezar Moisés
