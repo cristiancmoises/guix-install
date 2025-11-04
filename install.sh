@@ -30,10 +30,10 @@ sed -i 's/(use-modules *(gnu))/(use-modules (gnu)/g' "$CONFIG_FILE"
 #-------------------------------------------------------------
 # Add nongnu package modules under (use-modules (gnu)
 #-------------------------------------------------------------
-echo "[+] Ensuring (nonguix packages linux) and (nongnu packages firmware) exist..."
+echo "[+] Ensuring (nongnu packages linux) and (nongnu packages firmware) exist..."
 
-if ! grep -q "(nonguix packages linux)" "$CONFIG_FILE"; then
-    sed -i '/(use-modules *(gnu)/a\  (nonguix packages linux))' "$CONFIG_FILE"
+if ! grep -q "(nongnu packages linux)" "$CONFIG_FILE"; then
+    sed -i '/(use-modules *(gnu)/a\  (nongnu packages linux))' "$CONFIG_FILE"
 fi
 
 if ! grep -q "(nongnu packages firmware)" "$CONFIG_FILE"; then
