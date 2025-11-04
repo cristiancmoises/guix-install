@@ -89,7 +89,7 @@ Follow the visual guide below to see each step of the installation process.
 <p align="center"><img src="screenshots/23.png" width="50%"></p> 
 <p align="center"><img src="screenshots/24.png" width="50%"></p> 
 
-## ATENTION!
+## ATTENTION!
   - At this moment do you need press CTRL + ALT + F3
 <p align="center"><img src="screenshots/25.png" width="50%"></p>
 
