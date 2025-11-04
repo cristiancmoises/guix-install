@@ -1,11 +1,11 @@
 #!/bin/sh
 #=============================================================
-#  GNU Guix Installer Script 
+# GNU Guix Installer Script
 #=============================================================
 
 echo "+-------------------------------------------------------------+"
-echo "|                 GNU GUIX INSTALLATION SETUP                  |"
-echo "|                   [  In Code We Trust  ]                     |"
+echo "|                  GNU GUIX INSTALLATION                      |"
+echo "|                  [ In Code We Trust ]                       |"
 echo "+-------------------------------------------------------------+"
 echo ""
 
@@ -22,6 +22,12 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 #-------------------------------------------------------------
+# Start herd and cow-store
+#-------------------------------------------------------------
+echo "[+] Starting herd cow-store /mnt ..."
+herd start cow-store /mnt
+
+#-------------------------------------------------------------
 # Fix malformed (use-modules (gnu)) → (use-modules (gnu)
 #-------------------------------------------------------------
 echo "[+] Fixing malformed (use-modules (gnu)) entries ..."
@@ -33,11 +39,11 @@ sed -i 's/(use-modules *(gnu))/(use-modules (gnu)/g' "$CONFIG_FILE"
 echo "[+] Ensuring (nongnu packages linux) and (nongnu packages firmware) exist..."
 
 if ! grep -q "(nongnu packages linux)" "$CONFIG_FILE"; then
-    sed -i '/(use-modules *(gnu)/a\  (nongnu packages linux))' "$CONFIG_FILE"
+    sed -i '/(use-modules *(gnu)/a\ (nongnu packages linux))' "$CONFIG_FILE"
 fi
 
 if ! grep -q "(nongnu packages firmware)" "$CONFIG_FILE"; then
-    sed -i '/(use-modules *(gnu)/a\  (nongnu packages firmware)' "$CONFIG_FILE"
+    sed -i '/(use-modules *(gnu)/a\ (nongnu packages firmware)' "$CONFIG_FILE"
 fi
 
 #-------------------------------------------------------------
@@ -46,11 +52,11 @@ fi
 echo "[+] Ensuring kernel and firmware entries exist..."
 
 if ! grep -q "(firmware (list linux-firmware))" "$CONFIG_FILE"; then
-    sed -i '/(operating-system/a\  (firmware (list linux-firmware))' "$CONFIG_FILE"
+    sed -i '/(operating-system/a\ (firmware (list linux-firmware))' "$CONFIG_FILE"
 fi
 
 if ! grep -q "(kernel linux)" "$CONFIG_FILE"; then
-    sed -i '/(operating-system/a\  (kernel linux)' "$CONFIG_FILE"
+    sed -i '/(operating-system/a\ (kernel linux)' "$CONFIG_FILE"
 fi
 
 #-------------------------------------------------------------
