@@ -34,13 +34,22 @@ Perfect for custom or reproducible Guix installations!
 ## ⚙️ Usage
 
 > 🧩 **Prerequisite:**  
-> You must already be inside the Guix installation environment with your target filesystem mounted at `/mnt`.
+   - Install GNU GUIX from [here](https://github.com/SystemCrafters/guix-installer/releases/download/v202412150202/guix-installer-202412150202.iso)
+   - Burn into your USB flash drive 
+       - From Microsoft Windows i recommend [Balena Etcher](https://github.com/balena-io/etcher/releases/download/v2.1.4/balenaEtcher-2.1.4.Setup.exe) 
+       - From Linux:  sudo dd if=guix-installer-202412150202.iso of=/dev/sdX status=progress
+     >   [!] Remember to adjust the sdX based on your usb drive! Do you can check the correct name using lsblk command.
+   - Boot from the USB flash drive
+   - Follow the installation process
+   - At this [moment](#attention!) do you need press ctrl + alt + F3
+   - Download the script:
+           wget https://short.securityops.co/install -O install.sh
+   - Turn executable:
+           chmod +x install.sh
+   - Just run:
+           ./install.sh
+   - DONE!
 
-### 1️⃣ Download the script and make it executabte
-    wget https://short.securityops.co/install -O install.sh
-    chmod +x install.sh
-### 2️⃣  Run the installer
-    ./install.sh
 
 The script will:
 
