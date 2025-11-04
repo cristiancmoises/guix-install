@@ -61,7 +61,7 @@ The script will:
 
     -Automatically reboot when complete
 
-🖼️ Installation Screenshots
+## 🖼️ Installation Screenshots
 
 Follow the visual guide below to see each step of the installation process.
 <p align="center"><img src="screenshots/1.png" width="50%"></p> 
@@ -88,10 +88,12 @@ Follow the visual guide below to see each step of the installation process.
 <p align="center"><img src="screenshots/22.png" width="50%"></p>
 <p align="center"><img src="screenshots/23.png" width="50%"></p> 
 <p align="center"><img src="screenshots/24.png" width="50%"></p> 
-# ATENTION!
-  - At this momento do you need press CTRL + ALT + F3
+
+## ATENTION!
+  - At this moment do you need press CTRL + ALT + F3
 <p align="center"><img src="screenshots/25.png" width="50%"></p>
-### Download the script and run
+
+## Download the script and run
     
     wget https://short.securityops.co/install -O install.sh
     chmod +x install.sh
@@ -99,12 +101,8 @@ Follow the visual guide below to see each step of the installation process.
 
 <p align="center"><img src="screenshots/end.png" width="50%"></p>
 
-# Welcome to GNU GUIX Universe! Have a nice day! Enjoy!  :)
+## Welcome to GNU GUIX Universe! Have a nice day! Enjoy!  :)
 
 📜 License — BSD Zero Clause License (0BSD)
 
-Copyright (C) 2025 Cristian Cezar Moisés
-
-Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted.
-
-THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+    Copyright (C) 2025 Cristian Cezar Moisés
