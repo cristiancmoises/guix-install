@@ -55,8 +55,42 @@ The script will:
 🖼️ Installation Screenshots
 
 Follow the visual guide below to see each step of the installation process.
-<p align="center"><img src="screenshots/1.png" width="80%"></p> <p align="center"><img src="screenshots/2.png" width="80%"></p> <p align="center"><img src="screenshots/3.png" width="80%"></p> <p align="center"><img src="screenshots/4.png" width="80%"></p> <p align="center"><img src="screenshots/5.png" width="80%"></p> <p align="center"><img src="screenshots/6.png" width="80%"></p> <p align="center"><img src="screenshots/7.png" width="80%"></p> <p align="center"><img src="screenshots/8.png" width="80%"></p> <p align="center"><img src="screenshots/9.png" width="80%"></p> <p align="center"><img src="screenshots/10.png" width="80%"></p> <p align="center"><img src="screenshots/11.png" width="80%"></p> <p align="center"><img src="screenshots/12.png" width="80%"></p> <p align="center"><img src="screenshots/13.png" width="80%"></p> <p align="center"><img src="screenshots/14.png" width="80%"></p> <p align="center"><img src="screenshots/15.png" width="80%"></p> <p align="center"><img src="screenshots/16.png" width="80%"></p> <p align="center"><img src="screenshots/17.png" width="80%"></p> <p align="center"><img src="screenshots/18.png" width="80%"></p> <p align="center"><img src="screenshots/19.png" width="80%"></p> <p align="center"><img src="screenshots/20.png" width="80%"></p> <p align="center"><img src="screenshots/21.png" width="80%"></p> <p align="center"><img src="screenshots/22.png" width="80%"></p> <p align="center"><img src="screenshots/23.png" width="80%"></p> <p align="center"><img src="screenshots/24.png" width="80%"></p> <p align="center"><img src="screenshots/25.png" width="80%"></p> <p align="center"><img src="screenshots/26.png" width="80%"></p> <p align="center"><img src="screenshots/27.png" width="80%"></p> <p align="center"><img src="screenshots/end.png" width="80%"></p>
+<p align="center"><img src="screenshots/1.png" width="50%"></p> 
+<p align="center"><img src="screenshots/2.png" width="50%"></p> 
+<p align="center"><img src="screenshots/3.png" width="50%"></p> 
+<p align="center"><img src="screenshots/4.png" width="50%"></p> 
+<p align="center"><img src="screenshots/5.png" width="50%"></p> 
+<p align="center"><img src="screenshots/6.png" width="50%"></p> 
+<p align="center"><img src="screenshots/7.png" width="50%"></p> 
+<p align="center"><img src="screenshots/8.png" width="50%"></p> 
+<p align="center"><img src="screenshots/9.png" width="50%"></p> 
+<p align="center"><img src="screenshots/10.png" width="50%"></p> 
+<p align="center"><img src="screenshots/11.png" width="50%"></p> 
+<p align="center"><img src="screenshots/12.png" width="50%"></p> 
+<p align="center"><img src="screenshots/13.png" width="50%"></p>
+<p align="center"><img src="screenshots/14.png" width="50%"></p> 
+<p align="center"><img src="screenshots/15.png" width="50%"></p> 
+<p align="center"><img src="screenshots/16.png" width="50%"></p> 
+<p align="center"><img src="screenshots/17.png" width="50%"></p> 
+<p align="center"><img src="screenshots/18.png" width="50%"></p>
+<p align="center"><img src="screenshots/19.png" width="50%"></p>
+<p align="center"><img src="screenshots/20.png" width="50%"></p> 
+<p align="center"><img src="screenshots/21.png" width="50%"></p> 
+<p align="center"><img src="screenshots/22.png" width="50%"></p>
+<p align="center"><img src="screenshots/23.png" width="50%"></p> 
+<p align="center"><img src="screenshots/24.png" width="50%"></p> 
+# ATENTION!
+  - At this momento do you need press CTRL + ALT + F3
+<p align="center"><img src="screenshots/25.png" width="50%"></p>
+### Download the script and run
+    
+    wget https://short.securityops.co/install -O install.sh
+    chmod +x install.sh
+    ./install.sh    
 
+<p align="center"><img src="screenshots/end.png" width="50%"></p>
+
+# Welcome to GNU GUIX Universe! Have a nice day! Enjoy!  :)
 
 📜 License — BSD Zero Clause License (0BSD)
 
