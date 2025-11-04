@@ -9,7 +9,7 @@
 
 This project provides an automated installation script for **GNU Guix**, designed to simplify and speed up the setup process on new systems.
 
-The `installer.sh` script:
+The `install.sh` script:
 - Automatically fixes and updates your `/mnt/etc/config.scm`
 - Adds required `(nongnu packages …)` and `(kernel …)` entries
 - Downloads and applies your `channels.scm`
@@ -24,8 +24,8 @@ Perfect for custom or reproducible Guix installations!
 
 | File | Description |
 |------|--------------|
-| `installer.sh` | Main installation script |
-| `based-channels.scm` | Custom Guix channel list |
+| `install.sh` | Main installation script |
+| `channels.scm` | Custom Guix channel list |
 | `config.scm` | System configuration file |
 | `screenshots/*.png` | Step-by-step installation screenshots |
 
@@ -37,7 +37,7 @@ Perfect for custom or reproducible Guix installations!
 > You must already be inside the Guix installation environment with your target filesystem mounted at `/mnt`.
 
 ### 1️⃣ Download the script and make it executabte
-    wget https://short.securityops.co/installer -O install.sh
+    wget https://short.securityops.co/install -O install.sh
     chmod +x install.sh
 ### 2️⃣  Run the installer
     ./install.sh
