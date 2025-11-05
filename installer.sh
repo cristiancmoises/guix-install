@@ -1,13 +1,13 @@
 #!/bin/sh
 #=============================================================
-#         GNU GUIX INSTALLER - POWERED BY THE ALIENS
+# GNU GUIX INSTALLER - POWERED BY THE ALIENS
 #=============================================================
 
 set -e
 
 echo "+-------------------------------------------------------------+"
-echo "|           GNU GUIX INSTALLATION FROM ANY GNU+LINUX          |"
-echo "|                   [ In Code We Trust ]                      |"
+echo "| GNU GUIX INSTALLATION FROM ANY GNU+LINUX |"
+echo "| [ In Code We Trust ] |"
 echo "+-------------------------------------------------------------+"
 
 [ "$(id -u)" -ne 0 ] && { echo "Run as root"; exit 1; }
@@ -22,14 +22,14 @@ case "$PKG" in
     apt install -y software-properties-common
     add-apt-repository -y universe || true
     apt update
-    apt install -y wget curl python3 libnss3-tools nscd
+    apt install -y wget curl python3 libnss3-tools nscd uidmap
     ;;
   dnf)
-    dnf install -y wget curl python3 nss-tools nscd
+    dnf install -y wget curl python3 nss-tools nscd shadow-utils
     systemctl enable --now nscd
     ;;
   pacman)
-    pacman -Sy --noconfirm wget curl python nss nscd
+    pacman -Sy --noconfirm wget curl python nss nscd shadow
     systemctl enable --now nscd
     ;;
 esac
