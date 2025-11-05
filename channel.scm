@@ -37,6 +37,8 @@
   (channel
     (name 'nonguix)
     (url "https://gitlab.com/nonguix/nonguix")
+    (branch "master")
+    (commit "f9a27a679bd02fcebae69833b14ef54dff82ccf1")
     (introduction
       (make-channel-introduction
         "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
