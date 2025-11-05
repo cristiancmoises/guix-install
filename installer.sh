@@ -6,8 +6,8 @@
 set -e
 
 echo "+-------------------------------------------------------------+"
-echo "|          GNU GUIX INSTALLATION FROM ANY GNU+LINUX          |"
-echo "|                    [ In Code We Trust ]                    |"
+echo "|           GNU GUIX INSTALLATION FROM ANY GNU+LINUX          |"
+echo "|                   [ In Code We Trust ]                      |"
 echo "+-------------------------------------------------------------+"
 
 [ "$(id -u)" -ne 0 ] && { echo "Run as root"; exit 1; }
@@ -40,10 +40,12 @@ if ! command -v guix >/dev/null; then
   wget -q https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
   chmod +x guix-install.sh
   ./guix-install.sh
-  . /etc/profile
+  export PATH="/root/.config/guix/current/bin:$PATH"
+  export GUIX_PROFILE="/root/.config/guix/current"
+  . "$GUIX_PROFILE/etc/profile"
   rm guix-install.sh
   guix pull
-  . /root/.config/guix/current/etc/profile
+  . "$GUIX_PROFILE/etc/profile"
 fi
 
 # Disk
