@@ -1,7 +1,5 @@
-#!/usr/bin/env bash
 #=============================================================
-#                  GNU GUIX FULL OS INSTALLER 
-#                      Powered By Aliens
+#                   GNU GUIX FULL OS INSTALLER 
 #=============================================================
 set -euo pipefail
 
@@ -15,7 +13,8 @@ B
 banner
 
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Run as root"; exit 1
+  echo "Run as root"
+  exit 1
 fi
 
 # Optional proxies (export before running if needed)
@@ -33,16 +32,16 @@ if [[ -z "$ALLOW_NON_LIVE" ]]; then
   fi
 fi
 
-# Detect package manager (best effort)
+# Detect package manager (best-effort)
 PKG=""
-if command -v apt >/dev/null; then PKG="apt"
-elif command -v dnf >/dev/null; then PKG="dnf"
-elif command -v pacman >/dev/null; then PKG="pacman"
+if command -v apt >/dev/null 2>&1; then PKG="apt"
+elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
+elif command -v pacman >/dev/null 2>&1; then PKG="pacman"
 fi
 
-# Try to install helper packages if package manager is available
+# Try to install helper packages if package manager is available (best-effort)
 if [[ -n "$PKG" ]]; then
-  echo "[+] Attempting to ensure essential host tools (best-effort)..."
+  echo "[+] Ensuring common helper packages are present (best-effort)..."
   case "$PKG" in
     apt)
       apt update
@@ -58,7 +57,7 @@ if [[ -n "$PKG" ]]; then
 fi
 
 # Verify essential commands exist; fail early with clear message
-for cmd in parted cryptsetup blkid sgdisk lsblk; do
+for cmd in parted cryptsetup blkid lsblk sgdisk; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Required command '$cmd' not found. Install it in the live environment and re-run." >&2
     exit 1
@@ -67,19 +66,19 @@ done
 
 # Check for newuidmap/newgidmap (uidmap)
 if ! command -v newgidmap >/dev/null 2>&1 || ! command -v newuidmap >/dev/null 2>&1; then
-  echo "Warning: newgidmap/newuidmap missing. Attempting to install uidmap (best-effort)."
+  echo "Warning: newgidmap/newuidmap missing. Attempting best-effort install."
   if [[ "$PKG" == "apt" ]]; then apt install -y uidmap || true; fi
   if [[ "$PKG" == "dnf" ]]; then dnf install -y shadow-utils || true; fi
   if [[ "$PKG" == "pacman" ]]; then pacman -Sy --noconfirm uidmap || true; fi
   if ! command -v newgidmap >/dev/null 2>&1 || ! command -v newuidmap >/dev/null 2>&1; then
-    echo "newgidmap/newuidmap still missing. Some Guix operations may fail; install uidmap in the live image and re-run." >&2
+    echo "newgidmap/newuidmap still missing. Some operations may fail; install uidmap in the live image and re-run." >&2
   fi
 fi
 
 # Robust fetch helper
 fetch_with_fallback() {
   local out="$1"; shift
-  rm -f "$out"
+  rm -f "$out" 2>/dev/null || true
   for u in "$@"; do
     echo "[+] Fetching: $u"
     if command -v curl >/dev/null 2>&1; then
@@ -92,38 +91,16 @@ fetch_with_fallback() {
   return 1
 }
 
-# Install Guix CLI if missing (installer script or binary bootstrap)
+# Try to make guix available (best-effort) but continue even if not installed
 if ! command -v guix >/dev/null 2>&1; then
-  echo "[+] Installing Guix (best-effort)..."
+  echo "[+] Guix not found; attempting to fetch installer (best-effort)"
   if fetch_with_fallback guix-install.sh \
        "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh" \
        "https://git.savannah.gnu.org/git/guix.git/plain/etc/guix-install.sh"; then
     chmod +x guix-install.sh
     ./guix-install.sh || true
     rm -f guix-install.sh || true
-  else
-    echo "[!] Installer script not fetched. Trying binary bootstrap..."
-    ARCH="$(uname -m)"
-    case "$ARCH" in
-      x86_64) BIN="guix-binary-1.4.0.x86_64-linux.tar.xz" ;;
-      aarch64) BIN="guix-binary-1.4.0.aarch64-linux.tar.xz" ;;
-      i686) BIN="guix-binary-1.4.0.i686-linux.tar.xz" ;;
-      *) echo "Unsupported arch for binary bootstrap: $ARCH"; BIN="";;
-    esac
-    if [[ -n "$BIN" ]]; then
-      fetch_with_fallback "$BIN" \
-        "https://mirror0.nexcess.net/gnu/guix/$BIN" \
-        "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN" \
-        "https://ftp.gnu.org/gnu/guix/$BIN"
-      if [[ -f "$BIN" ]]; then
-        mkdir -p /gnu/store /var/guix
-        tar -C / -xJf "$BIN" || true
-        rm -f "$BIN" || true
-      fi
-    fi
   fi
-
-  # Try to source profile if it exists
   if [[ -f "/root/.config/guix/current/etc/profile" ]]; then
     export GUIX_PROFILE="/root/.config/guix/current"
     export PATH="$GUIX_PROFILE/bin:$PATH"
@@ -132,17 +109,17 @@ if ! command -v guix >/dev/null 2>&1; then
   fi
 fi
 
-# Confirm action and target disk
+# -------------------- User prompts --------------------
 echo
-echo "THIS WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
+echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | sed 's/^/  /'
 read -r -p "Target disk (e.g., /dev/sda or /dev/nvme0n1): " disk
 [[ -b "$disk" ]] || { echo "Invalid disk: $disk"; exit 1; }
 
-# derive disk_base for grub target if needed
+# derive disk_base for BIOS grub install
 if [[ "$disk" =~ ^/dev/nvme ]]; then disk_base="$disk"; else disk_base="$(echo "$disk" | sed 's/[0-9]*$//')"; fi
 
-# detect firmware
+# Detect firmware
 if [[ -d /sys/firmware/efi ]]; then default_scheme=1; echo "[+] UEFI detected"; else default_scheme=3; echo "[+] BIOS detected"; fi
 
 echo "Partition schemes:"
@@ -167,10 +144,20 @@ fi
 read -r -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
 [[ "$confirm" = "YES I WANT GUIX" ]] || { echo "Aborted."; exit 1; }
 
-# Robust mount check: ensure no partition from target disk is mounted
-if lsblk -nr -o NAME,MOUNTPOINT | awk -v d="$(basename "$disk")" '$1 ~ "^"d { if ($2 != "") { print; exit 1 } }'; then
-  echo "One or more partitions on $disk are mounted. Unmount them and re-run."; exit 1
-fi || true
+# -------------------- Sanity checks --------------------
+# Robust mount check: ensure no partitions from target disk are mounted
+mounted_on_disk() {
+  # list partition names for disk (e.g., sda -> sda1 sda2; nvme0n1 -> nvme0n1p1)
+  local base="$(basename "$disk")"
+  if lsblk -nr -o NAME,MOUNTPOINT | awk -v b="$base" '$1 ~ ("^"b) { if ($2 != "") exit 0 } END { if (NR==0) exit 1 }'; then
+    return 0
+  fi
+  return 1
+}
+if mounted_on_disk; then
+  echo "One or more partitions on $disk are mounted. Unmount them and re-run." >&2
+  exit 1
+fi
 
 # helper to convert sizes to MiB
 to_mib() {
@@ -181,26 +168,25 @@ to_mib() {
 }
 if [[ "$mk_swap" =~ ^[yY]$ ]]; then swap_mib=$(to_mib "$swap_size"); else swap_mib=0; fi
 
-# disk size in MiB
+# disk size in MiB and basic sanity
 total_mib=$(( $(blockdev --getsize64 "$disk") / 1024 / 1024 ))
 efi_size=512
-
-# minimal disk size sanity check (e.g., require at least 2 GiB + EFI)
 min_required_mib=$(( 2048 + efi_size ))
 if (( total_mib < min_required_mib )); then
   echo "Disk too small (${total_mib} MiB). Need at least ${min_required_mib} MiB." >&2
   exit 1
 fi
 
-# detect logical sector size for robust calculations
+# detect logical sector size
 sector_size=512
 if [[ -r "/sys/block/$(basename "$disk")/queue/logical_block_size" ]]; then
   sector_size=$(cat "/sys/block/$(basename "$disk")/queue/logical_block_size")
 fi
 
-# Robust sgdisk helper: start_mib (integer), size_mib (integer or "*"), type (hex), name (string)
+# -------------------- sgdisk helper (robust) --------------------
 add_gpt_part() {
   local start_mib="$1"; local size_mib="$2"; local type="$3"; local name="$4"
+  # compute start sector from MiB: start_mib MiB -> sectors
   local start_sector=$(( start_mib * 1024 * 1024 / sector_size ))
   if [[ "$size_mib" == "*" ]]; then
     sgdisk --new=0:${start_sector}s:0 --typecode=0:"$type" --change-name=0:"$name" "$disk"
@@ -209,7 +195,7 @@ add_gpt_part() {
   fi
 }
 
-# Partitioning: prefer sgdisk then fallback to parted
+# -------------------- Partitioning --------------------
 if command -v sgdisk >/dev/null 2>&1; then
   echo "[+] Using sgdisk (gdisk) for partitioning"
   sgdisk --zap-all "$disk"
@@ -277,9 +263,9 @@ if command -v sgdisk >/dev/null 2>&1; then
   partprobe "$disk" || true
   udevadm settle --timeout=10 || true
 
-  # Wait for partition devices to appear (max 20s)
+  # Wait for partition device nodes to appear (max 30s)
   wait_for_partitions() {
-    local max_wait=20
+    local max_wait=30
     local i=0
     while (( i < max_wait )); do
       sleep 1
@@ -294,7 +280,7 @@ if command -v sgdisk >/dev/null 2>&1; then
   }
 
   if ! wait_for_partitions; then
-    echo "Warning: partition device nodes did not appear promptly; you may need to run partprobe or reboot before continuing." >&2
+    echo "Warning: partition device nodes did not appear promptly; consider running partprobe or reboot before continuing." >&2
   fi
 
 else
@@ -338,7 +324,7 @@ else
   udevadm settle --timeout=10 || true
 fi
 
-# Resolve partition device nodes
+# -------------------- Partition nodes resolution --------------------
 part_node() {
   local idx="$1"
   if [[ -b "${disk}${idx}" ]]; then echo "${disk}${idx}"
@@ -347,14 +333,14 @@ part_node() {
 }
 p1=$(part_node 1); p2=$(part_node 2); p3=$(part_node 3); p4=$(part_node 4)
 
-efi=""; rootp=""; homep=""; swapp=""; cryptp=""; crypt_name="guixroot"; swap_crypt_name="guixswap"
+efi=""; rootp=""; homep=""; swapp=""; cryptp=""
 if [[ "$scheme" == "1" ]]; then
   efi="$p1"; rootp="$p2"; [[ "$sep_home" =~ ^[yY]$ ]] && homep="$p3"
   if [[ "$mk_swap" =~ ^[yY]$ ]]; then
     if [[ -n "$homep" ]]; then swapp="$p4"; else swapp="$p3"; fi
   fi
 elif [[ "$scheme" == "2" ]]; then
-  efi="$p1"; cryptp="$p2"; rootp="/dev/mapper/$crypt_name"
+  efi="$p1"; cryptp="$p2"; rootp="/dev/mapper/guixroot"
   if [[ "$mk_swap" =~ ^[yY]$ ]]; then swapp="$p3"; fi
 else
   rootp="$p1"; [[ "$sep_home" =~ ^[yY]$ ]] && homep="$p2"
@@ -363,13 +349,13 @@ else
   fi
 fi
 
-# Verify partition nodes exist for expected roles
+# Verify expected partition nodes exist
 if [[ -z "$rootp" || ( "$scheme" != "2" && ! -b "$rootp" ) ]]; then
   echo "Expected root partition not found. Aborting." >&2
   exit 1
 fi
 
-# Format filesystems and set up LUKS if requested
+# -------------------- Format and LUKS --------------------
 echo "[+] Formatting filesystems and configuring LUKS if requested..."
 if [[ -n "$efi" && -b "$efi" ]]; then mkfs.vfat -F32 "$efi"; fi
 
@@ -377,18 +363,18 @@ if [[ "$scheme" == "2" ]]; then
   [[ -b "$cryptp" ]] || { echo "Expected LUKS partition $cryptp not found"; exit 1; }
   echo "[+] Creating LUKS container for root on $cryptp"
   cryptsetup luksFormat "$cryptp"
-  cryptsetup open "$cryptp" "$crypt_name"
-  if [[ "$fs_type" == "ext4" ]]; then mkfs.ext4 -F "/dev/mapper/$crypt_name"
-  elif [[ "$fs_type" == "btrfs" ]]; then mkfs.btrfs -f "/dev/mapper/$crypt_name"
-  else mkfs.xfs -f "/dev/mapper/$crypt_name"; fi
-  rootp="/dev/mapper/$crypt_name"
+  cryptsetup open "$cryptp" guixroot
+  if [[ "$fs_type" == "ext4" ]]; then mkfs.ext4 -F /dev/mapper/guixroot
+  elif [[ "$fs_type" == "btrfs" ]]; then mkfs.btrfs -f /dev/mapper/guixroot
+  else mkfs.xfs -f /dev/mapper/guixroot; fi
+  rootp="/dev/mapper/guixroot"
 
   if [[ -n "$swapp" && -b "$swapp" ]]; then
     if [[ "$swap_encrypt" =~ ^[yY]$ ]]; then
       cryptsetup luksFormat "$swapp"
-      cryptsetup open "$swapp" "$swap_crypt_name"
-      mkswap "/dev/mapper/$swap_crypt_name"
-      swapp="/dev/mapper/$swap_crypt_name"
+      cryptsetup open "$swapp" guixswap
+      mkswap /dev/mapper/guixswap
+      swapp="/dev/mapper/guixswap"
     else
       mkswap "$swapp"
     fi
@@ -408,22 +394,22 @@ else
   if [[ -n "$swapp" && -b "$swapp" ]]; then
     if [[ "$swap_encrypt" =~ ^[yY]$ ]]; then
       cryptsetup luksFormat "$swapp"
-      cryptsetup open "$swapp" "$swap_crypt_name"
-      mkswap "/dev/mapper/$swap_crypt_name"
-      swapp="/dev/mapper/$swap_crypt_name"
+      cryptsetup open "$swapp" guixswap
+      mkswap /dev/mapper/guixswap
+      swapp="/dev/mapper/guixswap"
     else
       mkswap "$swapp"
     fi
   fi
 fi
 
-# Mount root and other FS
+# -------------------- Mount target FS --------------------
 mkdir -p /mnt
 mount "$rootp" /mnt
 if [[ -n "$efi" ]]; then mkdir -p /mnt/boot/efi; mount "$efi" /mnt/boot/efi; fi
 if [[ -n "$homep" ]]; then mkdir -p /mnt/home; mount "$homep" /mnt/home; fi
 
-# Collect system/user details
+# -------------------- Collect user/system info --------------------
 read -r -p "Hostname: " hostname
 read -r -p "Timezone (e.g., America/Sao_Paulo): " timezone
 read -r -p "Locale (e.g., en_US.UTF-8): " locale
@@ -443,7 +429,7 @@ case "$desk_choice" in
   *) echo "Invalid"; exit 1 ;;
 esac
 
-# Hash passwords
+# Hash passwords (sha512)
 huser="$(python3 - <<PY
 import crypt
 print(crypt.crypt("${upass}", crypt.mksalt(crypt.METHOD_SHA512)))
@@ -455,13 +441,13 @@ print(crypt.crypt("${rpass}", crypt.mksalt(crypt.METHOD_SHA512)))
 PY
 )"
 
-# Get UUIDs (after formatting)
+# Get UUIDs
 root_uuid=""; home_uuid=""; efi_uuid=""
 if [[ "$scheme" != "2" && -b "$rootp" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)"; fi
 [[ -n "$homep" && -b "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep" || true)"
 [[ -n "$efi" && -b "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi" || true)"
 
-# Write config.scm (dynamic)
+# -------------------- Write config.scm --------------------
 mkdir -p /mnt/etc
 cat > /mnt/etc/config.scm <<'EOF'
 (use-modules (gnu)
@@ -584,7 +570,7 @@ cat >> /mnt/etc/config.scm <<EOF
    %base-services))
 EOF
 
-# channels.scm: debdistutils first, then guix, then nonguix
+# -------------------- channels.scm --------------------
 cat > /mnt/etc/channels.scm <<'EOF'
 (list
   (channel
@@ -601,13 +587,13 @@ cat > /mnt/etc/channels.scm <<'EOF'
           "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
-# Start cow-store if available, then run guix system init
+# -------------------- Guix init --------------------
 if command -v herd >/dev/null 2>&1; then
   herd start cow-store /mnt || true
 fi
 
 if command -v guix >/dev/null 2>&1; then
-  echo "[+] Running guix time-machine -- system init (may take long)..."
+  echo "[+] Running guix time-machine -- system init (this may take a long time)..."
   guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
 else
   echo "Guix command not found; please ensure guix is installed in the live environment, then run:"
@@ -621,4 +607,3 @@ sync
 umount -R /mnt || true
 sleep 10
 reboot
-
