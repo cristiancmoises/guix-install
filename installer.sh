@@ -1,14 +1,14 @@
 #!/bin/sh
 #=============================================================
-#     GNU GUIX INSTALLER - POWERED BY THE ALIENS
-#             THE END OF DISTRO HOPPING!
+#                        GNU GUIX INSTALLER
+#                        Powered by ALIENS
 #=============================================================
 
 set -e
 
 echo "+-------------------------------------------------------------+"
-echo "|         GNU GUIX INSTALLATION FROM ANY GNU+LINUX            |"
-echo "|                 [ In Code We Trust ]                        |"
+echo "|             GNU GUIX INSTALLATION FROM ANY GNU+LINUX        |"
+echo "|                      [ In Code We Trust ]                   |"
 echo "+-------------------------------------------------------------+"
 
 [ "$(id -u)" -ne 0 ] && { echo "Run as root"; exit 1; }
@@ -49,42 +49,56 @@ if ! command -v guix >/dev/null; then
   . "$GUIX_PROFILE/etc/profile"
 fi
 
-# ——— CRITICAL FIX: UNMOUNT EVERYTHING THAT BELONGS TO UBUNTU ———
-echo "[+] Closing Ubuntu services and unmounting all partitions..."
-systemctl stop graphical.target || true
+# ——— ULTIMATE UNMOUNT + KILL EVERYTHING ———
+echo "[+] Killing ANOTHER DISTRO completely..."
 swapoff -a
 umount -R /mnt 2>/dev/null || true
-umount /dev/* /run/* /sys/* /proc/* 2>/dev/null || true
+umount -f /dev/* 2>/dev/null || true
 killall -9 dhclient wpa_supplicant NetworkManager || true
+systemctl stop graphical.target || true
 
-# Disk
+# Force lazy unmount everything under /dev/vda (or your disk)
+echo "[+] Lazy unmount of all partitions..."
+umount -l /dev/* 2>/dev/null || true
+
+# Wait 5 seconds for kernel to release
+sleep 5
+
+# Disk selection
 lsblk -f
-echo "WARNING: THIS WILL COMPLETELY ERASE THE SELECTED DISK AND REPLACE UBUNTU WITH GUIX!"
-read -p "Target disk (e.g. /dev/sda): " disk
-read -p "Type YES to continue: " confirm
-[ "$confirm" != "YES" ] && echo "Aborted." && exit 1
+echo "THIS WILL ERASE THE DISK AND REPLACE YOUR SAD GNU+LINUX WITH CHAD GUIX!"
+read -p "Target disk (e.g. /dev/vda or /dev/sda): " disk
+read -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
+[ "$confirm" != "YES I WANT GUIX" ] && echo "Aborted." && exit 1
 
-# Wipe and repartition
+# FINAL WIPE + REPARTITION
 wipefs -af "$disk"
-parted -s "$disk" mklabel gpt
-parted -s "$disk" mkpart ESP fat32 1MiB 512MiB
-parted -s "$disk" set 1 esp on
-parted -s "$disk" mkpart root ext4 512MiB 100%
-sync
-sleep 2
+wipefs -af "${disk}1" 2>/dev/null || true
+wipefs -af "${disk}2" 2>/dev/null || true
 
+parted --script "$disk" mklabel gpt
+parted --script "$disk" mkpart ESP fat32 1MiB 512MiB
+parted --script "$disk" set 1 esp on
+parted --script "$disk" mkpart root ext4 512MiB 100%
+
+# Sync and wait for kernel
+sync
+sleep 3
+
+# Format
 mkfs.vfat -F32 "${disk}1"
 mkfs.ext4 -F "${disk}2"
 
+# Mount
 mount "${disk}2" /mnt
 mkdir -p /mnt/boot/efi
 mount "${disk}1" /mnt/boot/efi
 
 # User input
 read -p "Hostname: " hostname
-read -p "Timezone (e.g. Europe/Paris): " timezone
+read -p "Timezone (e.g. Europe/Lisbon): " timezone
 read -p "Locale (e.g. en_US.UTF-8): " locale
-read -p "Keyboard (e.g. us): " keyboard
+read -p "Keyboard (e.g. pt): " keyboard
 read -p "Username: " username
 read -s -p "User password: " upass; echo
 read -s -p "Root password: " rpass; echo
@@ -106,7 +120,7 @@ hroot=$(python3 -c "import crypt; print(crypt.crypt('$rpass', crypt.mksalt(crypt
 root_uuid=$(blkid -s UUID -o value "${disk}2")
 efi_uuid=$(blkid -s UUID -o value "${disk}1")
 
-# config.scm
+# config.scm (same as before)
 cat > /mnt/etc/config.scm <<EOF
 (use-modules (gnu)
              (gnu packages admin) (gnu packages base) (gnu packages commencement)
@@ -194,6 +208,6 @@ sed -i '/(name '\''nonguix)/a\    (commit "43699ceddb6f5f7aa60a646daa44a75e269a3
 herd start cow-store /mnt
 guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
 
-echo "[+] GUIX SUCCESSFULLY INSTALLED! REBOOTING IN 10 SECONDS..."
+echo "[+] GUIX INSTALLED! REBOOTING IN 10s..."
 sleep 10
 reboot
