@@ -15,10 +15,13 @@ banner
 
 [ "$(id -u)" -ne 0 ] && { echo "Run as root"; exit 1; }
 
+# Optional proxies (export before running or uncomment and set)
+# export http_proxy="http://proxy:port"
+# export https_proxy="http://proxy:port"
+
 # Detect live mode unless user overrides.
 ALLOW_NON_LIVE="${ALLOW_NON_LIVE:-}"
 if [ -z "${ALLOW_NON_LIVE}" ]; then
-  # Heuristic: refuse if root is a writable block device mounted from local disk.
   ROOT_SRC="$(findmnt -n -o SOURCE / || true)"
   case "${ROOT_SRC}" in
     /dev/*)
@@ -44,29 +47,70 @@ else echo "Unsupported distro for dependency bootstrap"; exit 1; fi
 case "$PKG" in
   apt)
     apt update
-    apt install -y wget curl python3 libnss3-tools nscd uidmap parted e2fsprogs dosfstools cryptsetup
+    apt install -y wget curl ca-certificates python3 libnss3-tools nscd uidmap parted e2fsprogs dosfstools cryptsetup xz-utils
     systemctl enable --now nscd || true
     ;;
   dnf)
-    dnf install -y wget curl python3 nss-tools nscd shadow-utils parted e2fsprogs dosfstools cryptsetup
+    dnf install -y wget curl ca-certificates python3 nss-tools nscd shadow-utils parted e2fsprogs dosfstools cryptsetup xz
     systemctl enable --now nscd || true
     ;;
   pacman)
-    pacman -Sy --noconfirm wget curl python nss nscd shadow parted e2fsprogs dosfstools cryptsetup
+    pacman -Sy --noconfirm wget curl ca-certificates python nss nscd shadow parted e2fsprogs dosfstools cryptsetup xz
     systemctl enable --now nscd || true
     ;;
 esac
 
-# Fetch Guix installer
+# Helper: robust fetch with retries and fallbacks
+fetch_with_fallback() {
+  # $1: output file, $2..: urls
+  out="$1"; shift
+  rm -f "$out"
+  for u in "$@"; do
+    echo "[+] Fetching: $u"
+    if command -v curl >/dev/null; then
+      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u" && return 0
+    else
+      wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u" && return 0
+    fi
+    echo "[!] Failed: $u"
+  done
+  return 1
+}
+
+# Fetch Guix installer (multiple mirrors)
 if ! command -v guix >/dev/null; then
   echo "[+] Installing Guix prerequisites..."
-  wget -q https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
+  fetch_with_fallback guix-install.sh \
+    "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh" \
+    "https://git.savannah.gnu.org/git/guix.git/plain/etc/guix-install.sh" \
+    "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh?h=master"
   chmod +x guix-install.sh
-  ./guix-install.sh
+
+  # If installer fetch fails, try bootstrapping from binary tarball (x86_64 example)
+  if [ ! -s guix-install.sh ]; then
+    echo "[!] Installer script unavailable; attempting binary bootstrap..."
+    ARCH="$(uname -m)"
+    case "$ARCH" in
+      x86_64) BIN="guix-binary-1.4.0.x86_64-linux.tar.xz" ;;
+      aarch64) BIN="guix-binary-1.4.0.aarch64-linux.tar.xz" ;;
+      i686) BIN="guix-binary-1.4.0.i686-linux.tar.xz" ;;
+      *) echo "Unsupported arch for binary bootstrap: $ARCH"; exit 1 ;;
+    esac
+    fetch_with_fallback "$BIN" \
+      "https://mirror0.nexcess.net/gnu/guix/$BIN" \
+      "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN"
+    mkdir -p /gnu/store /var/guix
+    tar -C / -xJf "$BIN"
+    rm -f "$BIN"
+    echo "[+] Binary bootstrap complete."
+  else
+    ./guix-install.sh
+  fi
+
   export GUIX_PROFILE="/root/.config/guix/current"
   export PATH="$GUIX_PROFILE/bin:$PATH"
   . "$GUIX_PROFILE/etc/profile"
-  rm -f guix-install.sh
+  rm -f guix-install.sh || true
 fi
 
 # Confirm intent
@@ -157,12 +201,12 @@ esac
 
 # Hash passwords
 huser=$(python3 - <<PY
-import crypt,sys
+import crypt
 print(crypt.crypt("${upass}", crypt.mksalt(crypt.METHOD_SHA512)))
 PY
 )
 hroot=$(python3 - <<PY
-import crypt,sys
+import crypt
 print(crypt.crypt("${rpass}", crypt.mksalt(crypt.METHOD_SHA512)))
 PY
 )
@@ -226,14 +270,7 @@ fi)
                 %base-user-accounts)))
   (packages
     (append
-      (list
-        ;; essentials
-        vim htop git
-        ;; networking tools
-        nmap openssh tcpdump
-        ;; fonts
-        font-dejavu
-      )
+      (list vim htop git nmap openssh tcpdump font-dejavu)
       $(if [ -n "$extra_desktop" ]; then
 echo "(map specification->package '($extra_desktop))"
 else
@@ -254,11 +291,27 @@ echo "%base-services"
 fi))))
 EOF
 
-# Optional channels (commented out by default)
+# Channels (basic)
 cat > /mnt/etc/channels.scm <<'EOF'
-(list (channel
-        (name 'guix)
-        (url "https://git.savannah.gnu.org/git/guix.git")))
+(use-modules
+ (guix ci))
+(list
+(channel
+  (name 'nonguix)
+  (url "https://gitlab.com/nonguix/nonguix")
+  (introduction
+   (make-channel-introduction
+    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
+    (openpgp-fingerprint
+     "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5"))))
+(channel
+  (name 'nonguix)
+  (url "https://gitlab.com/nonguix/nonguix")
+  (introduction
+   (make-channel-introduction
+    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
+    (openpgp-fingerprint
+     "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
 # Initialize store and install
