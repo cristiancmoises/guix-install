@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #=============================================================
-#                    GNU GUIX FULL OS INSTALLER
-#                        Powered By Aliens
+#              GNU GUIX FULL OS INSTALLER
+#                  Powered By Aliens
 #=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
 |                    GNU GUIX FULL OS INSTALL                  |
-|                      [ In Code We Trust ]                    |
+|                         In Code We Trust                     |
 +-------------------------------------------------------------+
 B
 }
@@ -607,3 +607,4 @@ sync
 umount -R /mnt || true
 sleep 10
 reboot
+
