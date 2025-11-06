@@ -1,13 +1,14 @@
 #!/bin/sh
 #=============================================================
-# GNU GUIX INSTALLER - POWERED BY THE ALIENS
+#     GNU GUIX INSTALLER - POWERED BY THE ALIENS
+#             THE END OF DISTRO HOPPING!
 #=============================================================
 
 set -e
 
 echo "+-------------------------------------------------------------+"
-echo "| GNU GUIX INSTALLATION FROM ANY GNU+LINUX |"
-echo "| [ In Code We Trust ] |"
+echo "|         GNU GUIX INSTALLATION FROM ANY GNU+LINUX            |"
+echo "|                 [ In Code We Trust ]                        |"
 echo "+-------------------------------------------------------------+"
 
 [ "$(id -u)" -ne 0 ] && { echo "Run as root"; exit 1; }
@@ -48,16 +49,30 @@ if ! command -v guix >/dev/null; then
   . "$GUIX_PROFILE/etc/profile"
 fi
 
-# Disk
-lsblk
-read -p "Target disk (e.g. /dev/sda): " disk
-read -p "ERASE $disk? (y/n): " c; [ "$c" != "y" ] && exit 1
+# ——— CRITICAL FIX: UNMOUNT EVERYTHING THAT BELONGS TO UBUNTU ———
+echo "[+] Closing Ubuntu services and unmounting all partitions..."
+systemctl stop graphical.target || true
+swapoff -a
+umount -R /mnt 2>/dev/null || true
+umount /dev/* /run/* /sys/* /proc/* 2>/dev/null || true
+killall -9 dhclient wpa_supplicant NetworkManager || true
 
+# Disk
+lsblk -f
+echo "WARNING: THIS WILL COMPLETELY ERASE THE SELECTED DISK AND REPLACE UBUNTU WITH GUIX!"
+read -p "Target disk (e.g. /dev/sda): " disk
+read -p "Type YES to continue: " confirm
+[ "$confirm" != "YES" ] && echo "Aborted." && exit 1
+
+# Wipe and repartition
+wipefs -af "$disk"
 parted -s "$disk" mklabel gpt
 parted -s "$disk" mkpart ESP fat32 1MiB 512MiB
 parted -s "$disk" set 1 esp on
 parted -s "$disk" mkpart root ext4 512MiB 100%
 sync
+sleep 2
+
 mkfs.vfat -F32 "${disk}1"
 mkfs.ext4 -F "${disk}2"
 
@@ -67,12 +82,12 @@ mount "${disk}1" /mnt/boot/efi
 
 # User input
 read -p "Hostname: " hostname
-read -p "Timezone: " timezone
-read -p "Locale: " locale
-read -p "Keyboard: " keyboard
+read -p "Timezone (e.g. Europe/Paris): " timezone
+read -p "Locale (e.g. en_US.UTF-8): " locale
+read -p "Keyboard (e.g. us): " keyboard
 read -p "Username: " username
-read -s -p "User pass: " upass; echo
-read -s -p "Root pass: " rpass; echo
+read -s -p "User password: " upass; echo
+read -s -p "Root password: " rpass; echo
 
 echo "Desktop: 1=i3 2=mate 3=xfce"
 read -p "Choice (1/2/3): " desk_choice
@@ -134,31 +149,22 @@ cat > /mnt/etc/config.scm <<EOF
                      %base-user-accounts)))
   (packages
    (append
-    ;; Browser & Apps
-    (list icecat torbrowser libreoffice mpv feh)
-    ;; Drivers and Firmware
-    (list acpi-call-linux-module util-linux v4l2loopback-linux-module
-          mesa mesa-headers llvm-for-mesa libva libva-utils linux-firmware)
-    ;; X Utilities
-    (list xterm xorg-xdpyinfo xorg-xset xorg-xwininfo xorg-xprop
-          xpra xorg-xkill xorg-setxkbmap xorg-xmodmap xdg-utils xorg-xrandr)
-    ;; File and Disk Management
-    (list lf mergerfs parted ntfs-3g exfat-utils exfatprogs fuse-exfat
-          dosfstools bcachefs-tools smartmontools e2fsprogs xfsprogs)
-    ;; Development / Build Essentials
-    (list emacs gcc gcc-toolchain linux-libre-headers git git-lfs
+    (list icecat torbrowser libreoffice mpv feh
+          acpi-call-linux-module util-linux v4l2loopback-linux-module
+          mesa mesa-headers llvm-for-mesa libva libva-utils linux-firmware
+          xterm xorg-xdpyinfo xorg-xset xorg-xwininfo xorg-xprop
+          xpra xorg-xkill xorg-setxkbmap xorg-xmodmap xdg-utils xorg-xrandr
+          lf mergerfs parted ntfs-3g exfat-utils exfatprogs fuse-exfat
+          dosfstools bcachefs-tools smartmontools e2fsprogs xfsprogs
+          emacs gcc gcc-toolchain linux-libre-headers git git-lfs
           python python-pip cmake meson binutils strace edk2-tools
-          kitty alacritty fish zoxide pfetch)
-    ;; Security / VPN / Cryptography
-    (list sysstat nftables clamav gnupg libfido2 firejail privoxy
-          openvpn tor torsocks nmap tcpdump openssl keepassxc)
-    ;; System Monitoring and Utilities
-    (list htop btop glances inxi lm-sensors net-tools fping netdiscover
-          whois macchanger procps coreutils grep sed nix)
-    ;; Audio
-    (list alsa-lib alsa-utils pulseaudio pipewire wireplumber)
-    ;; Fonts
-    (list font-iosevka-term font-iosevka-term-slab font-iosevka-slab
+          kitty alacritty fish zoxide pfetch
+          sysstat nftables clamav gnupg libfido2 firejail privoxy
+          openvpn tor torsocks nmap tcpdump openssl keepassxc
+          htop btop glances inxi lm-sensors net-tools fping netdiscover
+          whois macchanger procps coreutils grep sed nix
+          alsa-lib alsa-utils pulseaudio pipewire wireplumber
+          font-iosevka-term font-iosevka-term-slab font-iosevka-slab
           font-iosevka-etoile font-iosevka-curly font-iosevka-curly-slab
           font-iosevka-aile font-iosevka-ss01 font-iosevka-ss02 font-iosevka-ss03
           font-iosevka-ss04 font-iosevka-ss05 font-iosevka-ss06 font-iosevka-ss07
@@ -166,7 +172,6 @@ cat > /mnt/etc/config.scm <<EOF
           font-iosevka-ss12 font-iosevka-ss13 font-iosevka-ss14 font-iosevka-ss15
           font-iosevka-ss16 font-iosevka-ss17 font-iosevka-ss18
           font-sarasa-gothic font-aporetic font-adwaita)
-    ;; Desktop extras
     (map specification->package '($extra))
     %base-packages))
 
@@ -189,5 +194,6 @@ sed -i '/(name '\''nonguix)/a\    (commit "43699ceddb6f5f7aa60a646daa44a75e269a3
 herd start cow-store /mnt
 guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
 
-echo "[+] Done. Rebooting..."
+echo "[+] GUIX SUCCESSFULLY INSTALLED! REBOOTING IN 10 SECONDS..."
+sleep 10
 reboot
