@@ -21,7 +21,8 @@ The `installer.sh` script:
 
 ---
 ## Usage of INSTALLER.SH
-  - Download the script:   
+  - Boot your GNU+Linux system and open the terminal
+  - Download the script:  
     wget https://short.securityops.co/installer -O install.sh 
   - Turn executable:
     chmod +x install.sh
