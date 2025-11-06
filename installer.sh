@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #=============================================================
-#              GNU GUIX FULL OS INSTALLER
-#                  Powered By Aliens
+#                  GNU GUIX FULL OS INSTALLER 
+#                      Powered By Aliens
 #=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
 |                    GNU GUIX FULL OS INSTALL                  |
-|                         In Code We Trust                     |
+|                        In Code We Trust                      |
 +-------------------------------------------------------------+
 B
 }
@@ -18,11 +18,11 @@ if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root"; exit 1
 fi
 
-# Optional proxies (set environment before running)
+# Optional proxies (export before running if needed)
 # export http_proxy="http://proxy:port"
 # export https_proxy="http://proxy:port"
 
-# Safety: require live environment unless overridden
+# Ensure live environment by default (override with ALLOW_NON_LIVE=YES)
 ALLOW_NON_LIVE="${ALLOW_NON_LIVE:-}"
 if [[ -z "$ALLOW_NON_LIVE" ]]; then
   ROOT_SRC="$(findmnt -n -o SOURCE / || true)"
@@ -33,23 +33,47 @@ if [[ -z "$ALLOW_NON_LIVE" ]]; then
   fi
 fi
 
-# Detect package manager (best-effort) and try to install helpful tools
+# Detect package manager (best effort)
+PKG=""
 if command -v apt >/dev/null; then PKG="apt"
 elif command -v dnf >/dev/null; then PKG="dnf"
 elif command -v pacman >/dev/null; then PKG="pacman"
-else PKG=""; fi
+fi
 
+# Try to install helper packages if package manager is available
 if [[ -n "$PKG" ]]; then
+  echo "[+] Attempting to ensure essential host tools (best-effort)..."
   case "$PKG" in
-    apt) apt update && apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs || true ;;
-    dnf) dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs || true ;;
-    pacman) pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs || true ;;
+    apt)
+      apt update
+      apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs uidmap || true
+      ;;
+    dnf)
+      dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs shadow-utils || true
+      ;;
+    pacman)
+      pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs uidmap || true
+      ;;
   esac
 fi
 
-# parted must be present for fallback
-if ! command -v parted >/dev/null; then
-  echo "Required tool 'parted' missing. Install it in the live environment and re-run."; exit 1
+# Verify essential commands exist; fail early with clear message
+for cmd in parted cryptsetup blkid sgdisk lsblk; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Required command '$cmd' not found. Install it in the live environment and re-run." >&2
+    exit 1
+  fi
+done
+
+# Check for newuidmap/newgidmap (uidmap)
+if ! command -v newgidmap >/dev/null 2>&1 || ! command -v newuidmap >/dev/null 2>&1; then
+  echo "Warning: newgidmap/newuidmap missing. Attempting to install uidmap (best-effort)."
+  if [[ "$PKG" == "apt" ]]; then apt install -y uidmap || true; fi
+  if [[ "$PKG" == "dnf" ]]; then dnf install -y shadow-utils || true; fi
+  if [[ "$PKG" == "pacman" ]]; then pacman -Sy --noconfirm uidmap || true; fi
+  if ! command -v newgidmap >/dev/null 2>&1 || ! command -v newuidmap >/dev/null 2>&1; then
+    echo "newgidmap/newuidmap still missing. Some Guix operations may fail; install uidmap in the live image and re-run." >&2
+  fi
 fi
 
 # Robust fetch helper
@@ -58,7 +82,7 @@ fetch_with_fallback() {
   rm -f "$out"
   for u in "$@"; do
     echo "[+] Fetching: $u"
-    if command -v curl >/dev/null; then
+    if command -v curl >/dev/null 2>&1; then
       if curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u"; then return 0; fi
     else
       if wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u"; then return 0; fi
@@ -68,56 +92,58 @@ fetch_with_fallback() {
   return 1
 }
 
-# Install Guix (installer script or binary bootstrap)
-if ! command -v guix >/dev/null; then
-  echo "[+] Installing Guix..."
+# Install Guix CLI if missing (installer script or binary bootstrap)
+if ! command -v guix >/dev/null 2>&1; then
+  echo "[+] Installing Guix (best-effort)..."
   if fetch_with_fallback guix-install.sh \
        "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh" \
-       "https://git.savannah.gnu.org/git/guix.git/plain/etc/guix-install.sh" \
-       "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh?h=master"; then
+       "https://git.savannah.gnu.org/git/guix.git/plain/etc/guix-install.sh"; then
     chmod +x guix-install.sh
-    ./guix-install.sh
+    ./guix-install.sh || true
     rm -f guix-install.sh || true
   else
-    echo "[!] Installer missing; attempting binary bootstrap..."
+    echo "[!] Installer script not fetched. Trying binary bootstrap..."
     ARCH="$(uname -m)"
     case "$ARCH" in
       x86_64) BIN="guix-binary-1.4.0.x86_64-linux.tar.xz" ;;
       aarch64) BIN="guix-binary-1.4.0.aarch64-linux.tar.xz" ;;
       i686) BIN="guix-binary-1.4.0.i686-linux.tar.xz" ;;
-      *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+      *) echo "Unsupported arch for binary bootstrap: $ARCH"; BIN="";;
     esac
-    fetch_with_fallback "$BIN" \
-      "https://mirror0.nexcess.net/gnu/guix/$BIN" \
-      "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN" \
-      "https://ftp.gnu.org/gnu/guix/$BIN"
-    mkdir -p /gnu/store /var/guix
-    tar -C / -xJf "$BIN"
-    rm -f "$BIN"
+    if [[ -n "$BIN" ]]; then
+      fetch_with_fallback "$BIN" \
+        "https://mirror0.nexcess.net/gnu/guix/$BIN" \
+        "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN" \
+        "https://ftp.gnu.org/gnu/guix/$BIN"
+      if [[ -f "$BIN" ]]; then
+        mkdir -p /gnu/store /var/guix
+        tar -C / -xJf "$BIN" || true
+        rm -f "$BIN" || true
+      fi
+    fi
   fi
 
-  export GUIX_PROFILE="/root/.config/guix/current"
-  export PATH="$GUIX_PROFILE/bin:$PATH"
-  # shellcheck disable=SC1090
-  . "$GUIX_PROFILE/etc/profile"
+  # Try to source profile if it exists
+  if [[ -f "/root/.config/guix/current/etc/profile" ]]; then
+    export GUIX_PROFILE="/root/.config/guix/current"
+    export PATH="$GUIX_PROFILE/bin:$PATH"
+    # shellcheck disable=SC1090
+    . "$GUIX_PROFILE/etc/profile" || true
+  fi
 fi
 
-# Summary and target disk selection
+# Confirm action and target disk
 echo
-echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
+echo "THIS WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | sed 's/^/  /'
 read -r -p "Target disk (e.g., /dev/sda or /dev/nvme0n1): " disk
 [[ -b "$disk" ]] || { echo "Invalid disk: $disk"; exit 1; }
 
-# derive disk base for BIOS grub install
+# derive disk_base for grub target if needed
 if [[ "$disk" =~ ^/dev/nvme ]]; then disk_base="$disk"; else disk_base="$(echo "$disk" | sed 's/[0-9]*$//')"; fi
 
-# Detect firmware
-if [[ -d /sys/firmware/efi ]]; then
-  echo "[+] UEFI detected"; default_scheme=1
-else
-  echo "[+] BIOS detected"; default_scheme=3
-fi
+# detect firmware
+if [[ -d /sys/firmware/efi ]]; then default_scheme=1; echo "[+] UEFI detected"; else default_scheme=3; echo "[+] BIOS detected"; fi
 
 echo "Partition schemes:"
 echo " 1) UEFI GPT: EFI + root"
@@ -141,12 +167,12 @@ fi
 read -r -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
 [[ "$confirm" = "YES I WANT GUIX" ]] || { echo "Aborted."; exit 1; }
 
-# sanity: ensure no mounts on the disk
-if mount | grep -q "^${disk}"; then
+# Robust mount check: ensure no partition from target disk is mounted
+if lsblk -nr -o NAME,MOUNTPOINT | awk -v d="$(basename "$disk")" '$1 ~ "^"d { if ($2 != "") { print; exit 1 } }'; then
   echo "One or more partitions on $disk are mounted. Unmount them and re-run."; exit 1
-fi
+fi || true
 
-# helper: convert size suffix to MiB
+# helper to convert sizes to MiB
 to_mib() {
   local s="$1"
   if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 ))
@@ -155,23 +181,38 @@ to_mib() {
 }
 if [[ "$mk_swap" =~ ^[yY]$ ]]; then swap_mib=$(to_mib "$swap_size"); else swap_mib=0; fi
 
-# disk size in MiB and EFI size
+# disk size in MiB
 total_mib=$(( $(blockdev --getsize64 "$disk") / 1024 / 1024 ))
 efi_size=512
 
-# Partitioning: prefer sgdisk (gdisk) if available; otherwise use parted-only flow
-if command -v sgdisk >/dev/null; then
+# minimal disk size sanity check (e.g., require at least 2 GiB + EFI)
+min_required_mib=$(( 2048 + efi_size ))
+if (( total_mib < min_required_mib )); then
+  echo "Disk too small (${total_mib} MiB). Need at least ${min_required_mib} MiB." >&2
+  exit 1
+fi
+
+# detect logical sector size for robust calculations
+sector_size=512
+if [[ -r "/sys/block/$(basename "$disk")/queue/logical_block_size" ]]; then
+  sector_size=$(cat "/sys/block/$(basename "$disk")/queue/logical_block_size")
+fi
+
+# Robust sgdisk helper: start_mib (integer), size_mib (integer or "*"), type (hex), name (string)
+add_gpt_part() {
+  local start_mib="$1"; local size_mib="$2"; local type="$3"; local name="$4"
+  local start_sector=$(( start_mib * 1024 * 1024 / sector_size ))
+  if [[ "$size_mib" == "*" ]]; then
+    sgdisk --new=0:${start_sector}s:0 --typecode=0:"$type" --change-name=0:"$name" "$disk"
+  else
+    sgdisk --new=0:${start_sector}s:+${size_mib}M --typecode=0:"$type" --change-name=0:"$name" "$disk"
+  fi
+}
+
+# Partitioning: prefer sgdisk then fallback to parted
+if command -v sgdisk >/dev/null 2>&1; then
   echo "[+] Using sgdisk (gdisk) for partitioning"
   sgdisk --zap-all "$disk"
-
-  add_gpt_part() {
-    local start_mib="$1"; local size_mib="$2"; local type="$3"; local name="$4"
-    if [[ "$size_mib" == "*" ]]; then
-      sgdisk --new=0:"${start_mib}MiB":0 --typecode=0:"$type" --change-name=0:"$name" "$disk"
-    else
-      sgdisk --new=0:"${start_mib}MiB":"+${size_mib}MiB" --typecode=0:"$type" --change-name=0:"$name" "$disk"
-    fi
-  }
 
   if [[ "$scheme" == "1" ]]; then
     if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
@@ -235,14 +276,32 @@ if command -v sgdisk >/dev/null; then
 
   partprobe "$disk" || true
   udevadm settle --timeout=10 || true
-  sleep 1
+
+  # Wait for partition devices to appear (max 20s)
+  wait_for_partitions() {
+    local max_wait=20
+    local i=0
+    while (( i < max_wait )); do
+      sleep 1
+      i=$((i+1))
+      pcount=0
+      for idx in 1 2 3 4; do
+        if [[ -b "${disk}${idx}" ]] || [[ -b "${disk}p${idx}" ]]; then pcount=$((pcount+1)); fi
+      done
+      if (( pcount > 0 )); then return 0; fi
+    done
+    return 1
+  }
+
+  if ! wait_for_partitions; then
+    echo "Warning: partition device nodes did not appear promptly; you may need to run partprobe or reboot before continuing." >&2
+  fi
 
 else
-  echo "[+] sgdisk (gdisk) not found; using portable parted flow"
+  echo "[+] sgdisk (gdisk) not found; using robust parted-only flow"
   parted --script "$disk" mklabel gpt
   parted --script --align optimal "$disk" mkpart primary 1MiB 512MiB
   parted --script "$disk" set 1 esp on
-
   if [[ "$scheme" == "1" ]]; then
     if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
       usable=$(( total_mib - efi_size - swap_mib ))
@@ -261,7 +320,6 @@ else
     else
       parted --script --align optimal "$disk" mkpart primary 512MiB 100%
     fi
-
   elif [[ "$scheme" == "2" ]]; then
     if [[ "$mk_swap" =~ ^[yY]$ ]]; then
       crypt_mib=$(( total_mib - efi_size - swap_mib )); crypt_end=$((512 + crypt_mib))
@@ -270,7 +328,6 @@ else
     else
       parted --script --align optimal "$disk" mkpart primary 512MiB 100%
     fi
-
   else
     parted --script --align optimal "$disk" mklabel msdos
     parted --script --align optimal "$disk" mkpart primary 1MiB 100%
@@ -279,7 +336,6 @@ else
 
   partprobe "$disk" || true
   udevadm settle --timeout=10 || true
-  sleep 1
 fi
 
 # Resolve partition device nodes
@@ -305,6 +361,12 @@ else
   if [[ "$mk_swap" =~ ^[yY]$ ]]; then
     if [[ -n "$homep" ]]; then swapp="$p3"; else swapp="$p2"; fi
   fi
+fi
+
+# Verify partition nodes exist for expected roles
+if [[ -z "$rootp" || ( "$scheme" != "2" && ! -b "$rootp" ) ]]; then
+  echo "Expected root partition not found. Aborting." >&2
+  exit 1
 fi
 
 # Format filesystems and set up LUKS if requested
@@ -393,13 +455,14 @@ print(crypt.crypt("${rpass}", crypt.mksalt(crypt.METHOD_SHA512)))
 PY
 )"
 
-# Determine UUIDs for non-LUKS devices
+# Get UUIDs (after formatting)
 root_uuid=""; home_uuid=""; efi_uuid=""
 if [[ "$scheme" != "2" && -b "$rootp" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)"; fi
 [[ -n "$homep" && -b "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep" || true)"
 [[ -n "$efi" && -b "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi" || true)"
 
-# Write config.scm (modules, dynamic parts, packages, services)
+# Write config.scm (dynamic)
+mkdir -p /mnt/etc
 cat > /mnt/etc/config.scm <<'EOF'
 (use-modules (gnu)
              (gnu packages admin) (gnu packages base) (gnu packages commencement)
@@ -511,71 +574,14 @@ cat >> /mnt/etc/config.scm <<EOF
                      %base-user-accounts)))
   (packages
    (append
-    (list icecat torbrowser libreoffice mpv feh
-          acpi-call-linux-module util-linux v4l2loopback-linux-module
-          mesa mesa-headers llvm-for-mesa libva libva-utils linux-firmware
-          xterm xorg-xdpyinfo xorg-xset xorg-xwininfo xorg-xprop
-          xpra xorg-xkill xorg-setxkbmap xorg-xmodmap xdg-utils xorg-xrandr
-          lf mergerfs parted ntfs-3g exfat-utils exfatprogs fuse-exfat
-          dosfstools bcachefs-tools smartmontools e2fsprogs xfsprogs
-          emacs gcc gcc-toolchain linux-libre-headers git git-lfs
-          python python-pip cmake meson binutils strace edk2-tools
-          kitty alacritty fish zoxide pfetch
-          sysstat nftables clamav gnupg libfido2 firejail privoxy
-          openvpn tor torsocks nmap tcpdump openssl keepassxc
-          htop btop glances inxi lm-sensors net-tools fping netdiscover
-          whois macchanger procps coreutils grep sed nix
-          alsa-lib alsa-utils pulseaudio pipewire wireplumber
-          font-iosevka-term font-iosevka-term-slab font-iosevka-slab
-          font-iosevka-etoile font-iosevka-curly font-iosevka-curly-slab
-          font-iosevka-aile font-iosevka-ss01 font-iosevka-ss02 font-iosevka-ss03
-          font-iosevka-ss04 font-iosevka-ss05 font-iosevka-ss06 font-iosevka-ss07
-          font-iosevka-ss08 font-iosevka-ss09 font-iosevka-ss10 font-iosevka-ss11
-          font-iosevka-ss12 font-iosevka-ss13 font-iosevka-ss14 font-iosevka-ss15
-          font-iosevka-ss16 font-iosevka-ss17 font-iosevka-ss18
-          font-sarasa-gothic font-aporetic font-adwaita)
-    (map specification->package '(${extra:-}))
+    (list vim htop git curl wget
+          icecat mpv feh
+          util-linux mesa linux-firmware
+          lf parted exfatprogs dosfstools e2fsprogs xfsprogs btrfs-progs
+          git python cmake meson kitty alacritty fish)
     %base-packages))
-EOF
-
-# services
-if [[ "${sway:-0}" -eq 1 ]]; then
-cat >> /mnt/etc/config.scm <<EOF
   (services
-   (append
-     (list (service greetd-service-type
-                   (greetd-configuration
-                     (terminal-vt "tty1")
-                     (greeter-sessions
-                       (list (greetd-session (name "sway") (command "sway"))))
-                     (initial-session
-                       (greetd-initial-session
-                         (user "${username}")
-                         (command "sway"))))))
-     (modify-services %base-services (delete gdm-service-type))))
-EOF
-else
-  if [[ -n "${display_mgr:-}" ]]; then
-cat >> /mnt/etc/config.scm <<EOF
-  (services
-   (append
-     (list (service sddm-service-type
-                   (sddm-configuration
-                     (display-server "x11")
-                     (auto-login-user "${username}")
-                     (auto-login-session "${session}"))))
-     (modify-services %desktop-services (delete gdm-service-type))))
-EOF
-  else
-cat >> /mnt/etc/config.scm <<'EOF'
-  (services
-   %base-services)
-EOF
-  fi
-fi
-
-cat >> /mnt/etc/config.scm <<'EOF'
-)
+   %base-services))
 EOF
 
 # channels.scm: debdistutils first, then guix, then nonguix
@@ -595,12 +601,20 @@ cat > /mnt/etc/channels.scm <<'EOF'
           "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
-# Start cow-store and run guix system init
-echo "[+] Starting cow-store..."
-herd start cow-store /mnt || true
+# Start cow-store if available, then run guix system init
+if command -v herd >/dev/null 2>&1; then
+  herd start cow-store /mnt || true
+fi
 
-echo "[+] Running guix time-machine -- system init (this may take a long time)..."
-guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
+if command -v guix >/dev/null 2>&1; then
+  echo "[+] Running guix time-machine -- system init (may take long)..."
+  guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
+else
+  echo "Guix command not found; please ensure guix is installed in the live environment, then run:"
+  echo "  guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt"
+  echo "Exiting."
+  exit 1
+fi
 
 echo "[+] Installation finished. Syncing and rebooting in 10 seconds..."
 sync
