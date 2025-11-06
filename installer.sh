@@ -1,14 +1,14 @@
-```bash
 #!/usr/bin/env bash
 #=============================================================
-#                 GNU GUIX FULL OS INSTALLER 
+#                    GNU GUIX FULL OS INSTALLER
+#                        Powered By Aliens
 #=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
-|                   GNU GUIX FULL OS INSTALL                   |
-|                     [ In Code We Trust ]                     |
+|                    GNU GUIX FULL OS INSTALL                  |
+|                      [ In Code We Trust ]                    |
 +-------------------------------------------------------------+
 B
 }
@@ -33,27 +33,26 @@ if [[ -z "$ALLOW_NON_LIVE" ]]; then
   fi
 fi
 
-# Detect package manager if available (best-effort for bootstrapping tools)
+# Detect package manager (best-effort) and try to install helpful tools
 if command -v apt >/dev/null; then PKG="apt"
 elif command -v dnf >/dev/null; then PKG="dnf"
 elif command -v pacman >/dev/null; then PKG="pacman"
 else PKG=""; fi
 
-# Try to install common tools if package manager exists (best-effort)
 if [[ -n "$PKG" ]]; then
   case "$PKG" in
-    apt) apt update && apt install -y wget curl ca-certificates python3 libnss3-tools nscd uidmap util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs || true ;;
-    dnf) dnf install -y wget curl ca-certificates python3 nss-tools nscd shadow-utils util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs || true ;;
-    pacman) pacman -Sy --noconfirm wget curl ca-certificates python nss nscd shadow util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs || true ;;
+    apt) apt update && apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs || true ;;
+    dnf) dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs || true ;;
+    pacman) pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs || true ;;
   esac
 fi
 
-# Ensure parted exists for fallback
+# parted must be present for fallback
 if ! command -v parted >/dev/null; then
   echo "Required tool 'parted' missing. Install it in the live environment and re-run."; exit 1
 fi
 
-# Helper: robust fetch with retries/fallbacks
+# Robust fetch helper
 fetch_with_fallback() {
   local out="$1"; shift
   rm -f "$out"
@@ -69,7 +68,7 @@ fetch_with_fallback() {
   return 1
 }
 
-# Guix install (installer script or binary bootstrap)
+# Install Guix (installer script or binary bootstrap)
 if ! command -v guix >/dev/null; then
   echo "[+] Installing Guix..."
   if fetch_with_fallback guix-install.sh \
@@ -103,17 +102,17 @@ if ! command -v guix >/dev/null; then
   . "$GUIX_PROFILE/etc/profile"
 fi
 
-# Confirm destructive action and target selection
+# Summary and target disk selection
 echo
 echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | sed 's/^/  /'
 read -r -p "Target disk (e.g., /dev/sda or /dev/nvme0n1): " disk
 [[ -b "$disk" ]] || { echo "Invalid disk: $disk"; exit 1; }
 
-# derive disk_base for BIOS grub target
+# derive disk base for BIOS grub install
 if [[ "$disk" =~ ^/dev/nvme ]]; then disk_base="$disk"; else disk_base="$(echo "$disk" | sed 's/[0-9]*$//')"; fi
 
-# Detect firmware (UEFI vs BIOS)
+# Detect firmware
 if [[ -d /sys/firmware/efi ]]; then
   echo "[+] UEFI detected"; default_scheme=1
 else
@@ -142,12 +141,12 @@ fi
 read -r -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
 [[ "$confirm" = "YES I WANT GUIX" ]] || { echo "Aborted."; exit 1; }
 
-# Sanity unmount check
+# sanity: ensure no mounts on the disk
 if mount | grep -q "^${disk}"; then
   echo "One or more partitions on $disk are mounted. Unmount them and re-run."; exit 1
 fi
 
-# convert swap size to MiB
+# helper: convert size suffix to MiB
 to_mib() {
   local s="$1"
   if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 ))
@@ -156,15 +155,15 @@ to_mib() {
 }
 if [[ "$mk_swap" =~ ^[yY]$ ]]; then swap_mib=$(to_mib "$swap_size"); else swap_mib=0; fi
 
-# disk size in MiB
+# disk size in MiB and EFI size
 total_mib=$(( $(blockdev --getsize64 "$disk") / 1024 / 1024 ))
 efi_size=512
 
-# Partitioning: prefer sgdisk (gdisk) if available; otherwise use robust parted flow
+# Partitioning: prefer sgdisk (gdisk) if available; otherwise use parted-only flow
 if command -v sgdisk >/dev/null; then
   echo "[+] Using sgdisk (gdisk) for partitioning"
   sgdisk --zap-all "$disk"
-  # helper to add partition via sgdisk
+
   add_gpt_part() {
     local start_mib="$1"; local size_mib="$2"; local type="$3"; local name="$4"
     if [[ "$size_mib" == "*" ]]; then
@@ -212,7 +211,6 @@ if command -v sgdisk >/dev/null; then
     fi
 
   else
-    # BIOS MBR: use parted for msdos label
     echo "[+] BIOS scheme selected - using parted for msdos partitioning"
     parted --script "$disk" mklabel msdos
     if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
@@ -284,7 +282,7 @@ else
   sleep 1
 fi
 
-# Resolve partition device nodes (supports /dev/sdX1 and /dev/nvme0n1p1)
+# Resolve partition device nodes
 part_node() {
   local idx="$1"
   if [[ -b "${disk}${idx}" ]]; then echo "${disk}${idx}"
@@ -397,11 +395,11 @@ PY
 
 # Determine UUIDs for non-LUKS devices
 root_uuid=""; home_uuid=""; efi_uuid=""
-if [[ "$scheme" != "2" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)"; fi
-[[ -n "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep" || true)"
-[[ -n "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi" || true)"
+if [[ "$scheme" != "2" && -b "$rootp" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)"; fi
+[[ -n "$homep" && -b "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep" || true)"
+[[ -n "$efi" && -b "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi" || true)"
 
-# Write config.scm preserving modules and package set; include device-mappings when LUKS root
+# Write config.scm (modules, dynamic parts, packages, services)
 cat > /mnt/etc/config.scm <<'EOF'
 (use-modules (gnu)
              (gnu packages admin) (gnu packages base) (gnu packages commencement)
@@ -415,7 +413,6 @@ cat > /mnt/etc/config.scm <<'EOF'
              (nongnu packages linux) (nongnu system linux-initrd))
 EOF
 
-# Append dynamic parts of config.scm (use here-doc with variable interpolation)
 cat >> /mnt/etc/config.scm <<EOF
 (operating-system
   (host-name "${hostname}")
@@ -448,7 +445,7 @@ if [[ "$scheme" == "2" ]]; then
   cat >> /mnt/etc/config.scm <<EOF
   (device-mappings
     (list (device-mapping
-            (target "${crypt_name}")
+            (target "guixroot")
             (source "${cryptp}"))))
 EOF
 fi
@@ -461,7 +458,7 @@ EOF
 if [[ "$scheme" == "2" ]]; then
   cat >> /mnt/etc/config.scm <<EOF
       (file-system
-        (device "/dev/mapper/${crypt_name}")
+        (device "/dev/mapper/guixroot")
         (mount-point "/")
         (type "${fs_type}"))
 EOF
@@ -496,8 +493,7 @@ cat >> /mnt/etc/config.scm <<'EOF'
       %base-file-systems))
 EOF
 
-# swap-devices
-if [[ -n "$swapp" ]]; then
+if [[ -n "${swapp:-}" ]]; then
   cat >> /mnt/etc/config.scm <<EOF
   (swap-devices
     (list (swap-device (target "${swapp}"))))
@@ -543,43 +539,46 @@ cat >> /mnt/etc/config.scm <<EOF
 EOF
 
 # services
-cat >> /mnt/etc/config.scm <<'EOF'
+if [[ "${sway:-0}" -eq 1 ]]; then
+cat >> /mnt/etc/config.scm <<EOF
   (services
    (append
-EOF
-
-if [[ "${sway:-0}" -eq 1 ]]; then
-  cat >> /mnt/etc/config.scm <<EOF
      (list (service greetd-service-type
-                  (greetd-configuration
-                    (terminal-vt "tty1")
-                    (greeter-sessions
-                      (list (greetd-session (name "sway") (command "sway"))))
-                    (initial-session
-                      (greetd-initial-session
-                        (user "${username}")
-                        (command "sway"))))))
-     (modify-services %base-services (delete gdm-service-type)))))
+                   (greetd-configuration
+                     (terminal-vt "tty1")
+                     (greeter-sessions
+                       (list (greetd-session (name "sway") (command "sway"))))
+                     (initial-session
+                       (greetd-initial-session
+                         (user "${username}")
+                         (command "sway"))))))
+     (modify-services %base-services (delete gdm-service-type))))
 EOF
 else
   if [[ -n "${display_mgr:-}" ]]; then
-    cat >> /mnt/etc/config.scm <<EOF
+cat >> /mnt/etc/config.scm <<EOF
+  (services
+   (append
      (list (service sddm-service-type
-                  (sddm-configuration
-                    (display-server "x11")
-                    (auto-login-user "${username}")
-                    (auto-login-session "${session}"))))
-     (modify-services %desktop-services (delete gdm-service-type)))))
+                   (sddm-configuration
+                     (display-server "x11")
+                     (auto-login-user "${username}")
+                     (auto-login-session "${session}"))))
+     (modify-services %desktop-services (delete gdm-service-type))))
 EOF
   else
-    cat >> /mnt/etc/config.scm <<'EOF'
-     %base-services
-     (modify-services %desktop-services (delete gdm-service-type)))))
+cat >> /mnt/etc/config.scm <<'EOF'
+  (services
+   %base-services)
 EOF
   fi
 fi
 
-# Write channels.scm with debdistutils first
+cat >> /mnt/etc/config.scm <<'EOF'
+)
+EOF
+
+# channels.scm: debdistutils first, then guix, then nonguix
 cat > /mnt/etc/channels.scm <<'EOF'
 (list
   (channel
@@ -596,7 +595,7 @@ cat > /mnt/etc/channels.scm <<'EOF'
           "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
-# Start cow-store and run guix time-machine init
+# Start cow-store and run guix system init
 echo "[+] Starting cow-store..."
 herd start cow-store /mnt || true
 
@@ -608,4 +607,3 @@ sync
 umount -R /mnt || true
 sleep 10
 reboot
-
