@@ -1,9 +1,9 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #=============================================================
 #                        GNU GUIX FULL OS INSTALLER
 #                            Powered By Aliens
 #=============================================================
-set -eu
+set -euo pipefail
 
 banner() {
   echo "+-------------------------------------------------------------+"
@@ -13,7 +13,10 @@ banner() {
 }
 banner
 
-[ "$(id -u)" -ne 0 ] && { echo "Run as root"; exit 1; }
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "Run as root"
+  exit 1
+fi
 
 # Optional proxies (export before running or uncomment and set)
 # export http_proxy="http://proxy:port"
@@ -21,7 +24,7 @@ banner
 
 # Detect live mode unless user overrides.
 ALLOW_NON_LIVE="${ALLOW_NON_LIVE:-}"
-if [ -z "${ALLOW_NON_LIVE}" ]; then
+if [[ -z "${ALLOW_NON_LIVE}" ]]; then
   ROOT_SRC="$(findmnt -n -o SOURCE / || true)"
   case "${ROOT_SRC}" in
     /dev/*)
@@ -66,14 +69,14 @@ esac
 # Helper: robust fetch with retries and fallbacks
 fetch_with_fallback() {
   # $1: output file, $2..: urls
-  out="$1"; shift
+  local out="$1"; shift
   rm -f "$out"
   for u in "$@"; do
     echo "[+] Fetching: $u"
     if command -v curl >/dev/null; then
-      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u" && return 0
+      if curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u"; then return 0; fi
     else
-      wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u" && return 0
+      if wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u"; then return 0; fi
     fi
     echo "[!] Failed: $u"
   done
@@ -83,16 +86,11 @@ fetch_with_fallback() {
 # Fetch Guix installer (with fallbacks) or binary bootstrap
 if ! command -v guix >/dev/null; then
   echo "[+] Installing Guix prerequisites..."
-  fetch_with_fallback guix-install.sh \
+  if ! fetch_with_fallback guix-install.sh \
     "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh" \
     "https://git.savannah.gnu.org/git/guix.git/plain/etc/guix-install.sh" \
-    "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh?h=master" || true
-
-  if [ -s guix-install.sh ]; then
-    chmod +x guix-install.sh
-    ./guix-install.sh
-    rm -f guix-install.sh || true
-  else
+    "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh?h=master"
+  then
     echo "[!] Installer script unavailable; attempting binary bootstrap..."
     ARCH="$(uname -m)"
     case "$ARCH" in
@@ -109,10 +107,15 @@ if ! command -v guix >/dev/null; then
     tar -C / -xJf "$BIN"
     rm -f "$BIN"
     echo "[+] Binary bootstrap complete."
+  else
+    chmod +x guix-install.sh
+    ./guix-install.sh
+    rm -f guix-install.sh || true
   fi
 
   export GUIX_PROFILE="/root/.config/guix/current"
   export PATH="$GUIX_PROFILE/bin:$PATH"
+  # shellcheck disable=SC1090
   . "$GUIX_PROFILE/etc/profile"
 fi
 
@@ -121,8 +124,8 @@ echo
 echo "THIS WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX AS YOUR OS."
 echo "Choose disk carefully (e.g., /dev/sda or /dev/nvme0n1)."
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | sed 's/^/  /'
-read -p "Target disk (e.g., /dev/sda or /dev/nvme0n1): " disk
-[ -b "$disk" ] || { echo "Invalid disk: $disk"; exit 1; }
+read -r -p "Target disk (e.g., /dev/sda or /dev/nvme0n1): " disk
+[[ -b "$disk" ]] || { echo "Invalid disk: $disk"; exit 1; }
 
 # Base device for BIOS GRUB target
 disk_base="$disk"
@@ -133,7 +136,7 @@ case "$disk" in
 esac
 
 # Auto-detect firmware: UEFI if /sys/firmware/efi exists
-if [ -d /sys/firmware/efi ]; then
+if [[ -d /sys/firmware/efi ]]; then
   default_scheme=1
   echo "[+] UEFI detected. Defaulting to: 1) UEFI GPT"
 else
@@ -146,12 +149,12 @@ echo "Partition schemes:"
 echo "  1) UEFI GPT: EFI + root (ext4/btrfs/xfs)"
 echo "  2) UEFI GPT + LUKS: EFI + encrypted root (ext4/btrfs/xfs)"
 echo "  3) BIOS MBR: bootable root (ext4/btrfs/xfs)"
-read -p "Choice (1/2/3) [default ${default_scheme}]: " scheme
+read -r -p "Choice (1/2/3) [default ${default_scheme}]: " scheme
 scheme="${scheme:-$default_scheme}"
 
 # Filesystem choice
 echo "Filesystem options: 1=ext4 2=btrfs 3=xfs"
-read -p "Root filesystem (1/2/3) [default 1]: " fs_choice
+read -r -p "Root filesystem (1/2/3) [default 1]: " fs_choice
 fs_choice="${fs_choice:-1}"
 case "$fs_choice" in
   1) fs_type="ext4" ; mkfs_cmd="mkfs.ext4 -F" ;;
@@ -161,23 +164,22 @@ case "$fs_choice" in
 esac
 
 # Separate /home
-read -p "Create separate /home partition? (y/N): " sep_home
+read -r -p "Create separate /home partition? (y/N): " sep_home
 sep_home="${sep_home:-N}"
 
 # Swap options
-read -p "Create swap? (y/N): " mk_swap
+read -r -p "Create swap? (y/N): " mk_swap
 mk_swap="${mk_swap:-N}"
 swap_size=""
 swap_encrypt="N"
-if [ "$mk_swap" = "y" ] || [ "$mk_swap" = "Y" ]; then
-  read -p "Swap size (e.g., 4G, 8192M): " swap_size
-  # Encrypt swap only if not encrypting root or if you explicitly want it
-  read -p "Encrypt swap with LUKS? (y/N): " swap_encrypt
+if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+  read -r -p "Swap size (e.g., 4G, 8192M): " swap_size
+  read -r -p "Encrypt swap with LUKS? (y/N): " swap_encrypt
   swap_encrypt="${swap_encrypt:-N}"
 fi
 
-read -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
-[ "$confirm" = "YES I WANT GUIX" ] || { echo "Aborted."; exit 1; }
+read -r -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
+[[ "$confirm" = "YES I WANT GUIX" ]] || { echo "Aborted."; exit 1; }
 
 # Wipe and partition
 echo "[+] Wiping signatures on ${disk}..."
@@ -196,15 +198,14 @@ swap_crypt_name="guixswap"
 case "$scheme" in
   1)
     # UEFI, plain root
-    if [ "$sep_home" = "y" ] || [ "$sep_home" = "Y" ]; then
-      # ESP 512MiB, root 100%-X, home occupies remaining after swap
-      if [ "$mk_swap" = "y" ] || [ "$mk_swap" = "Y" ]; then
+    if [[ "$sep_home" =~ ^[yY]$ ]]; then
+      if [[ "$mk_swap" =~ ^[yY]$ ]]; then
         parted --script "$disk" mklabel gpt \
           mkpart ESP fat32 1MiB 512MiB \
           set 1 esp on \
-          mkpart root "$fs_type" 512MiB -${swap_size} \
-          mkpart home "$fs_type" -${swap_size} 100% \
-          mkpart swap linux-swap -${swap_size} 100%
+          mkpart root "$fs_type" 512MiB -"${swap_size}" \
+          mkpart home "$fs_type" -"${swap_size}" 100% \
+          mkpart swap linux-swap -"${swap_size}" 100%
         efi="${disk}1"; rootp="${disk}2"; homep="${disk}3"; swapp="${disk}4"
       else
         parted --script "$disk" mklabel gpt \
@@ -215,12 +216,12 @@ case "$scheme" in
         efi="${disk}1"; rootp="${disk}2"; homep="${disk}3"
       fi
     else
-      if [ "$mk_swap" = "y" ] || [ "$mk_swap" = "Y" ]; then
+      if [[ "$mk_swap" =~ ^[yY]$ ]]; then
         parted --script "$disk" mklabel gpt \
           mkpart ESP fat32 1MiB 512MiB \
           set 1 esp on \
-          mkpart root "$fs_type" 512MiB -${swap_size} \
-          mkpart swap linux-swap -${swap_size} 100%
+          mkpart root "$fs_type" 512MiB -"${swap_size}" \
+          mkpart swap linux-swap -"${swap_size}" 100%
         efi="${disk}1"; rootp="${disk}2"; swapp="${disk}3"
       else
         parted --script "$disk" mklabel gpt \
@@ -232,18 +233,18 @@ case "$scheme" in
     fi
     mkfs.vfat -F32 "$efi"
     $mkfs_cmd "$rootp"
-    [ -n "$homep" ] && $mkfs_cmd "$homep"
-    [ -n "$swapp" ] && mkswap "$swapp"
+    [[ -n "$homep" ]] && $mkfs_cmd "$homep"
+    [[ -n "$swapp" ]] && mkswap "$swapp"
     ;;
   2)
     # UEFI + LUKS root
-    if [ "$sep_home" = "y" ] || [ "$sep_home" = "Y" ]; then
-      if [ "$mk_swap" = "y" ] || [ "$mk_swap" = "Y" ]; then
+    if [[ "$sep_home" =~ ^[yY]$ ]]; then
+      if [[ "$mk_swap" =~ ^[yY]$ ]]; then
         parted --script "$disk" mklabel gpt \
           mkpart ESP fat32 1MiB 512MiB \
           set 1 esp on \
-          mkpart cryptroot 512MiB -${swap_size} \
-          mkpart swap linux-swap -${swap_size} 100%
+          mkpart cryptroot 512MiB -"${swap_size}" \
+          mkpart swap linux-swap -"${swap_size}" 100%
         efi="${disk}1"; cryptp="${disk}2"; swapp="${disk}3"
       else
         parted --script "$disk" mklabel gpt \
@@ -253,12 +254,12 @@ case "$scheme" in
         efi="${disk}1"; cryptp="${disk}2"
       fi
     else
-      if [ "$mk_swap" = "y" ] || [ "$mk_swap" = "Y" ]; then
+      if [[ "$mk_swap" =~ ^[yY]$ ]]; then
         parted --script "$disk" mklabel gpt \
           mkpart ESP fat32 1MiB 512MiB \
           set 1 esp on \
-          mkpart cryptroot 512MiB -${swap_size} \
-          mkpart swap linux-swap -${swap_size} 100%
+          mkpart cryptroot 512MiB -"${swap_size}" \
+          mkpart swap linux-swap -"${swap_size}" 100%
         efi="${disk}1"; cryptp="${disk}2"; swapp="${disk}3"
       else
         parted --script "$disk" mklabel gpt \
@@ -274,9 +275,8 @@ case "$scheme" in
     cryptsetup open "$cryptp" "$crypt_name"
     rootp="/dev/mapper/$crypt_name"
     $mkfs_cmd "$rootp"
-    # Optional encrypted swap (separate LUKS device) if requested
-    if [ -n "$swapp" ]; then
-      if [ "$swap_encrypt" = "y" ] || [ "$swap_encrypt" = "Y" ]; then
+    if [[ -n "$swapp" ]]; then
+      if [[ "$swap_encrypt" =~ ^[yY]$ ]]; then
         echo "[+] Setting up LUKS for swap..."
         cryptsetup luksFormat "$swapp"
         cryptsetup open "$swapp" "$swap_crypt_name"
@@ -289,13 +289,13 @@ case "$scheme" in
     ;;
   3)
     # BIOS MBR
-    if [ "$sep_home" = "y" ] || [ "$sep_home" = "Y" ]; then
-      if [ "$mk_swap" = "y" ] || [ "$mk_swap" = "Y" ]; then
+    if [[ "$sep_home" =~ ^[yY]$ ]]; then
+      if [[ "$mk_swap" =~ ^[yY]$ ]]; then
         parted --script "$disk" mklabel msdos \
-          mkpart primary "$fs_type" 1MiB -${swap_size} \
+          mkpart primary "$fs_type" 1MiB -"${swap_size}" \
           set 1 boot on \
-          mkpart primary "$fs_type" -${swap_size} 100% \
-          mkpart primary linux-swap -${swap_size} 100%
+          mkpart primary "$fs_type" -"${swap_size}" 100% \
+          mkpart primary linux-swap -"${swap_size}" 100%
         rootp="${disk}1"; homep="${disk}2"; swapp="${disk}3"
       else
         parted --script "$disk" mklabel msdos \
@@ -305,11 +305,11 @@ case "$scheme" in
         rootp="${disk}1"; homep="${disk}2"
       fi
     else
-      if [ "$mk_swap" = "y" ] || [ "$mk_swap" = "Y" ]; then
+      if [[ "$mk_swap" =~ ^[yY]$ ]]; then
         parted --script "$disk" mklabel msdos \
-          mkpart primary "$fs_type" 1MiB -${swap_size} \
+          mkpart primary "$fs_type" 1MiB -"${swap_size}" \
           set 1 boot on \
-          mkpart primary linux-swap -${swap_size} 100%
+          mkpart primary linux-swap -"${swap_size}" 100%
         rootp="${disk}1"; swapp="${disk}2"
       else
         parted --script "$disk" mklabel msdos \
@@ -319,8 +319,8 @@ case "$scheme" in
       fi
     fi
     $mkfs_cmd "$rootp"
-    [ -n "$homep" ] && $mkfs_cmd "$homep"
-    [ -n "$swapp" ] && mkswap "$swapp"
+    [[ -n "$homep" ]] && $mkfs_cmd "$homep"
+    [[ -n "$swapp" ]] && mkswap "$swapp"
     ;;
   *)
     echo "Invalid scheme"; exit 1
@@ -330,26 +330,27 @@ esac
 # Mount target
 mkdir -p /mnt
 mount "$rootp" /mnt
-if [ -n "$efi" ]; then
+if [[ -n "$efi" ]]; then
   mkdir -p /mnt/boot/efi
   mount "$efi" /mnt/boot/efi
 fi
-if [ -n "$homep" ]; then
+if [[ -n "$homep" ]]; then
   mkdir -p /mnt/home
   mount "$homep" /mnt/home
 fi
 
 # Collect system info
-read -p "Hostname: " hostname
-read -p "Timezone (e.g., America/Sao_Paulo): " timezone
-read -p "Locale (e.g., en_US.UTF-8): " locale
-read -p "Keyboard (e.g., br-abnt2): " keyboard
-read -p "Username: " username
-read -s -p "User password: " upass; echo
-read -s -p "Root password: " rpass; echo
+read -r -p "Hostname: " hostname
+read -r -p "Timezone (e.g., America/Sao_Paulo): " timezone
+read -r -p "Locale (e.g., en_US.UTF-8): " locale
+read -r -p "Keyboard (e.g., br-abnt2): " keyboard
+read -r -p "Username: " username
+# Silent password prompts (Bash supports -s)
+read -r -s -p "User password: " upass; echo
+read -r -s -p "Root password: " rpass; echo
 
 echo "Desktop: 1=i3 2=mate 3=xfce 4=sway (Wayland) 5=none (text)"
-read -p "Choice (1/2/3/4/5): " desk_choice
+read -r -p "Choice (1/2/3/4/5): " desk_choice
 case "$desk_choice" in
   1) session="i3.desktop"; extra="i3-wm i3status dmenu"; display_mgr="sddm"; sway=0 ;;
   2) session="mate.desktop"; extra="mate"; display_mgr="sddm"; sway=0 ;;
@@ -360,32 +361,27 @@ case "$desk_choice" in
 esac
 
 # Hash passwords
-huser=$(python3 - <<PY
+huser="$(python3 - <<PY
 import crypt
 print(crypt.crypt("${upass}", crypt.mksalt(crypt.METHOD_SHA512)))
 PY
-)
-hroot=$(python3 - <<PY
+)"
+hroot="$(python3 - <<PY
 import crypt
 print(crypt.crypt("${rpass}", crypt.mksalt(crypt.METHOD_SHA512)))
 PY
-)
+)"
 
 # Determine UUIDs for plain devices (root and home only if not LUKS-root)
 root_uuid=""
 home_uuid=""
 efi_uuid=""
-[ -n "$efi" ] && efi_uuid=$(blkid -s UUID -o value "$efi")
-if [ "$scheme" = "2" ]; then
-  # LUKS root uses mapper device; home (if separate) is inside the same root FS only if you made separate crypt; we used single cryptroot
-  if [ -n "$homep" ]; then
-    # In LUKS scheme above, /home is within the same LUKS device only if you created subvolumes; we partitioned single cryptroot -> single FS.
-    # Since we mounted /mnt/home as a separate partition only in plain schemes, here homep is empty. Keep as empty.
-    :
-  fi
+[[ -n "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi")"
+if [[ "$scheme" = "2" ]]; then
+  :
 else
-  root_uuid=$(blkid -s UUID -o value "$rootp")
-  [ -n "$homep" ] && home_uuid=$(blkid -s UUID -o value "$homep")
+  root_uuid="$(blkid -s UUID -o value "$rootp")"
+  [[ -n "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep")"
 fi
 
 # Build config.scm (preserving original modules and package set; add LUKS mapping and swap devices)
@@ -406,7 +402,7 @@ cat > /mnt/etc/config.scm <<EOF
   (timezone "$timezone")
   (locale "$locale")
   (keyboard-layout (keyboard-layout "$keyboard"))
-  $(if [ -n "$efi" ]; then
+  $(if [[ -n "$efi" ]]; then
 cat <<EFI
   (bootloader (bootloader-configuration
                 (bootloader grub-efi-bootloader)
@@ -422,7 +418,7 @@ fi)
   (kernel linux)
   (initrd microcode-initrd)
   (firmware (list linux-firmware))
-  $(if [ "$scheme" = "2" ]; then
+  $(if [[ "$scheme" = "2" ]]; then
 cat <<MAPPINGS
   (device-mappings
     (list (device-mapping
@@ -432,7 +428,7 @@ MAPPINGS
 fi)
   (file-systems
     (cons*
-      $(if [ "$scheme" = "2" ]; then
+      $(if [[ "$scheme" = "2" ]]; then
 cat <<LUKSFS
       (file-system
         (device "/dev/mapper/$crypt_name")
@@ -447,7 +443,7 @@ cat <<PLAINFS
         (type "$fs_type"))
 PLAINFS
 fi)
-      $(if [ -n "$homep" ] && [ "$scheme" != "2" ]; then
+      $(if [[ -n "$homep" ]] && [[ "$scheme" != "2" ]]; then
 cat <<HOMEFS
       (file-system
         (device (uuid "$home_uuid"))
@@ -455,7 +451,7 @@ cat <<HOMEFS
         (type "$fs_type"))
 HOMEFS
 fi)
-      $(if [ -n "$efi" ]; then
+      $(if [[ -n "$efi" ]]; then
 cat <<EFIFS
       (file-system
         (device (uuid "$efi_uuid"))
@@ -464,12 +460,12 @@ cat <<EFIFS
 EFIFS
 fi)
       %base-file-systems))
-  $(if [ -n "$swapp" ] || [ -n "$swap_cryptp" ]; then
+  $(if [[ -n "$swapp" ]] || [[ -n "$swap_cryptp" ]]; then
 cat <<SWAP
   (swap-devices
-    (list $(if [ -n "$swap_cryptp" ]; then
+    (list $(if [[ -n "$swap_cryptp" ]]; then
 echo "(swap-device (target \"/dev/mapper/$swap_crypt_name\"))"
-elif [ -n "$swapp" ]; then
+elif [[ -n "$swapp" ]]; then
 echo "(swap-device (target \"$swapp\"))"
 fi)))
 SWAP
@@ -512,7 +508,7 @@ fi)
   (services
    (append
      (list
-       $(if [ "$sway" -eq 1 ]; then
+       $(if [[ "$sway" -eq 1 ]]; then
 cat <<GREETD
        (service greetd-service-type
          (greetd-configuration
@@ -524,7 +520,7 @@ cat <<GREETD
                (user "$username")
                (command "sway")))))
 GREETD
-elif [ -n "$display_mgr" ]; then
+elif [[ -n "$display_mgr" ]]; then
 cat <<SDDM
        (service sddm-service-type
          (sddm-configuration
@@ -533,21 +529,21 @@ cat <<SDDM
            (auto-login-session "$session")))
 SDDM
 fi))
-     (modify-services $(if [ "$sway" -eq 1 ]; then echo "%base-services" else echo "%desktop-services"; fi)
+     (modify-services $(if [[ "$sway" -eq 1 ]]; then echo "%base-services"; else echo "%desktop-services"; fi)
        (delete gdm-service-type)))))
 EOF
 
 # Channels: guix + nonguix (correct introduction, no duplicates)
 cat > /mnt/etc/channels.scm <<'EOF'
 (list
-  (channel
-   (name 'debdistutils)
+ (channel
+    (name 'debdistutils)
     (url "https://gitlab.com/debdistutils/guix/mirror.git")
-     (branch "master"))
+    (branch "master"))
   (channel
-   (name 'nonguix)
+    (name 'nonguix)
     (url "https://gitlab.com/nonguix/nonguix")
-     (introduction
+    (introduction
       (make-channel-introduction
         "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
         (openpgp-fingerprint
