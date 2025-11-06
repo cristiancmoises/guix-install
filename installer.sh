@@ -40,15 +40,6 @@ elif command -v dnf >/dev/null; then PKG="dnf"
 elif command -v pacman >/dev/null; then PKG="pacman"
 else echo "Unsupported distro for dependency bootstrap"; exit 1; fi
 
-# Update time and network sanity
-if command -v timedatectl >/dev/null; then
-  timedatectl set-ntp true || true
-fi
-ping -c1 -W2 ci.guix.gnu.org >/dev/null 2>&1 || ping -c1 -W2 gnu.org >/dev/null 2>&1 || {
-  echo "Network check failed. Ensure internet access and retry."
-  exit 1
-}
-
 # Install dependencies
 case "$PKG" in
   apt)
