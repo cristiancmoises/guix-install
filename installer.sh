@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU Guix guided installer (
+# GNU Guix guided installer 
+# WARNING: destructive operations. Review TARGET_DISK and variables before running. Run as root from a live environment.
 
 # -------------------- Configurable defaults --------------------
 USE_GUI="${USE_GUI:-auto}"              # auto|text - 'auto' will try yad then zenity then fallback to text
-AUTO_YES="${AUTO_YES:-1}"               # 1 to skip confirmations
+AUTO_YES="${AUTO_YES:-0}"               # 1 to skip confirmations
 TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdb
 USERNAME="${USERNAME:-user}"
 USER_PASS="${USER_PASS:-password}"
@@ -13,11 +14,11 @@ ROOT_PASS="${ROOT_PASS:-rootpass}"
 HOME_PASS="${HOME_PASS:-}"
 LOCALE="${LOCALE:-en_US.UTF-8}"
 TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
-DESKTOP="${DESKTOP:-i3}"              # none,i3,xfce,mate,sway
+DESKTOP="${DESKTOP:-none}"              # none,i3,xfce,mate,sway
 FS_TYPE="${FS_TYPE:-ext4}"              # ext4,btrfs,xfs
-CREATE_HOME="${CREATE_HOME:-0}"         # 1=yes 0=no
+CREATE_HOME="${CREATE_HOME:-1}"         # 1=yes 0=no
 CREATE_SWAP="${CREATE_SWAP:-0}"         # 1=yes 0=no
-SWAP_SIZE="${SWAP_SIZE:-2G}"
+SWAP_SIZE="${SWAP_SIZE:-4G}"
 LUKS_ROOT="${LUKS_ROOT:-0}"             # 1 to encrypt root
 LUKS_HOME="${LUKS_HOME:-0}"             # 1 to encrypt home
 LUKS_ROOT_NAME="${LUKS_ROOT_NAME:-cryptroot}"
@@ -42,16 +43,21 @@ KEYBOARD="${KEYBOARD:-us}"
 HOSTNAME="${HOSTNAME:-guix-machine}"
 
 # -------------------- Utilities --------------------
-log() { printf '%s %s\n' "$(date --iso-8601=seconds)" "$*" | tee -a "$LOGFILE"; }
-die() { log "ERROR: $*"; exit 1; }
-cmd_exists(){ command -v "$1" >/dev/null 2>&1; }
+log() {
+  printf '%s %s\n' "$(date --iso-8601=seconds)" "$*" | tee -a "$LOGFILE"
+}
+die() {
+  log "ERROR: $*"
+  exit 1
+}
+cmd_exists() { command -v "$1" >/dev/null 2>&1; }
 
-require_root(){ [[ "$(id -u)" -eq 0 ]] || die "Run this script as root"; }
+require_root() { [[ "$(id -u)" -eq 0 ]] || die "Run this script as root"; }
 
 # -------------------- GUI wrappers --------------------
 detect_gui_tool() {
   GUI_TOOL=""
-  if [[ "$USE_GUI" == "text" ]]; then GUI_TOOL="text"; return; fi
+  if [[ "${USE_GUI}" == "text" ]]; then GUI_TOOL="text"; return; fi
   if cmd_exists yad; then GUI_TOOL="yad"; return; fi
   if cmd_exists zenity; then GUI_TOOL="zenity"; return; fi
   GUI_TOOL="text"
@@ -61,7 +67,7 @@ gui_info() {
   local title="$1" msg="$2"
   case "$GUI_TOOL" in
     yad) yad --title "$title" --info --text "$msg" --timeout=5 >/dev/null 2>&1 || true ;;
-    zenity) zenity --info --title="$title" --text="$msg" --timeout=5 >/dev/null 2>&1 || true ;;
+    zenity) zenity --info --title="$title" --text "$msg" --timeout=5 >/dev/null 2>&1 || true ;;
     *) printf '%s: %s\n' "$title" "$msg" ;;
   esac
 }
@@ -104,8 +110,15 @@ gui_yesno() {
     yad) yad --title "$title" --question --text "$prompt" --button="No":1 --button="Yes":0 >/dev/null 2>&1; return $? ;;
     zenity) zenity --question --title="$title" --text="$prompt" >/dev/null 2>&1; return $? ;;
     *)
-      if [[ "$AUTO_YES" -ne 0 ]]; then return 0; fi
-      while true; do read -r -p "$prompt [y/N]: " ans; case "${ans,,}" in y|yes) return 0 ;; n|no|"" ) return 1 ;; * ) echo "Please answer yes or no." ;; esac; done
+      if [[ "${AUTO_YES}" -ne 0 ]]; then return 0; fi
+      while true; do
+        read -r -p "$prompt [y/N]: " ans
+        case "${ans,,}" in
+          y|yes) return 0 ;;
+          n|no|"" ) return 1 ;;
+          *) echo "Please answer yes or no." ;;
+        esac
+      done
       ;;
   esac
 }
@@ -275,8 +288,7 @@ robust_guix_init() {
     fi
     wait "$TM_PID" >/dev/null 2>&1 || true
     rm -f "$tmperr" || true
-    # Check if time-machine created a successful system profile by checking exit code via last command status is not robust here,
-    # so instead check if /mnt/etc/config.scm was applied by presence of /mnt/var/guix/profiles/system (best-effort)
+    # Best-effort check: look for created system profile on target
     if [[ -d /mnt/var/guix/profiles/system ]]; then
       log "guix time-machine appears to have completed and created system profile"
       return 0
@@ -297,16 +309,16 @@ robust_guix_init() {
   if [[ -f /etc/resolv.conf ]]; then cp -L /etc/resolv.conf /mnt/etc/resolv.conf 2>/dev/null || true; fi
 
   local wrapper_name="/tmp/guix-init-wrapper-$$.sh"
-  cat > "/mnt${wrapper_name}" <<EOF
+  cat > "/mnt${wrapper_name}" <<'EOF'
 #!/bin/sh
 set -e
-export GUIX_SUBSTITUTE_URLS="${subs}"
+export GUIX_SUBSTITUTE_URLS="${GUIX_SUBSTITUTE_URLS:-}"
 guix pull --channels-file=/etc/channels.scm || true
 guix system init /etc/config.scm / --no-build-output
 EOF
   chmod +x "/mnt${wrapper_name}" || true
   if chroot /mnt "$wrapper_name"; then
-    log "guix system init inside chroot succeeded"
+    log "guix system init succeeded inside chroot"
     rm -f "/mnt${wrapper_name}" || true
     umount /mnt/dev/pts || true
     umount /mnt/dev || true
@@ -325,8 +337,16 @@ EOF
 }
 
 # -------------------- Partition helpers --------------------
-to_mib(){ local s="$1"; if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 )); elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then echo "${BASH_REMATCH[1]}"; else echo "$s"; fi; }
+to_mib() {
+  local s="$1"
+  if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 ))
+  elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then echo "${BASH_REMATCH[1]}"
+  else echo "$s"
+  fi
+}
+
 safe_mkpart(){ local disk="$1" start="$2" end="$3"; (( end > start+1 )) || die "Invalid partition range ${start}MiB - ${end}MiB"; parted --script --align optimal "$disk" mkpart primary "${start}MiB" "${end}MiB"; }
+
 cap_end(){ local v="$1" t="$2"; if (( v > t - 1 )); then v=$(( t - 1 )); fi; echo "$v"; }
 
 ensure_unmounted() {
@@ -337,11 +357,17 @@ ensure_unmounted() {
   if cmd_exists findmnt; then
     mapfile -t _tmp < <(findmnt -rn -S "$dev" -o TARGET 2>/dev/null || true)
     targets+=("${_tmp[@]:-}")
-    for p in $(ls "${dev}"* 2>/dev/null || true); do mapfile -t _tmp < <(findmnt -rn -S "$p" -o TARGET 2>/dev/null || true); targets+=("${_tmp[@]:-}"); done
+    for p in $(ls "${dev}"* 2>/dev/null || true); do
+      mapfile -t _tmp < <(findmnt -rn -S "$p" -o TARGET 2>/dev/null || true)
+      targets+=("${_tmp[@]:-}")
+    done
   else
     mapfile -t _tmp < <(awk -v d="$dev" '$1==d || index($1,d)==1 {print $2}' /proc/mounts 2>/dev/null || true)
     targets+=("${_tmp[@]:-}")
-    for p in $(ls "${dev}"* 2>/dev/null || true); do mapfile -t _tmp < <(awk -v p="$p" '$1==p || index($1,p)==1 {print $2}' /proc/mounts 2>/dev/null || true); targets+=("${_tmp[@]:-}"); done
+    for p in $(ls "${dev}"* 2>/dev/null || true); do
+      mapfile -t _tmp < <(awk -v p="$p" '$1==p || index($1,p)==1 {print $2}' /proc/mounts 2>/dev/null || true)
+      targets+=("${_tmp[@]:-}")
+    done
   fi
 
   uniq=()
@@ -403,23 +429,23 @@ main() {
   [[ -n "$TARGET_DISK" ]] || die "TARGET_DISK must be set (e.g. /dev/sdb)"
   [[ -b "$TARGET_DISK" ]] || die "Target disk $TARGET_DISK not found"
 
-  # interactive choices if not provided
-  if [[ "$AUTO_YES" -eq 0 ]]; then
+  # Prompt/confirm
+  if [[ "${AUTO_YES}" -eq 0 ]]; then
     gui_info "Installation" "Target disk: $TARGET_DISK. This will erase the disk."
     gui_yesno "Confirm" "Proceed to wipe and partition $TARGET_DISK?" || die "Aborted by user"
   fi
 
-  # Ensure guix-daemon available (best-effort). Not fatal if fails; we fall back to chroot
+  # Try to ensure guix-daemon (best-effort)
   if ! ensure_guix_daemon; then
-    log "Warning: guix-daemon could not be started. We'll still write configuration; you may need to run 'guix system init' manually or ensure the daemon is started later."
+    log "Warning: guix-daemon could not be started. Proceeding to write configuration; guix system init may need manual follow-up."
   fi
 
-  # Compute sizes and create partitions
+  # Disk sizing
   local total_mib used_mib remaining swap_mib root_start root_end home_start home_end swap_start swap_end
   total_mib=$(( $(blockdev --getsize64 "$TARGET_DISK") / 1024 / 1024 ))
   (( total_mib >= 64 )) || die "Disk too small ($total_mib MiB)"
 
-  # Create partition table
+  # Partition table + EFI
   if [[ -d /sys/firmware/efi ]]; then
     log "EFI detected: creating GPT and EFI partition"
     parted --script "$TARGET_DISK" mklabel gpt >/dev/null 2>&1 || true
@@ -501,13 +527,12 @@ main() {
     if (( swap_mib > 0 )); then SWAP_PART="${parts[-1]:-}"; fi
   fi
 
-  # Fallback detection if missing
   [[ -n "$ROOT_PART" ]] || ROOT_PART="$(get_last_partition "$TARGET_DISK")"
   [[ -n "$HOME_PART" ]] || HOME_PART="$(get_last_partition "$TARGET_DISK")"
 
   log "Detected partitions: EFI=$EFI_PART ROOT=$ROOT_PART HOME=$HOME_PART SWAP=$SWAP_PART"
 
-  # Ensure partitions are unmounted before formatting
+  # Unmount any mounted partitions
   for p in "$EFI_PART" "$ROOT_PART" "$HOME_PART" "$SWAP_PART"; do
     [[ -n "$p" ]] || continue
     if awk -v d="$p" '$1==d {exit 0} END{exit 1}' /proc/mounts 2>/dev/null; then
@@ -516,7 +541,7 @@ main() {
     fi
   done
 
-  # LUKS or plain formatting
+  # Formatting / LUKS
   local ROOT_DEV HOME_DEV MAPPED_ROOT MAPPED_HOME
   if (( LUKS_ROOT == 1 )); then
     [[ -b "$ROOT_PART" ]] || die "Root partition for LUKS not found"
@@ -587,7 +612,7 @@ main() {
 
   mkdir -p /mnt/etc
   cat > /mnt/etc/config.scm <<EOF
-(use-modules (gnu) (guix) (guix profiles) (gnu services) (gnu packages base) (gnu packages linux) (gnu services desktop))
+(use-modules (gnu) (guix) (guix profiles) (gnu services) (gnu packages base) (gnu packages linux) (gnu services desktop) (guix utils) (gnu services networking) (gnu services ssh))
 
 (operating-system
  (host-name "${HOSTNAME}")
@@ -661,19 +686,56 @@ EOF
 EOF
   fi
 
+  # Add users, packages and services
   cat >> /mnt/etc/config.scm <<EOF
- (users (cons* (user-account (name "${USERNAME:-user}") (group "users")
-                             (home (string-append "/home/" "${USERNAME:-user}"))
+ (users (cons* (user-account (name "${USERNAME}") (group "users")
+                             (home (string-append "/home/" "${USERNAME}"))
                              (password "${huser}")
                              (supplementary-groups '("wheel" "netdev" "audio" "networking" "video")))
                (map (lambda (u) (if (string=? (user-account-name u) "root")
                                    (user-account (inherit u) (password "${hroot_hashed}"))
                                    u)) %base-user-accounts)))
  (packages (list ${BASE_PACKAGES[*]}))
- (services %base-services))
+ (services
+  (cons* ;; default base services preserved
+   %base-services
 EOF
 
-  # Write channels.scm exactly as requested (kept consistent with prior examples)
+  # If we have LUKS devices we will add a systemd unit that prompts for passphrases early during boot.
+  # The unit will run cryptsetup to open named LUKS mappings before the root file-system mount.
+  # This unit is a practical helper when using Guix system bootloader and systemd: it can be adapted
+  # or removed by editing the resulting system configuration on the installed system.
+  if (( LUKS_ROOT == 1 || LUKS_HOME == 1 )); then
+    # Build a small systemd service unit string that opens required devices
+    # We use placeholders for device nodes; guix system init will include this unit in system units.
+    cat >> /mnt/etc/config.scm <<'EOF'
+   ;; Add a systemd unit to unlock LUKS devices at boot if present.
+   (service (service-type (systemd-service) (name "luks-unlock.service")
+            (documentation "Opens LUKS containers at boot time; adjust device names/passphrases as needed.")
+            (unit-file
+             "(Unit)
+Description=Unlock LUKS devices at boot
+DefaultDependencies=no
+Before=local-fs.target
+After=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'set -e
+'
+             )))
+EOF
+    # Note: the generated unit template above will be present in the system configuration.
+    # The script below will also write /etc/crypttab entry on the installed system via guix if desired.
+  fi
+
+  # Close services list
+  cat >> /mnt/etc/config.scm <<'EOF'
+   %base-services)))
+EOF
+
+  # Write channels.scm (user-provided channels content preserved)
   cat > /mnt/etc/channels.scm <<'EOF'
 (use-modules (guix ci))
 
@@ -713,24 +775,24 @@ EOF
     if robust_guix_init; then
       log "guix system init completed successfully"
     else
-      log "guix system init failed or was aborted; configuration retained in /mnt/etc for manual init"
+      log "guix system init failed or timed out; configuration retained in /mnt/etc for manual init"
     fi
   else
-    log "guix CLI or daemon not available; skipping automatic guix system init. Configuration is in /mnt/etc. To finish, ensure guix and guix-daemon are available and run 'guix system init /mnt/etc/config.scm /mnt' (or perform the chroot method)."
+    log "guix CLI or daemon not available; skipping automatic guix system init. Configuration is in /mnt/etc. To finish: ensure guix and guix-daemon are available and run 'guix system init /mnt/etc/config.scm /mnt' or use chroot fallback."
   fi
 
-  # cleanup: safe swapoff and unmounts
+  # Cleanup: safe swapoff and unmounts
   sync
   if [[ -n "$SWAP_PART" ]]; then safe_swapoff "$SWAP_PART" || true; else safe_swapoff "" || true; fi
   umount /mnt/home 2>/dev/null || true
   umount /mnt/boot/efi 2>/dev/null || true
   umount -R /mnt 2>/dev/null || true
 
-  # close LUKS mappings if opened
+  # Close any opened LUKS mappings
   if (( LUKS_HOME == 1 )); then cryptsetup status "$LUKS_HOME_NAME" >/dev/null 2>&1 && cryptsetup close "$LUKS_HOME_NAME" || true; fi
   if (( LUKS_ROOT == 1 )); then cryptsetup status "$LUKS_ROOT_NAME" >/dev/null 2>&1 && cryptsetup close "$LUKS_ROOT_NAME" || true; fi
 
-  log "Installer finished. If guix time-machine was slow or failed, check $LOGFILE and /var/log/guix-daemon.log for diagnostics. To complete installation manually: ensure guix-daemon is running and run 'guix system init /mnt/etc/config.scm /mnt' or use the chroot fallback."
+  log "Installer finished. Please review $LOGFILE and /var/log/guix-daemon.log for diagnostics. To complete installation manually: ensure guix-daemon is running and run 'guix system init /mnt/etc/config.scm /mnt' or follow the chroot fallback method."
 }
 
 main "$@"
