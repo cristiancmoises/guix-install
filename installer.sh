@@ -1,13 +1,8 @@
-### GNU GUIX INSTALLER SCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU Guix guided installer with LUKS support (English-only)
-# - Guided partitioning (EFI + root [+ home] [+ swap]) with explicit MiB ranges
-# - Optional LUKS encryption for root and optional /home
-# - Writes /mnt/etc/config.scm and /mnt/etc/channels.scm
-# - Attempts Guix bootstrap and robustly runs `guix system init` (time-machine first)
-# WARNING: Guided mode will wipe the chosen disk. Run as root in a live environment.
+# GNU Guix guided installer with LUKS support and robust guix init 
+# WARNING: This script performs destructive operations. Review TARGET_DISK before running.
 
 # -------------------- Configurable defaults --------------------
 LANG_OPT="${LANG_OPT:-en}"
@@ -17,15 +12,15 @@ TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sda
 USERNAME="${USERNAME:-}"                # username to create
 USER_PASS="${USER_PASS:-}"              # user password (plaintext for script only)
 ROOT_PASS="${ROOT_PASS:-}"              # root password for installed system
-LOCALE="${LOCALE:-pt_BR.UTF-8}"
+LOCALE="${LOCALE:-en_US.UTF-8}"
 TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
-DESKTOP="${DESKTOP:-i3}"              # none,i3,xfce,mate,sway
+DESKTOP="${DESKTOP:-none}"              # none,i3,xfce,mate,sway
 FS_TYPE="${FS_TYPE:-ext4}"              # ext4,btrfs,xfs
 CREATE_HOME="${CREATE_HOME:-}"          # 1=yes 0=no (guided)
 CREATE_SWAP="${CREATE_SWAP:-}"          # 1=yes 0=no
-SWAP_SIZE="${SWAP_SIZE:-2G}"
-LUKS_ROOT="${LUKS_ROOT:-1}"              # 1=yes 0=no (guided)
-LUKS_HOME="${LUKS_HOME:-1}"              # 1=yes 0=no (guided)
+SWAP_SIZE="${SWAP_SIZE:-4G}"
+LUKS_ROOT="${LUKS_ROOT:-}"              # 1=yes 0=no (guided)
+LUKS_HOME="${LUKS_HOME:-}"              # 1=yes 0=no (guided)
 LUKS_ROOT_NAME="${LUKS_ROOT_NAME:-cryptroot}"
 LUKS_HOME_NAME="${LUKS_HOME_NAME:-crypthome}"
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.5.0}"
@@ -245,6 +240,96 @@ ensure_guix() {
   fi
 }
 
+# -------------------- Robust guix init (time-machine fallback to chroot method) --------------------
+robust_guix_init() {
+  local subs attempts backoff success=0 errbuf tmpf
+  subs="$(probe_substitutes)"
+  if [[ -n "$subs" ]]; then export GUIX_SUBSTITUTE_URLS="$subs"; fi
+
+  if command -v guix >/dev/null 2>&1; then
+    attempts=0; backoff=5
+    while (( attempts < 3 )); do
+      log "Attempting guix time-machine (attempt $((attempts+1)))"
+      if guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --no-build-output 2>/tmp/guix-time.err; then
+        log "guix time-machine succeeded"
+        success=1; break
+      fi
+      errbuf="$(cat /tmp/guix-time.err 2>/dev/null || true)"
+      if printf '%s' "$errbuf" | grep -qi "lacks.*introduction"; then
+        log "Channel lacks introduction; falling back to chroot method"
+        break
+      fi
+      log "time-machine attempt failed; sleeping $backoff s"
+      sleep "$backoff"
+      attempts=$((attempts+1))
+      backoff=$(( backoff * 2 > 60 ? 60 : backoff * 2 ))
+    done
+    rm -f /tmp/guix-time.err || true
+  else
+    log "guix CLI not on host; skipping time-machine tries"
+  fi
+
+  if (( success == 1 )); then
+    return 0
+  fi
+
+  # Chroot fallback: bind /dev,/proc,/sys, copy resolv.conf, run guix pull + system init inside chroot
+  log "Falling back to chroot guix pull + guix system init"
+
+  mkdir -p /mnt/{dev,proc,sys,tmp} || true
+  mount --bind /dev /mnt/dev || true
+  mount --bind /dev/pts /mnt/dev/pts || true
+  mount --bind /proc /mnt/proc || true
+  mount --bind /sys /mnt/sys || true
+  if [[ -f /etc/resolv.conf ]]; then cp -L /etc/resolv.conf /mnt/etc/resolv.conf 2>/dev/null || true; fi
+
+  # create wrapper inside chroot
+  tmpf="/mnt/tmp/guix-init-wrapper-$$.sh"
+  if [[ -n "$subs" ]]; then
+    cat > "$tmpf" <<EOF
+#!/bin/sh
+export GUIX_SUBSTITUTE_URLS="${subs}"
+set -e
+if command -v guix >/dev/null 2>&1; then
+  guix pull --channels-file=/etc/channels.scm || true
+else
+  guix pull --channels-file=/etc/channels.scm || true
+fi
+guix system init /etc/config.scm / --no-build-output
+EOF
+  else
+    cat > "$tmpf" <<'EOF'
+#!/bin/sh
+set -e
+if command -v guix >/dev/null 2>&1; then
+  guix pull --channels-file=/etc/channels.scm || true
+else
+  guix pull --channels-file=/etc/channels.scm || true
+fi
+guix system init /etc/config.scm / --no-build-output
+EOF
+  fi
+  chmod +x "$tmpf" || true
+
+  if chroot /mnt /tmp/"$(basename "$tmpf")"; then
+    log "guix system init inside chroot succeeded"
+    rm -f "$tmpf" || true
+    umount /mnt/dev/pts || true
+    umount /mnt/dev || true
+    umount /mnt/proc || true
+    umount /mnt/sys || true
+    return 0
+  else
+    log "guix system init inside chroot failed; leaving /mnt/etc for manual init"
+    rm -f "$tmpf" || true
+    umount /mnt/dev/pts || true
+    umount /mnt/dev || true
+    umount /mnt/proc || true
+    umount /mnt/sys || true
+    return 1
+  fi
+}
+
 # -------------------- Partition helpers --------------------
 to_mib(){ local s="$1"; if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 )); elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then echo "${BASH_REMATCH[1]}"; else echo "$s"; fi; }
 
@@ -346,8 +431,6 @@ step_partition_options() {
   if (( LUKS_ROOT == 1 )); then
     safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-
-    # heuristic: the last created partition device appears at the tail
     sleep 1
     PART_DEV=""
     for idx in $(seq 1 16); do
@@ -490,7 +573,7 @@ step_install() {
 
   if [[ -n "${MAPPED_HOME:-}" && -b "${MAPPED_HOME}" ]]; then
     mkdir -p /mnt/home
-    mount "$MAPPED_HOME" /mnt.home || mount "$MAPPED_HOME" /mnt/home
+    mount "$MAPPED_HOME" /mnt/home
   elif [[ -n "${HOME_PART:-}" && -b "${HOME_PART}" ]]; then
     mkdir -p /mnt/home
     mount "$HOME_PART" /mnt/home
@@ -616,40 +699,9 @@ EOF
     subs="$(probe_substitutes)"
     if [[ -n "$subs" ]]; then export GUIX_SUBSTITUTE_URLS="$subs"; fi
 
-    if command -v guix >/dev/null 2>&1; then
-      attempts=0
-      backoff=5
-      success=0
-      while (( attempts < 6 )); do
-        log "Attempt $((attempts+1)): guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt"
-        if guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --no-build-output; then success=1; break; fi
-        log "Attempt $((attempts+1)) failed; sleeping $backoff s"
-        sleep "$backoff"
-        attempts=$((attempts+1))
-        backoff=$(( backoff * 2 > 60 ? 60 : backoff * 2 ))
-      done
-
-      if (( success == 0 )); then
-        attempts=0; backoff=5
-        while (( attempts < 4 )); do
-          log "Fallback attempt $((attempts+1)): guix system init /mnt/etc/config.scm /mnt"
-          if guix system init /mnt/etc/config.scm /mnt --no-build-output; then success=1; break; fi
-          log "Fallback attempt $((attempts+1)) failed; sleeping $backoff s"
-          sleep "$backoff"
-          attempts=$((attempts+1))
-          backoff=$(( backoff * 2 > 60 ? 60 : backoff * 2 ))
-        done
-      fi
-
-      if (( success == 1 )); then
-        gui_info "$FINISH_MSG" "guix system init succeeded"
-      else
-        log "guix system init failed after retries. Configuration files are at /mnt/etc. Run 'guix system init' manually inside the new system."
-        gui_info "$FINISH_MSG" "guix system init failed after retries. Configuration is in /mnt/etc; run 'guix system init' manually later."
-      fi
-    else
-      log "guix CLI not available after bootstrap; cannot run guix system init now. Files written to /mnt/etc"
-      gui_info "$FINISH_MSG" "Guix CLI not available. Configuration files are at /mnt/etc; install Guix and run 'guix system init' manually."
+    if ! robust_guix_init; then
+      log "guix system init failed after fallbacks. Configuration left at /mnt/etc for manual init."
+      gui_info "$FINISH_MSG" "guix system init failed after retries. Configuration in /mnt/etc; run 'guix system init' manually."
     fi
   else
     log "Could not ensure Guix CLI/daemon. Configuration written to /mnt/etc"
@@ -673,9 +725,6 @@ main() {
   if [[ "$(id -u)" -ne 0 ]]; then die "Run this script as root"; fi
   step_welcome
   step_select_disk
-  # Partition step will set swap_mib, swap_start, swap_end variables used later; ensure they exist
-  # compute partition splits inside step_partition_options: we reuse variable names from earlier logic
-  # For readability, call step_partition_options and step_user_setup next
   step_partition_options
   step_user_setup
   step_summary
