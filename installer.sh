@@ -1,15 +1,16 @@
+# IN CODE WE TRUST.
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU GUIX - EASY INSTALL TO PERMIT FIX ANY OS WITH AMAZING GNU GUIX OPERATING SYSTEM
-# POWERED BY ALIENS
-# Calamares-like GNU Guix installer (fixed partition bounds)
-# - Guided partitioning: EFI (if present) + root [+ home] [+ swap]
-# - GUI via yad/zenity if available, else text prompts
-# - Writes config.scm and channels.scm, attempts guix system init
-# Run as root in a live environment.
+# GNU EASY INSTALLER - POWERED BY ALIENS
+# Calamares-like GNU Guix installer
+# - Keeps guided partitioning, GUI/text dialogs, config.scm/channels.scm generation
+# - Meant to run from a live environment as root
+#
+# Usage: sudo ./install.sh
+# Non-interactive: export AUTO_YES=1 and other vars (TARGET_DISK, USERNAME, USER_PASS, ROOT_PASS, LOCALE, TIMEZONE, DESKTOP, FS_TYPE)
 
-# -------------------- Defaults / env --------------------
+# -------------------- Defaults / env (safe defaults for all variables) --------------------
 LANG_OPT="${LANG_OPT:-auto}"        # auto | en | pt
 USE_GUI="${USE_GUI:-auto}"          # auto | gui | text
 AUTO_YES="${AUTO_YES:-0}"           # 1 skip confirmations
@@ -25,6 +26,7 @@ CREATE_HOME="${CREATE_HOME:-}"      # 1=yes 0=no
 CREATE_SWAP="${CREATE_SWAP:-}"      # 1=yes 0=no
 SWAP_SIZE="${SWAP_SIZE:-4G}"        # swap size
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.4.0}"
+KEYBOARD="${KEYBOARD:-us}"          # keyboard layout default to 'us'
 
 SUBSTITUTE_HOSTS=( "https://hydra.gnu.org" "https://cache.guix.gnu.org" "https://ci.guix.info" "https://ci.guix.gnu.org" )
 BASE_PACKAGES=(icecat torbrowser libreoffice mpv feh util-linux xterm git python)
@@ -87,7 +89,7 @@ detect_gui() {
 }
 gui_yesno() {
   local title="$1" prompt="$2"
-  if [[ -n "$GUI_TOOL" ]]; then
+  if [[ -n "${GUI_TOOL:-}" ]]; then
     if [[ "$GUI_TOOL" == "yad" ]]; then yad --center --title "$title" --question --text "$prompt" --button="$L_CANCEL":1 --button="$L_OK":0 >/dev/null 2>&1; return $?
     else zenity --question --title="$title" --text="$prompt" >/dev/null 2>&1; return $?; fi
   fi
@@ -99,23 +101,23 @@ gui_yesno() {
 }
 gui_entry() {
   local title="$1" prompt="$2" default="$3"
-  if [[ -n "$GUI_TOOL" ]]; then
+  if [[ -n "${GUI_TOOL:-}" ]]; then
     if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --entry --text "$prompt" --entry-text "$default" 2>/dev/null || echo "$default"
-    else zenity --entry --title="$title" --text="$prompt" --entry-text="$default" 2>/dev/null || echo "$default"; fi
+    else zenity --entry --title="$title" --text "$prompt" --entry-text "$default" 2>/dev/null || echo "$default"; fi
   else
     if [[ "${AUTO_YES:-0}" -eq 1 ]]; then echo "$default"; else read -r -p "$prompt [$default]: " v; echo "${v:-$default}"; fi
   fi
 }
 gui_list() {
   local title="$1" prompt="$2" choices=("${@:3}")
-  if [[ -n "$GUI_TOOL" ]]; then
+  if [[ -n "${GUI_TOOL:-}" ]]; then
     if [[ "$GUI_TOOL" == "yad" ]]; then printf "%s\n" "${choices[@]}" | yad --list --title "$title" --column "$prompt" --height=200 --width=300 2>/dev/null | head -n1
     else printf "%s\n" "${choices[@]}" | zenity --list --title="$title" --column="$prompt" --height=200 --width=300 2>/dev/null | head -n1; fi
   else
     echo "${choices[0]}"
   fi
 }
-gui_info(){ local t="$1" m="$2"; if [[ -n "$GUI_TOOL" ]]; then if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$t" --info --text "$m" --timeout=3 >/dev/null 2>&1; else zenity --info --title="$t" --text "$m" --timeout=3 >/dev/null 2>&1; fi; else echo "$m"; fi; }
+gui_info(){ local t="$1" m="$2"; if [[ -n "${GUI_TOOL:-}" ]]; then if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$t" --info --text "$m" --timeout=3 >/dev/null 2>&1; else zenity --info --title="$t" --text "$m" --timeout=3 >/dev/null 2>&1; fi; else echo "$m"; fi; }
 
 # -------------------- Pre-flight --------------------
 choose_lang
@@ -237,7 +239,7 @@ step_partition_options(){
   if (( swap_mib > 0 )); then
     if (( swap_end <= swap_start + 3 )); then
       # try to reduce swap to available tail
-      swap_start=$(( total_mib - 4 ))
+      swap_start=$(( total_mib - 5 ))
       swap_end=$(( total_mib - 1 ))
       if (( swap_end <= swap_start )); then swap_mib=0; fi
     fi
@@ -249,7 +251,11 @@ step_partition_options(){
     safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
   fi
   if (( swap_mib > 0 )); then
-    safe_mkpart "$TARGET_DISK" "$swap_start" "$swap_end"
+    # final cap again
+    swap_end=$(cap_end "$swap_end" "$total_mib")
+    if (( swap_end > swap_start )); then
+      safe_mkpart "$TARGET_DISK" "$swap_start" "$swap_end"
+    fi
   fi
 
   partprobe "$TARGET_DISK" || true
@@ -266,6 +272,8 @@ step_user_setup(){
   if [[ -z "$TIMEZONE" ]]; then TIMEZONE="$(gui_entry "Timezone" "Region/City" "America/Sao_Paulo")"; fi
   if [[ -z "$DESKTOP" ]]; then DESKTOP="$(gui_list "Desktop" "Choose desktop" "i3" "mate" "xfce" "sway" "none")"; fi
   if [[ -z "$FS_TYPE" ]]; then FS_TYPE="$(gui_list "Filesystem" "Choose filesystem" "ext4" "btrfs" "xfs")"; fi
+  # ensure KEYBOARD variable is set (fixes previously reported unbound error)
+  KEYBOARD="${KEYBOARD:-us}"
 }
 
 step_summary(){
@@ -275,6 +283,7 @@ Desktop: $DESKTOP
 FS: $FS_TYPE
 Locale: $LOCALE
 Timezone: $TIMEZONE
+Keyboard: $KEYBOARD
 Create /home: ${CREATE_HOME:-auto}
 Create swap: ${CREATE_SWAP:-auto}"
   gui_info "$L_SUMMARY" "$summary"
@@ -333,7 +342,7 @@ step_install(){
   cat > /mnt/etc/config.scm <<EOF
 (use-modules (gnu) (guix) (guix profiles) (gnu services) (gnu packages base) (gnu packages linux) (gnu services desktop))
 (operating-system
- (host-name "${HOSTNAME}")
+ (host-name "${HOSTNAME:-guix-machine}")
  (timezone "${TIMEZONE}")
  (locale "${LOCALE}")
  (keyboard-layout (keyboard-layout "${KEYBOARD}")))
@@ -393,8 +402,8 @@ EOF
   fi
 
   cat >> /mnt/etc/config.scm <<EOF
- (users (cons* (user-account (name "${USERNAME}") (group "users")
-                             (home (string-append "/home/" "${USERNAME}"))
+ (users (cons* (user-account (name "${USERNAME:-user}") (group "users")
+                             (home (string-append "/home/" "${USERNAME:-user}"))
                              (password "${huser}")
                              (supplementary-groups '("wheel" "netdev" "audio" "networking" "video")))
                (map (lambda (u) (if (string=? (user-account-name u) "root")
@@ -408,7 +417,7 @@ EOF
 (list (channel (name 'guix) (url "https://codeberg.org/guix/guix.git") (branch "master")))
 EOF
 
-  # attempt to bootstrap guix CLI if missing, then run guix system init (best-effort)
+  # try to bootstrap guix cli if missing
   if ! command -v guix >/dev/null 2>&1; then
     log "Guix CLI not found; attempting lightweight bootstrap (best-effort)"
     ARCH="$(uname -m)"
@@ -431,7 +440,7 @@ EOF
   done
   if [[ -n "$usable_subs" ]]; then export GUIX_SUBSTITUTE_URLS="${usable_subs}"; fi
 
-  # run guix system init if guix available
+  # run guix system init if available
   if command -v guix >/dev/null 2>&1; then
     attempts=0
     while (( attempts < 4 )); do
