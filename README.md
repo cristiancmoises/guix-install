@@ -1,6 +1,6 @@
-<h1 align="center">GNU Guix Automated Installation</h1>
+<h1 align="center">GNU Guix Installer</h1>
 <p align="center">
-  <b>⚙️ Simplified Guix Installation</b>
+  <b>⚙️ Simplified Guix Installation - Full Linux Kernel</b>
 </p>
 
 ---
