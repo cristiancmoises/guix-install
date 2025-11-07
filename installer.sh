@@ -40,13 +40,13 @@ if [[ -n "$PKG" ]]; then
   case "$PKG" in
     apt)
       apt update
-      apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs uidmap openssl whois || true
+      apt install -y guix wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs uidmap openssl whois || true
       ;;
     dnf)
-      dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs shadow-utils openssl whois || true
+      dnf install -y guix wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs shadow-utils openssl whois || true
       ;;
     pacman)
-      pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs uidmap openssl whois || true
+      pacman -Sy --noconfirm guix wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs uidmap openssl whois || true
       ;;
   esac
 fi
