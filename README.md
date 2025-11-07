@@ -1,6 +1,6 @@
 <h1 align="center">GNU Guix Automated Installation</h1>
 <p align="center">
-  <b>In Code We Trust ⚙️ | Simplified Guix System Setup</b>
+  <b>⚙️ Simplified Guix Installation</b>
 </p>
 
 ---
