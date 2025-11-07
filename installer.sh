@@ -1,4 +1,3 @@
-```bash
 #!/usr/bin/env bash
 #=============================================================
 #            GNU GUIX FULL OS INSTALLER 
