@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU Guix guided installer
-# - GUI via yad/zenity when available; text fallback
-# IMPORTANT: This script performs destructive actions. Review TARGET_DISK before running. Run as root from a live environment.
+# GNU Guix guided installer 
+# - IMPORTANT: This script is destructive. Review TARGET_DISK before running. Run as root from a live environment.
 
 # -------------------- Configurable defaults --------------------
 LANG_OPT="${LANG_OPT:-en}"
 USE_GUI="${USE_GUI:-auto}"              # auto|gui|text
 AUTO_YES="${AUTO_YES:-1}"               # 1 to skip interactive confirmations
-TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sda
+TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdb
 USERNAME="${USERNAME:-}"                # username to create
 USER_PASS="${USER_PASS:-}"              # user password (plaintext for script only)
 ROOT_PASS="${ROOT_PASS:-}"              # root password for installed system or LUKS root passphrase (if used)
+HOME_PASS="${HOME_PASS:-}"              # LUKS home passphrase if used
 LOCALE="${LOCALE:-en_US.UTF-8}"
 TIMEZONE="${TIMEZONE:-America/New_York}"
 DESKTOP="${DESKTOP:-i3}"              # none,i3,xfce,mate,sway
 FS_TYPE="${FS_TYPE:-ext4}"              # ext4,btrfs,xfs
-CREATE_HOME="${CREATE_HOME:-1}"          # 1=yes 0=no (guided)
+CREATE_HOME="${CREATE_HOME:-0}"          # 1=yes 0=no (guided)
 CREATE_SWAP="${CREATE_SWAP:-1}"          # 1=yes 0=no (guided)
 SWAP_SIZE="${SWAP_SIZE:-2G}"
 LUKS_ROOT="${LUKS_ROOT:-}"              # 1=yes 0=no (guided)
@@ -26,7 +26,12 @@ LUKS_ROOT_NAME="${LUKS_ROOT_NAME:-cryptroot}"
 LUKS_HOME_NAME="${LUKS_HOME_NAME:-crypthome}"
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.5.0}"
 
-SUBSTITUTE_HOSTS=( "https://hydra.gnu.org" "https://cache.guix.gnu.org" "https://ci.guix.info" "https://ci.guix.gnu.org" )
+# Substitute hosts to probe
+SUBSTITUTE_HOSTS=(
+  "https://bordeaux-us-east-mirror.cbaines.net/"
+  "https://ci.guix.gnu.org"
+)
+
 BASE_PACKAGES=(icecat libreoffice mpv feh util-linux xterm git python)
 
 # -------------------- Messages (English only) --------------------
@@ -68,8 +73,8 @@ detect_gui() {
 gui_info() {
   local title="$1" msg="$2"
   if [[ -n "${GUI_TOOL:-}" ]]; then
-    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --info --text "$msg" --timeout=3 >/dev/null 2>&1 || true
-    else zenity --info --title="$title" --text="$msg" --timeout=3 >/dev/null 2>&1 || true; fi
+    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --info --text "$msg" --timeout=4 >/dev/null 2>&1 || true
+    else zenity --info --title="$title" --text="$msg" --timeout=4 >/dev/null 2>&1 || true; fi
   else
     printf '%s: %s\n' "$title" "$msg"
   fi
@@ -124,6 +129,46 @@ gui_yesno() {
   done
 }
 
+# -------------------- Substitute probing --------------------
+probe_substitutes() {
+  local usable=()
+  local url base ok
+  for url in "${SUBSTITUTE_HOSTS[@]}"; do
+    base="$url"
+    # quick HEAD to root
+    if curl -fsS --max-time 6 -I "${base}/" >/dev/null 2>&1; then
+      ok=0
+      # try to detect a binary-cache endpoint or hydra API
+      if curl -fsS --max-time 6 -I "${base}/binary-cache/" >/dev/null 2>&1; then ok=1; fi
+      if curl -fsS --max-time 6 -I "${base}/api/v1/" >/dev/null 2>&1; then ok=1; fi
+      if (( ok == 1 )); then usable+=("$base"); fi
+    fi
+  done
+
+  # fallback to canonical cache
+  if [[ ${#usable[@]} -eq 0 ]]; then
+    if curl -fsS --max-time 6 -I "https://cache.guix.gnu.org/" >/dev/null 2>&1; then usable+=("https://cache.guix.gnu.org"); fi
+  fi
+
+  printf '%s' "${usable[*]}"
+}
+
+write_guix_substitute_config() {
+  local usable
+  usable="$(probe_substitutes)"
+  [[ -n "$usable" ]] || { log "No substitute hosts reachable"; return 1; }
+  local cfg="/etc/guix/config.scm"
+  mkdir -p "$(dirname "$cfg")"
+  {
+    echo ";; Auto-generated substitute configuration"
+    echo "(substitute-urls (list"
+    for u in $usable; do echo " \"$u\"" ; done
+    echo "))"
+  } > "$cfg"
+  log "Wrote $cfg"
+  printf '%s' "$usable"
+}
+
 # -------------------- Guix bootstrap and daemon helpers --------------------
 install_guix_via_distro() {
   if [[ -z "$PKG" ]]; then return 1; fi
@@ -173,7 +218,6 @@ bootstrap_guix_binary() {
   mkdir -p /var/guix /var/guix/profiles /run/guix || true
   chown -R root:guix /var/guix || true
   chmod -R 0775 /var/guix || true
-
   rm -rf "$TMP"
   command -v guix >/dev/null 2>&1 || log "guix may be installed but not on PATH"
   return 0
@@ -200,52 +244,17 @@ ensure_guix_daemon() {
   return 1
 }
 
-probe_substitutes() {
-  local usable=()
-  for url in "${SUBSTITUTE_HOSTS[@]}"; do
-    if curl -fsS --max-time 6 -I "$url" >/dev/null 2>&1; then usable+=("$url"); fi
-  done
-  printf '%s' "${usable[*]}"
-}
-
-write_guix_substitute_config() {
-  local usable
-  usable="$(probe_substitutes)"
-  [[ -n "$usable" ]] || { log "No substitute hosts reachable"; return 1; }
-  local cfg="/etc/guix/config.scm"
-  mkdir -p "$(dirname "$cfg")"
-  {
-    echo ";; Auto-generated substitute configuration"
-    echo "(substitute-urls (list"
-    for u in $usable; do echo " \"$u\"" ; done
-    echo "))"
-  } > "$cfg"
-  log "Wrote $cfg"
-  return 0
-}
-
-ensure_guix() {
-  if command -v guix >/dev/null 2>&1; then
-    log "Guix CLI present: $(guix --version 2>/dev/null || true)"
-  else
-    if install_guix_via_distro; then log "Installed Guix from distro package"
-    elif bootstrap_guix_binary; then log "Guix binary bootstrap complete"
-    else log "Guix bootstrap failed"; fi
-  fi
-
-  if ensure_guix_daemon; then
-    write_guix_substitute_config || log "No substitutes written"
-    return 0
-  else
-    return 1
-  fi
-}
-
 # -------------------- Robust guix init (time-machine fallback to chroot method) --------------------
 robust_guix_init() {
-  local subs attempts backoff success=0 errbuf tmperr tmpf wrapper
+  local subs attempts backoff success=0 errbuf tmperr tmpf wrapper_name
   subs="$(probe_substitutes)"
-  if [[ -n "$subs" ]]; then export GUIX_SUBSTITUTE_URLS="$subs"; fi
+  if [[ -n "$subs" ]]; then
+    export GUIX_SUBSTITUTE_URLS="$subs"
+    write_guix_substitute_config >/dev/null 2>&1 || true
+    log "Using substitute hosts: $subs"
+  else
+    log "No substitutes reachable; will proceed without preconfigured substitutes"
+  fi
 
   if command -v guix >/dev/null 2>&1; then
     attempts=0; backoff=5
@@ -259,11 +268,11 @@ robust_guix_init() {
       fi
       errbuf="$(cat "$tmperr" 2>/dev/null || true)"
       if printf '%s' "$errbuf" | grep -qi "lacks.*introduction"; then
-        log "Detected channel 'lacks introduction' error; will fall back to chroot method"
+        log "Detected channel 'lacks introduction' error; falling back to chroot method"
         break
       fi
       if printf '%s' "$errbuf" | grep -qi "cannot be authenticated"; then
-        log "Detected channel authentication error; will fall back to chroot method"
+        log "Detected channel authentication error; falling back to chroot method"
         break
       fi
       log "time-machine attempt failed; sleeping $backoff s"
@@ -276,11 +285,9 @@ robust_guix_init() {
     log "guix CLI not on host; skipping time-machine tries"
   fi
 
-  if (( success == 1 )); then
-    return 0
-  fi
+  if (( success == 1 )); then return 0; fi
 
-  # Chroot fallback: bind /dev,/proc,/sys, copy resolv.conf, run guix pull + system init inside chroot
+  # Chroot fallback
   log "Falling back to chroot guix pull + guix system init"
 
   mkdir -p /mnt/{dev,proc,sys,tmp} || true
@@ -288,42 +295,30 @@ robust_guix_init() {
   mount --bind /dev/pts /mnt/dev/pts || true
   mount --bind /proc /mnt/proc || true
   mount --bind /sys /mnt/sys || true
-  if [[ -f /etc/resolv.conf ]]; then
-    cp -L /etc/resolv.conf /mnt/etc/resolv.conf 2>/dev/null || true
-  fi
+  if [[ -f /etc/resolv.conf ]]; then cp -L /etc/resolv.conf /mnt/etc/resolv.conf 2>/dev/null || true; fi
 
-  wrapper="/tmp/guix-init-wrapper-$$.sh"
-  tmpf="/mnt${wrapper}"
+  wrapper_name="/tmp/guix-init-wrapper-$$.sh"
+  tmpf="/mnt${wrapper_name}"
 
-  # create wrapper script inside the new root
   if [[ -n "$subs" ]]; then
     cat > "$tmpf" <<EOF
 #!/bin/sh
 export GUIX_SUBSTITUTE_URLS="${subs}"
 set -e
-if command -v guix >/dev/null 2>&1; then
-  guix pull --channels-file=/etc/channels.scm || true
-else
-  guix pull --channels-file=/etc/channels.scm || true
-fi
+guix pull --channels-file=/etc/channels.scm || true
 guix system init /etc/config.scm / --no-build-output
 EOF
   else
     cat > "$tmpf" <<'EOF'
 #!/bin/sh
 set -e
-if command -v guix >/dev/null 2>&1; then
-  guix pull --channels-file=/etc/channels.scm || true
-else
-  guix pull --channels-file=/etc/channels.scm || true
-fi
+guix pull --channels-file=/etc/channels.scm || true
 guix system init /etc/config.scm / --no-build-output
 EOF
   fi
   chmod +x "$tmpf" || true
 
-  # run wrapper inside chroot
-  if chroot /mnt "$wrapper"; then
+  if chroot /mnt "$wrapper_name"; then
     log "guix system init inside chroot succeeded"
     rm -f "$tmpf" || true
     umount /mnt/dev/pts || true
@@ -355,6 +350,28 @@ cap_end() {
   local val="$1" total="$2"
   if (( val > total - 1 )); then val=$(( total - 1 )); fi
   echo "$val"
+}
+
+# Unmount device if mounted; return 0 if success or not mounted, non-zero on failure
+ensure_unmounted() {
+  local dev="$1"
+  # check mounts
+  if mountpoint -q "$dev" 2>/dev/null; then
+    # it's a mountpoint path, rarely used; try umount
+    umount "$dev" || return 1
+    return 0
+  fi
+  # check if device is listed in /proc/mounts
+  if grep -qE "^${dev}[[:space:]]" /proc/mounts 2>/dev/null; then
+    log "Device ${dev} appears mounted; attempting to unmount"
+    umount "$dev" || return 1
+    # double-check
+    if grep -qE "^${dev}[[:space:]]" /proc/mounts 2>/dev/null; then
+      log "Failed to unmount ${dev}"
+      return 1
+    fi
+  fi
+  return 0
 }
 
 # -------------------- UI Steps --------------------
@@ -444,26 +461,16 @@ step_partition_options() {
     safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
 
-    # find the newly created partition in a robust way: look for partition whose size matches expected range
-    ROOT_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$root_start" -v end="$root_end" '
-      $2=="part" {
-        cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
-        cmd | getline s
-        close(cmd)
-        if (s>0) {
-          mib = int(s/1024/1024)
-          if (mib>=start && mib<=end) { print "/dev/"$1; exit }
-        }
-      }')"
-    if [[ -z "${ROOT_PART:-}" ]]; then
-      # Fallback: pick last partition on disk
-      if [[ -b "${TARGET_DISK}p"* ]]; then
-        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
-      else
-        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
-      fi
+    # detect created partition as last partition on disk
+    if [[ -b "${TARGET_DISK}p"* ]]; then
+      ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+    else
+      ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
     fi
     [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
+
+    # ensure partition is unmounted before formatting
+    if ! ensure_unmounted "$ROOT_PART"; then die "Partition $ROOT_PART appears mounted and could not be unmounted"; fi
 
     if [[ -z "$ROOT_PASS" ]]; then
       ROOT_PASS="$(gui_password "LUKS Root passphrase" "Enter LUKS passphrase for root")"
@@ -474,115 +481,77 @@ step_partition_options() {
     printf '%s' "$ROOT_PASS" | cryptsetup luksFormat --type luks2 --batch-mode "$ROOT_PART" -
     printf '%s' "$ROOT_PASS" | cryptsetup open "$ROOT_PART" "$LUKS_ROOT_NAME" --
     MAPPED_ROOT="/dev/mapper/${LUKS_ROOT_NAME}"
+    # ensure mapped device available
+    sleep 1
+    [[ -b "$MAPPED_ROOT" ]] || true
     case "$FS_TYPE" in ext4) mkfs.ext4 -F "$MAPPED_ROOT" ;; btrfs) mkfs.btrfs -f "$MAPPED_ROOT" ;; xfs) mkfs.xfs -f "$MAPPED_ROOT" ;; *) mkfs.ext4 -F "$MAPPED_ROOT" ;; esac
   else
     safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
 
-    ROOT_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$root_start" -v end="$root_end" '
-      $2=="part" {
-        cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
-        cmd | getline s
-        close(cmd)
-        if (s>0) {
-          mib = int(s/1024/1024)
-          if (mib>=start && mib<=end) { print "/dev/"$1; exit }
-        }
-      }')"
-    if [[ -z "${ROOT_PART:-}" ]]; then
-      if [[ -b "${TARGET_DISK}p"* ]]; then
-        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
-      else
-        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
-      fi
+    if [[ -b "${TARGET_DISK}p"* ]]; then
+      ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+    else
+      ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
     fi
     [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
+
+    # ensure partition is unmounted before formatting
+    if ! ensure_unmounted "$ROOT_PART"; then die "Partition $ROOT_PART appears mounted and could not be unmounted"; fi
+
     case "$FS_TYPE" in ext4) mkfs.ext4 -F "$ROOT_PART" ;; btrfs) mkfs.btrfs -f "$ROOT_PART" ;; xfs) mkfs.xfs -f "$ROOT_PART" ;; *) mkfs.ext4 -F "$ROOT_PART" ;; esac
     MAPPED_ROOT="$ROOT_PART"
   fi
 
-  # Create /home if requested
+  # home partition (optional)
   if (( CREATE_HOME == 1 )); then
     if (( LUKS_HOME == 1 )); then
       safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
       partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-
-      HOME_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$home_start" -v end="$home_end" '
-        $2=="part" {
-          cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
-          cmd | getline s
-          close(cmd)
-          if (s>0) {
-            mib = int(s/1024/1024)
-            if (mib>=start && mib<=end) { print "/dev/"$1; exit }
-          }
-        }')"
-      if [[ -z "${HOME_PART:-}" ]]; then
-        if [[ -b "${TARGET_DISK}p"* ]]; then
-          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
-        else
-          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
-        fi
+      if [[ -b "${TARGET_DISK}p"* ]]; then
+        HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+      else
+        HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
       fi
       [[ -n "$HOME_PART" && -b "$HOME_PART" ]] || die "Could not detect home partition device"
+      if ! ensure_unmounted "$HOME_PART"; then die "Partition $HOME_PART appears mounted and could not be unmounted"; fi
       HOME_PASS="${HOME_PASS:-}"
       if [[ -z "$HOME_PASS" ]]; then HOME_PASS="$(gui_password "LUKS Home passphrase" "Enter LUKS passphrase for /home")"; fi
       [[ -n "$HOME_PASS" ]] || die "Empty LUKS passphrase for home"
       printf '%s' "$HOME_PASS" | cryptsetup luksFormat --type luks2 --batch-mode "$HOME_PART" -
       printf '%s' "$HOME_PASS" | cryptsetup open "$HOME_PART" "$LUKS_HOME_NAME" --
       MAPPED_HOME="/dev/mapper/${LUKS_HOME_NAME}"
+      sleep 1
       case "$FS_TYPE" in ext4) mkfs.ext4 -F "$MAPPED_HOME" ;; btrfs) mkfs.btrfs -f "$MAPPED_HOME" ;; xfs) mkfs.xfs -f "$MAPPED_HOME" ;; esac
     else
       safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
       partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-
-      HOME_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$home_start" -v end="$home_end" '
-        $2=="part" {
-          cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
-          cmd | getline s
-          close(cmd)
-          if (s>0) {
-            mib = int(s/1024/1024)
-            if (mib>=start && mib<=end) { print "/dev/"$1; exit }
-          }
-        }')"
-      if [[ -z "${HOME_PART:-}" ]]; then
-        if [[ -b "${TARGET_DISK}p"* ]]; then
-          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
-        else
-          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
-        fi
+      if [[ -b "${TARGET_DISK}p"* ]]; then
+        HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+      else
+        HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
       fi
       [[ -n "$HOME_PART" && -b "$HOME_PART" ]] || die "Could not detect home partition device"
+      if ! ensure_unmounted "$HOME_PART"; then die "Partition $HOME_PART appears mounted and could not be unmounted"; fi
       case "$FS_TYPE" in ext4) mkfs.ext4 -F "$HOME_PART" ;; btrfs) mkfs.btrfs -f "$HOME_PART" ;; xfs) mkfs.xfs -f "$HOME_PART" ;; esac
       MAPPED_HOME="$HOME_PART"
     fi
   fi
 
-  # Create swap if requested
+  # swap
   if (( swap_mib > 0 )); then
     safe_mkpart "$TARGET_DISK" "$swap_start" "$swap_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-
-    SWAP_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$swap_start" -v end="$swap_end" '
-      $2=="part" {
-        cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
-        cmd | getline s
-        close(cmd)
-        if (s>0) {
-          mib = int(s/1024/1024)
-          if (mib>=start && mib<=end) { print "/dev/"$1; exit }
-        }
-      }')"
-    if [[ -z "${SWAP_PART:-}" ]]; then
-      if [[ -b "${TARGET_DISK}p"* ]]; then
-        SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
-      else
-        SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
-      fi
+    if [[ -b "${TARGET_DISK}p"* ]]; then
+      SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+    else
+      SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
     fi
     [[ -n "$SWAP_PART" ]] || log "Warning: swap partition not detected"
-    [[ -n "$SWAP_PART" ]] && mkswap "$SWAP_PART"
+    if [[ -n "$SWAP_PART" ]]; then
+      if ! ensure_unmounted "$SWAP_PART"; then die "Swap partition $SWAP_PART appears mounted and could not be unmounted"; fi
+      mkswap "$SWAP_PART"
+    fi
   fi
 
   partprobe "$TARGET_DISK" || true
@@ -617,29 +586,14 @@ Create swap: ${CREATE_SWAP:-0}"
 
 discover_parts() {
   partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-  parts=()
   mapfile -t parts < <(lsblk -ln -o NAME,TYPE | awk -v disk="$(basename "$TARGET_DISK")" '$2=="part" {print "/dev/"$1}')
-  EFI_PART=""; ROOT_PART=""; HOME_PART=""; SWAP_PART=""
-  if [[ -d /sys/firmware/efi ]]; then
-    EFI_PART="${parts[0]:-}"
-    ROOT_PART="${parts[1]:-}"
-    HOME_PART="${parts[2]:-}"
-    SWAP_PART="${parts[3]:-}"
-  else
-    ROOT_PART="${parts[0]:-}"
-    HOME_PART="${parts[1]:-}"
-    SWAP_PART="${parts[2]:-}"
-  fi
+  EFI_PART="${parts[0]:-}"; ROOT_PART="${parts[1]:-}"; HOME_PART="${parts[2]:-}"; SWAP_PART="${parts[3]:-}"
 }
 
 step_install() {
   discover_parts
 
-  if [[ -n "${MAPPED_ROOT:-}" && -b "${MAPPED_ROOT}" ]]; then
-    MROOT="${MAPPED_ROOT}"
-  else
-    MROOT="${ROOT_PART:-}"
-  fi
+  if [[ -n "${MAPPED_ROOT:-}" && -b "${MAPPED_ROOT}" ]]; then MROOT="${MAPPED_ROOT}"; else MROOT="${ROOT_PART:-}"; fi
   [[ -n "$MROOT" ]] || die "Root device not found"
 
   mkdir -p /mnt
@@ -763,21 +717,46 @@ EOF
  (services %base-services))
 EOF
 
+  # Write channels.scm exactly as user requested
   cat > /mnt/etc/channels.scm <<'EOF'
 (use-modules (guix ci))
-(list
- (channel-with-substitutes-available 
-  %default-guix-channel 
-  "https://ci.guix.gnu.org")
 
-(channel (name 'guix) (url "https://codeberg.org/guix/guix.git") (branch "master")))
+;; Define the list of channels
+(list
+ (channel-with-substitutes-available
+   %default-guix-channel
+   "https://ci.guix.gnu.org")
+ 
+
+(channel
+       (name 'guix)
+       (url "https://codeberg.org/guix/guix.git")
+       (branch "master")
+       (commit "4fd32c00abb59b0f275a93c3fef35d5193adbe7a")
+       (introduction
+        (make-channel-introduction
+         "9edb3f66fd807b096b48283debdcddccfea34bad"
+         (openpgp-fingerprint
+          "BBB0 2DDF 2CEA F6A8 0D1D E643 A2A0 6DF2 A33A 54FA"))))
+
+  (channel
+   (name 'nonguix)
+   (url "https://gitlab.com/nonguix/nonguix")
+   (introduction
+    (make-channel-introduction
+     "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
+     (openpgp-fingerprint
+      "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
   gui_info "Guix" "$GUIX_BOOTSTRAP_MSG"
 
   if ensure_guix; then
     subs="$(probe_substitutes)"
-    if [[ -n "$subs" ]]; then export GUIX_SUBSTITUTE_URLS="$subs"; fi
+    if [[ -n "$subs" ]]; then
+      export GUIX_SUBSTITUTE_URLS="$subs"
+      write_guix_substitute_config >/dev/null 2>&1 || true
+    fi
 
     if ! robust_guix_init; then
       log "guix system init failed after fallbacks. Configuration left at /mnt/etc for manual init."
@@ -790,15 +769,15 @@ EOF
     gui_info "$FINISH_MSG" "Could not start Guix daemon. Configuration is at /mnt/etc."
   fi
 
-  # Clean up mounts, swaps and close LUKS mappings if necessary
+  # Clean up: disable swap, unmount /mnt and close LUKS mappings if opened
   sync
   if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART}" ]]; then swapoff "$SWAP_PART" || true; fi
   umount -R /mnt || true
   if (( LUKS_HOME == 1 )) && cryptsetup status "$LUKS_HOME_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_HOME_NAME" || true; fi
   if (( LUKS_ROOT == 1 )) && cryptsetup status "$LUKS_ROOT_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_ROOT_NAME" || true; fi
 
-  # Do NOT reboot automatically; leave to the user to reboot the live environment and boot installed system
-  log "Installation finished (best-effort). Configuration and system files are under /mnt (if mounted) or written to target filesystem. Please reboot manually when ready."
+  # Do not reboot automatically; leave to the user to reboot when ready
+  log "Installation finished (best-effort). Configuration and files are on the target filesystem. Please reboot manually when ready."
 }
 
 # -------------------- Main --------------------
