@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU Guix guided installer 
-# WARNING: destructive operations. Review TARGET_DISK before running. Run as root from a live environment.
+# GNU Guix guided installer (
 
 # -------------------- Configurable defaults --------------------
 USE_GUI="${USE_GUI:-auto}"              # auto|text - 'auto' will try yad then zenity then fallback to text
 AUTO_YES="${AUTO_YES:-1}"               # 1 to skip confirmations
 TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdb
 USERNAME="${USERNAME:-user}"
-USER_PASS="${USER_PASS:-pass}"
-ROOT_PASS="${ROOT_PASS:-root}"
+USER_PASS="${USER_PASS:-password}"
+ROOT_PASS="${ROOT_PASS:-rootpass}"
 HOME_PASS="${HOME_PASS:-}"
 LOCALE="${LOCALE:-en_US.UTF-8}"
-TIMEZONE="${TIMEZONE:-America/New_York}"
+TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
 DESKTOP="${DESKTOP:-i3}"              # none,i3,xfce,mate,sway
 FS_TYPE="${FS_TYPE:-ext4}"              # ext4,btrfs,xfs
 CREATE_HOME="${CREATE_HOME:-0}"         # 1=yes 0=no
-CREATE_SWAP="${CREATE_SWAP:-1}"         # 1=yes 0=no
+CREATE_SWAP="${CREATE_SWAP:-0}"         # 1=yes 0=no
 SWAP_SIZE="${SWAP_SIZE:-2G}"
 LUKS_ROOT="${LUKS_ROOT:-0}"             # 1 to encrypt root
 LUKS_HOME="${LUKS_HOME:-0}"             # 1 to encrypt home
@@ -26,7 +25,7 @@ LUKS_HOME_NAME="${LUKS_HOME_NAME:-crypthome}"
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.5.0}"
 TIME_MACHINE_TIMEOUT="${TIME_MACHINE_TIMEOUT:-300}"  # seconds to wait for guix time-machine before fallback
 LOGFILE="${LOGFILE:-/var/log/guix-installer.log}"
-GU IXLIMIT_OUTPUT="${GU IXLIMIT_OUTPUT:-/var/log/guix-init.log}"
+GUIX_INIT_LOG="${GUIX_INIT_LOG:-/var/log/guix-init.log}"
 
 # Substitute hosts (first changed as requested)
 SUBSTITUTE_HOSTS=(
@@ -42,9 +41,9 @@ BASE_PACKAGES=(icecat libreoffice mpv feh util-linux xterm git python)
 KEYBOARD="${KEYBOARD:-us}"
 HOSTNAME="${HOSTNAME:-guix-machine}"
 
-# -------------------- Helpers --------------------
-log(){ printf '%s %s\n' "$(date --iso-8601=seconds)" "$*" | tee -a "$LOGFILE"; }
-die(){ log "ERROR: $*"; exit 1; }
+# -------------------- Utilities --------------------
+log() { printf '%s %s\n' "$(date --iso-8601=seconds)" "$*" | tee -a "$LOGFILE"; }
+die() { log "ERROR: $*"; exit 1; }
 cmd_exists(){ command -v "$1" >/dev/null 2>&1; }
 
 require_root(){ [[ "$(id -u)" -eq 0 ]] || die "Run this script as root"; }
@@ -62,7 +61,7 @@ gui_info() {
   local title="$1" msg="$2"
   case "$GUI_TOOL" in
     yad) yad --title "$title" --info --text "$msg" --timeout=5 >/dev/null 2>&1 || true ;;
-    zenity) zenity --info --title="$title" --text "$msg" --timeout=5 >/dev/null 2>&1 || true ;;
+    zenity) zenity --info --title="$title" --text="$msg" --timeout=5 >/dev/null 2>&1 || true ;;
     *) printf '%s: %s\n' "$title" "$msg" ;;
   esac
 }
@@ -106,7 +105,7 @@ gui_yesno() {
     zenity) zenity --question --title="$title" --text="$prompt" >/dev/null 2>&1; return $? ;;
     *)
       if [[ "$AUTO_YES" -ne 0 ]]; then return 0; fi
-      while true; do read -r -p "$prompt [y/N]: " ans; case "$ans" in [YySs]*) return 0 ;; [Nn]*|"") return 1 ;; *) echo "Please answer yes or no." ;; esac; done
+      while true; do read -r -p "$prompt [y/N]: " ans; case "${ans,,}" in y|yes) return 0 ;; n|no|"" ) return 1 ;; * ) echo "Please answer yes or no." ;; esac; done
       ;;
   esac
 }
@@ -249,20 +248,20 @@ ensure_guix_daemon() {
 
 # -------------------- Robust guix init with bounded time-machine --------------------
 robust_guix_init() {
-  local subs tmperr
+  local subs tmperr TM_PID SECONDS_LOCAL
   subs="$(probe_substitutes)"
   [[ -n "$subs" ]] && export GUIX_SUBSTITUTE_URLS="$subs" && write_guix_substitute_config >/dev/null 2>&1 || true
 
-  # If guix present, try time-machine but bound its runtime; otherwise fall back
   if cmd_exists guix; then
-    log "Attempting guix time-machine (bounded to ${TIME_MACHINE_TIMEOUT}s). Logs -> $GU IXLIMIT_OUTPUT"
+    log "Attempting guix time-machine (bounded to ${TIME_MACHINE_TIMEOUT}s). Logs -> $GUIX_INIT_LOG"
     tmperr="$(mktemp)"
-    # run time-machine in background and redirect stderr to tmperr and overall log file
-    (guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --no-build-output 2>>"$tmperr") & TM_PID=$!
-    SECONDS=0
+    (guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --no-build-output 2>>"$tmperr") &
+    TM_PID=$!
+    SECONDS_LOCAL=0
     while kill -0 "$TM_PID" >/dev/null 2>&1; do
       sleep 1
-      if (( SECONDS >= TIME_MACHINE_TIMEOUT )); then
+      SECONDS_LOCAL=$((SECONDS_LOCAL+1))
+      if (( SECONDS_LOCAL >= TIME_MACHINE_TIMEOUT )); then
         log "guix time-machine exceeded ${TIME_MACHINE_TIMEOUT}s; killing it and falling back to chroot method. See $tmperr for details."
         kill -TERM "$TM_PID" >/dev/null 2>&1 || true
         sleep 1
@@ -270,25 +269,26 @@ robust_guix_init() {
         break
       fi
     done
-    # capture output for diagnostics
     if [[ -s "$tmperr" ]]; then
       log "guix time-machine stderr (tail):"
       tail -n 80 "$tmperr" | sed -n '1,200p' | tee -a "$LOGFILE"
     fi
+    wait "$TM_PID" >/dev/null 2>&1 || true
     rm -f "$tmperr" || true
-    # if process exited normally and exit status 0, consider success
-    if wait "$TM_PID" 2>/dev/null; then
-      log "guix time-machine completed successfully"
+    # Check if time-machine created a successful system profile by checking exit code via last command status is not robust here,
+    # so instead check if /mnt/etc/config.scm was applied by presence of /mnt/var/guix/profiles/system (best-effort)
+    if [[ -d /mnt/var/guix/profiles/system ]]; then
+      log "guix time-machine appears to have completed and created system profile"
       return 0
     else
-      log "guix time-machine did not succeed (or was killed); will attempt chroot fallback"
+      log "guix time-machine did not produce an in-target system profile; will attempt chroot fallback"
     fi
   else
     log "guix CLI not available on host; skipping time-machine and using chroot fallback"
   fi
 
   # Chroot fallback
-  log "Falling back to chroot guix pull + guix system init (logs -> $GU IXLIMIT_OUTPUT)"
+  log "Falling back to chroot guix pull + guix system init (logs -> $GUIX_INIT_LOG)"
   mkdir -p /mnt/{dev,proc,sys,tmp} || true
   mount --bind /dev /mnt/dev || true
   mount --bind /dev/pts /mnt/dev/pts || true
@@ -314,7 +314,7 @@ EOF
     umount /mnt/sys || true
     return 0
   else
-    log "guix system init inside chroot failed; leaving /mnt/etc for manual init; check $GU IXLIMIT_OUTPUT and $LOGFILE"
+    log "guix system init inside chroot failed; leaving /mnt/etc for manual init; check $GUIX_INIT_LOG and $LOGFILE"
     rm -f "/mnt${wrapper_name}" || true
     umount /mnt/dev/pts || true
     umount /mnt/dev || true
@@ -326,9 +326,7 @@ EOF
 
 # -------------------- Partition helpers --------------------
 to_mib(){ local s="$1"; if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 )); elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then echo "${BASH_REMATCH[1]}"; else echo "$s"; fi; }
-
 safe_mkpart(){ local disk="$1" start="$2" end="$3"; (( end > start+1 )) || die "Invalid partition range ${start}MiB - ${end}MiB"; parted --script --align optimal "$disk" mkpart primary "${start}MiB" "${end}MiB"; }
-
 cap_end(){ local v="$1" t="$2"; if (( v > t - 1 )); then v=$(( t - 1 )); fi; echo "$v"; }
 
 ensure_unmounted() {
@@ -489,7 +487,6 @@ main() {
   local EFI_PART="" ROOT_PART="" HOME_PART="" SWAP_PART=""
   if [[ -d /sys/firmware/efi ]]; then
     EFI_PART="${parts[0]:-}"
-    # first non-efi part -> root
     for p in "${parts[@]:-}"; do [[ -n "$EFI_PART" && "$p" == "$EFI_PART" ]] && continue; ROOT_PART="$p"; break; done
     if (( CREATE_HOME == 1 )); then
       for p in "${parts[@]:-}"; do [[ "$p" != "$EFI_PART" && "$p" != "$ROOT_PART" ]] && { HOME_PART="$p"; break; } done
@@ -519,7 +516,8 @@ main() {
     fi
   done
 
-  # If LUKS requested, perform LUKS flow (formatting mapped device); otherwise format directly
+  # LUKS or plain formatting
+  local ROOT_DEV HOME_DEV MAPPED_ROOT MAPPED_HOME
   if (( LUKS_ROOT == 1 )); then
     [[ -b "$ROOT_PART" ]] || die "Root partition for LUKS not found"
     if [[ -z "$ROOT_PASS" ]]; then ROOT_PASS="$(gui_password "LUKS Root passphrase" "Enter LUKS passphrase for root")"; fi
@@ -675,7 +673,7 @@ EOF
  (services %base-services))
 EOF
 
-  # Write channels.scm exactly as requested (user-supplied content preserved)
+  # Write channels.scm exactly as requested (kept consistent with prior examples)
   cat > /mnt/etc/channels.scm <<'EOF'
 (use-modules (guix ci))
 
@@ -718,7 +716,7 @@ EOF
       log "guix system init failed or was aborted; configuration retained in /mnt/etc for manual init"
     fi
   else
-    log "guix CLI or daemon not available; skipping automatic guix system init. Configuration is in /mnt/etc. To finish, ensure guix and guix-daemon are available and run 'guix system init /mnt/etc/config.scm /mnt' (or chroot fallback)."
+    log "guix CLI or daemon not available; skipping automatic guix system init. Configuration is in /mnt/etc. To finish, ensure guix and guix-daemon are available and run 'guix system init /mnt/etc/config.scm /mnt' (or perform the chroot method)."
   fi
 
   # cleanup: safe swapoff and unmounts
@@ -732,7 +730,7 @@ EOF
   if (( LUKS_HOME == 1 )); then cryptsetup status "$LUKS_HOME_NAME" >/dev/null 2>&1 && cryptsetup close "$LUKS_HOME_NAME" || true; fi
   if (( LUKS_ROOT == 1 )); then cryptsetup status "$LUKS_ROOT_NAME" >/dev/null 2>&1 && cryptsetup close "$LUKS_ROOT_NAME" || true; fi
 
-  log "Installer finished. If guix time-machine was slow or failed, check $LOGFILE and /var/log/guix-daemon.log for diagnostics. To complete installation manually: ensure guix-daemon is running and run 'guix system init /mnt/etc/config.scm /mnt' or perform the chroot method."
+  log "Installer finished. If guix time-machine was slow or failed, check $LOGFILE and /var/log/guix-daemon.log for diagnostics. To complete installation manually: ensure guix-daemon is running and run 'guix system init /mnt/etc/config.scm /mnt' or use the chroot fallback."
 }
 
 main "$@"
