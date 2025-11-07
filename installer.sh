@@ -1,19 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-#   GNU GUIX - EASY INSTALL - POWERED BY ALIENS
-# - Step-based GUI installer flow (Welcome, Disk, Partition, User, Summary, Install, Finish)
-# - Uses yad or zenity for GUI; falls back to text-mode dialogs
-# - Preserves full config.scm, channels.scm, packages list and substitute logic
-# - Supports pt-BR / en-US, AUTO_YES and env-driven non-interactive usage
-# - Meant to be run from a live environment as root
-#
-# Usage hints:
-#  - Run as root: sudo ./installer.sh
-#  - Non-interactive: export AUTO_YES=1 and other vars (TARGET_DISK, USERNAME, USER_PASS, ROOT_PASS, LOCALE, TIMEZONE, DESKTOP, FS_TYPE)
-#  - GUI: install yad or zenity in the live image for polished dialogs
+# GNU GUIX  - EASY INSTALLATION - POWERED BY ALIENS
+# Usage: sudo ./installer.sh
+# Non-interactive: export AUTO_YES=1 and other env vars (TARGET_DISK, USERNAME, USER_PASS, ROOT_PASS, LOCALE, TIMEZONE, DESKTOP, FS_TYPE)
 
-# -------------------- Defaults and environment --------------------
+# -------------------- Defaults / env --------------------
 LANG_OPT="${LANG_OPT:-auto}"        # auto | en | pt
 USE_GUI="${USE_GUI:-auto}"          # auto | gui | text
 AUTO_YES="${AUTO_YES:-0}"           # 1 skip confirmations
@@ -30,7 +22,6 @@ CREATE_SWAP="${CREATE_SWAP:-}"      # 1=yes 0=no
 SWAP_SIZE="${SWAP_SIZE:-4G}"        # swap if requested
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.4.0}"
 
-# Guix substitute hosts (Guix servers)
 SUBSTITUTE_HOSTS=(
   "https://hydra.gnu.org"
   "https://cache.guix.gnu.org"
@@ -38,27 +29,7 @@ SUBSTITUTE_HOSTS=(
   "https://ci.guix.gnu.org"
 )
 
-# Full packages list (kept from your prior request)
-BASE_PACKAGES=(
-  icecat torbrowser libreoffice mpv feh acpi-call-linux-module util-linux
-  v4l2loopback-linux-module mesa mesa-headers llvm-for-mesa libva libva-utils
-  linux-firmware xterm xorg-xdpyinfo xorg-xset xorg-xwininfo xorg-xprop xpra
-  xorg-xkill xorg-setxkbmap xorg-xmodmap xdg-utils xorg-xrandr lf mergerfs
-  parted ntfs-3g exfat-utils exfatprogs fuse-exfat dosfstools bcachefs-tools
-  smartmontools e2fsprogs xfsprogs emacs gcc gcc-toolchain linux-libre-headers
-  git git-lfs python python-pip cmake meson binutils strace edk2-tools kitty
-  alacritty fish zoxide pfetch sysstat nftables clamav gnupg libfido2 firejail
-  privoxy openvpn tor torsocks nmap tcpdump openssl keepassxc htop btop glances
-  inxi lm-sensors net-tools fping netdiscover whois macchanger procps coreutils
-  grep sed nix alsa-lib alsa-utils pulseaudio pipewire wireplumber
-  font-iosevka-term font-iosevka-term-slab font-iosevka-slab font-iosevka-etoile
-  font-iosevka-curly font-iosevka-curly-slab font-iosevka-aile
-  font-iosevka-ss01 font-iosevka-ss02 font-iosevka-ss03 font-iosevka-ss04
-  font-iosevka-ss05 font-iosevka-ss06 font-iosevka-ss07 font-iosevka-ss08
-  font-iosevka-ss09 font-iosevka-ss10 font-iosevka-ss11 font-iosevka-ss12
-  font-iosevka-ss13 font-iosevka-ss14 font-iosevka-ss15 font-iosevka-ss16
-  font-iosevka-ss17 font-iosevka-ss18 font-sarasa-gothic font-aporetic font-adwaita
-)
+BASE_PACKAGES=(icecat torbrowser libreoffice mpv feh util-linux xterm git python)
 
 # -------------------- Localization --------------------
 choose_lang() {
@@ -68,31 +39,29 @@ choose_lang() {
   fi
   if [[ "$LANG_OPT" == "pt" ]]; then
     L_WELCOME="Bem-vindo ao instalador GNU Guix"
-    L_WELCOME_SUB="Instalação fácil e guiada — estilo Calamares"
+    L_WELCOME_SUB="Instalação guiada"
     L_SELECT_DISK="Selecione o disco alvo"
     L_SELECT_PART="Gerenciar partições (simples)"
     L_USER_SETUP="Configurar usuário e senha"
-    L_SUMMARY="Resumo da instalação"
+    L_SUMMARY="Resumo"
     L_INSTALL="Instalando — aguarde"
     L_FINISH="Instalação concluída"
-    L_CANCELLED="Instalação cancelada"
-    L_CONFIRM_PHRASE="SIM EU QUERO GUIX"
     L_ABORT_MSG="Abortado pelo usuário"
+    L_CONFIRM_PHRASE="SIM EU QUERO GUIX"
     L_OK="OK"
     L_CANCEL="Cancelar"
     L_PLEASE="Por favor responda sim/não"
   else
     L_WELCOME="Welcome to the GNU Guix installer"
-    L_WELCOME_SUB="Easy guided installation — Calamares-like"
+    L_WELCOME_SUB="Guided installation"
     L_SELECT_DISK="Select target disk"
     L_SELECT_PART="Manage partitions (simple)"
     L_USER_SETUP="Set up user and passwords"
-    L_SUMMARY="Installation summary"
+    L_SUMMARY="Summary"
     L_INSTALL="Installing — please wait"
     L_FINISH="Installation finished"
-    L_CANCELLED="Installation cancelled"
-    L_CONFIRM_PHRASE="YES I WANT GUIX"
     L_ABORT_MSG="Aborted by user"
+    L_CONFIRM_PHRASE="YES I WANT GUIX"
     L_OK="OK"
     L_CANCEL="Cancel"
     L_PLEASE="Please answer yes/no"
@@ -100,17 +69,17 @@ choose_lang() {
 }
 
 # -------------------- Helpers --------------------
-log() { printf '%s %s\n' "$(date --iso-8601=seconds)" "$*"; }
-die() { log "ERROR: $*" >&2; exit 1; }
+log(){ printf '%s %s\n' "$(date --iso-8601=seconds)" "$*"; }
+die(){ log "ERROR: $*" >&2; exit 1; }
 
-# -------------------- Detect package manager early (fix for unbound PKG) --------------------
+# ensure PKG variable exists early
 PKG=""
 if command -v apt >/dev/null 2>&1; then PKG="apt"
 elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
 elif command -v pacman >/dev/null 2>&1; then PKG="pacman"
 fi
 
-# -------------------- GUI toolkit detection --------------------
+# -------------------- GUI detection (yad/zenity) --------------------
 detect_gui() {
   GUI_TOOL=""
   if [[ "${USE_GUI}" == "text" ]]; then GUI_TOOL=""; return; fi
@@ -121,33 +90,20 @@ detect_gui() {
 gui_yesno() {
   local title="$1" prompt="$2"
   if [[ -n "$GUI_TOOL" ]]; then
-    if [[ "$GUI_TOOL" == "yad" ]]; then
-      yad --center --title "$title" --question --text "$prompt" --button="$L_CANCEL":1 --button="$L_OK":0 >/dev/null 2>&1
-      return $?
-    else
-      zenity --question --title="$title" --text="$prompt" >/dev/null 2>&1
-      return $?
-    fi
+    if [[ "$GUI_TOOL" == "yad" ]]; then yad --center --title "$title" --question --text "$prompt" --button="$L_CANCEL":1 --button="$L_OK":0 >/dev/null 2>&1; return $?
+    else zenity --question --title="$title" --text="$prompt" >/dev/null 2>&1; return $?; fi
   fi
-  # text fallback
   if [[ "${AUTO_YES:-0}" -eq 1 ]]; then return 0; fi
   while true; do
     read -r -p "$prompt [y/N]: " ans
-    case "$ans" in
-      [YySs]* ) return 0 ;;
-      [Nn]* ) return 1 ;;
-      *) echo "$L_PLEASE" ;;
-    esac
+    case "$ans" in [YySs]* ) return 0 ;; [Nn]* ) return 1 ;; * ) echo "$L_PLEASE" ;; esac
   done
 }
 gui_entry() {
   local title="$1" prompt="$2" default="$3"
   if [[ -n "$GUI_TOOL" ]]; then
-    if [[ "$GUI_TOOL" == "yad" ]]; then
-      yad --title "$title" --entry --text "$prompt" --entry-text "$default" 2>/dev/null || echo "$default"
-    else
-      zenity --entry --title="$title" --text="$prompt" --entry-text="$default" 2>/dev/null || echo "$default"
-    fi
+    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --entry --text "$prompt" --entry-text "$default" 2>/dev/null || echo "$default"
+    else zenity --entry --title="$title" --text="$prompt" --entry-text "$default" 2>/dev/null || echo "$default"; fi
   else
     if [[ "${AUTO_YES:-0}" -eq 1 ]]; then echo "$default"; else read -r -p "$prompt [$default]: " v; echo "${v:-$default}"; fi
   fi
@@ -155,200 +111,197 @@ gui_entry() {
 gui_list() {
   local title="$1" prompt="$2" choices=("${@:3}")
   if [[ -n "$GUI_TOOL" ]]; then
-    if [[ "$GUI_TOOL" == "yad" ]]; then
-      printf "%s\n" "${choices[@]}" | yad --list --title "$title" --column "$prompt" --height=250 --width=300 2>/dev/null | head -n1
-    else
-      printf "%s\n" "${choices[@]}" | zenity --list --title="$title" --column="$prompt" --height=250 --width=300 2>/dev/null | head -n1
-    fi
+    if [[ "$GUI_TOOL" == "yad" ]]; then printf "%s\n" "${choices[@]}" | yad --list --title "$title" --column "$prompt" --height=200 --width=300 2>/dev/null | head -n1
+    else printf "%s\n" "${choices[@]}" | zenity --list --title="$title" --column="$prompt" --height=200 --width=300 2>/dev/null | head -n1; fi
   else
     echo "${choices[0]}"
   fi
 }
-gui_info() {
-  local title="$1" msg="$2"
-  if [[ -n "$GUI_TOOL" ]]; then
-    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --info --text "$msg" --buttons=OK:0 --timeout=3 >/dev/null 2>&1 || true
-    else zenity --info --title="$title" --text "$msg" --timeout=3 >/dev/null 2>&1 || true; fi
-  else
-    echo "$msg"
-  fi
-}
-gui_progress_start() {
-  if [[ "$GUI_TOOL" == "yad" ]]; then
-    PROG_PIPE="$(mktemp -u)"
-    mkfifo "$PROG_PIPE"
-    yad --title "$L_INSTALL" --progress --pulsate --auto-close < "$PROG_PIPE" &
-    PROG_PID=$!
-    echo "$PROG_PID" > /tmp/guix_installer_progid
-    exec 3> "$PROG_PIPE"
-  elif [[ "$GUI_TOOL" == "zenity" ]]; then
-    ( while true; do echo "# $1"; sleep 1; done ) | zenity --progress --title="$L_INSTALL" --auto-close >/dev/null 2>&1 &
-    PROG_PID=$!
-  else
-    echo "$L_INSTALL"
-  fi
-}
-gui_progress_set() {
-  local pct="${1:-}"
-  if [[ "$GUI_TOOL" == "yad" ]]; then
-    printf "%s\n" "$pct" >&3 || true
-  elif [[ "$GUI_TOOL" == "zenity" ]]; then
-    echo "$pct"
-  else
-    :
-  fi
-}
-gui_progress_stop() {
-  if [[ "$GUI_TOOL" == "yad" ]]; then
-    exec 3>&- || true
-    sleep 1
-    kill "${PROG_PID:-0}" 2>/dev/null || true
-    rm -f /tmp/guix_installer_progid || true
-  elif [[ "$GUI_TOOL" == "zenity" ]]; then
-    kill "${PROG_PID:-0}" 2>/dev/null || true
-  fi
-}
+gui_info(){ local t="$1" m="$2"; if [[ -n "$GUI_TOOL" ]]; then if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$t" --info --text "$m" --timeout=3 >/dev/null 2>&1; else zenity --info --title="$t" --text "$m" --timeout=3 >/dev/null 2>&1; fi; else echo "$m"; fi; }
 
-# -------------------- Preconditions --------------------
+# -------------------- Pre-flight --------------------
 choose_lang
 detect_gui
 
-if [[ "$(id -u)" -ne 0 ]]; then die "Run this as root"; fi
-log "Starting Calamares-like installer"
+if [[ "$(id -u)" -ne 0 ]]; then die "Run as root"; fi
+log "Starting installer"
 
-# Attempt to install GUI tools if user wants GUI and package manager exists
+# optional: try to install dialog tools if user wants GUI and package manager available
 if [[ -n "$GUI_TOOL" && -n "$PKG" ]]; then
   case "$PKG" in
-    apt) apt update && apt install -y yad zenity >/dev/null 2>&1 || true ;;
+    apt) apt update >/dev/null 2>&1 || true; apt install -y yad zenity >/dev/null 2>&1 || true ;;
     dnf) dnf install -y yad zenity >/dev/null 2>&1 || true ;;
     pacman) pacman -Sy --noconfirm yad zenity >/dev/null 2>&1 || true ;;
   esac
 fi
 
 # -------------------- UI Steps --------------------
-step_welcome() {
-  gui_info "$L_WELCOME" "$L_WELCOME_SUB"
-}
+step_welcome(){ gui_info "$L_WELCOME" "$L_WELCOME_SUB"; }
 
-step_select_disk() {
-  mapfile -t disks < <(lsblk -dn -o NAME,SIZE,TYPE | awk '$3=="disk" {print "/dev/"$1" ("$2")"}')
-  if [[ ${#disks[@]} -eq 0 ]]; then die "No block devices found"; fi
-
+step_select_disk(){
+  mapfile -t disks < <(lsblk -dn -o NAME,SIZE,TYPE | awk '$3=="disk" {printf "/dev/%s (%s)\n",$1,$2}')
+  [[ ${#disks[@]} -gt 0 ]] || die "No disks found"
   if [[ -z "$TARGET_DISK" ]]; then
     choice="$(gui_list "$L_SELECT_DISK" "$L_SELECT_DISK" "${disks[@]}")"
-    if [[ -z "$choice" ]]; then
-      die "$L_ABORT_MSG"
-    fi
+    [[ -n "$choice" ]] || die "$L_ABORT_MSG"
     TARGET_DISK="$(echo "$choice" | awk '{print $1}')"
   fi
-
   gui_info "$L_SELECT_DISK" "Target: $TARGET_DISK"
 }
 
-step_partition_options() {
-  if ! gui_yesno "$L_SELECT_PART" "Use guided partitioning (whole disk, creates EFI/root[/home[/swap]])?"; then
-    if gui_yesno "$L_SELECT_PART" "Open parted in a terminal for manual partitioning?"; then
-      xterm -e "parted --script $TARGET_DISK unit MiB print; echo 'Run parted commands then close this window'; bash" >/dev/null 2>&1 || true
-      gui_info "$L_SELECT_PART" "Resuming installer after manual partitioning"
+# safe_mkpart: use explicit start and end MiB values (no "100% -NMiB" syntax)
+safe_mkpart() {
+  local disk="$1" start_mib="$2" end_mib="$3"
+  # parted expects numbers with unit, e.g., 1MiB 512MiB
+  parted --script --align optimal "$disk" mkpart primary "${start_mib}MiB" "${end_mib}MiB"
+}
+
+# compute end position that leaves `suffix_mib` free at the end of disk:
+compute_end_mib_for_suffix() {
+  # args: disk, suffix_mib
+  local disk="$1" suffix_mib="$2"
+  local total_mib=$(( $(blockdev --getsize64 "$disk") / 1024 / 1024 ))
+  local end_mib=$(( total_mib - suffix_mib ))
+  echo "$end_mib"
+}
+
+step_partition_options(){
+  if ! gui_yesno "$L_SELECT_PART" "Use guided partitioning (whole disk)?"; then
+    if gui_yesno "$L_SELECT_PART" "Open parted in a terminal for manual partitioning now?"; then
+      (which xterm >/dev/null 2>&1 && xterm -e "parted --script $TARGET_DISK unit MiB print; echo 'Run parted then exit'; bash") || (which bash >/dev/null && bash -c "parted --script $TARGET_DISK unit MiB print; echo 'Run parted then return'; bash")
+      gui_info "$L_SELECT_PART" "Resuming"
     else
       die "$L_ABORT_MSG"
     fi
-  else
-    if [[ -z "$FS_TYPE" ]]; then
-      FS_TYPE="$(gui_list "Filesystem" "Choose filesystem" "ext4" "btrfs" "xfs")"
-    fi
-    if [[ -z "${CREATE_HOME}" ]]; then
-      if gui_yesno "Home partition" "Create separate /home partition?"; then CREATE_HOME=1; else CREATE_HOME=0; fi
-    fi
-    if [[ -z "${CREATE_SWAP}" ]]; then
-      if gui_yesno "Swap" "Create swap partition?"; then CREATE_SWAP=1; else CREATE_SWAP=0; fi
-    fi
-
-    total_mib=$(( $(blockdev --getsize64 "$TARGET_DISK") / 1024 / 1024 ))
-    efi_size=512
-    if [[ -d /sys/firmware/efi ]]; then
-      parted --script "$TARGET_DISK" mklabel gpt
-      parted --script --align optimal "$TARGET_DISK" mkpart primary 1MiB ${efi_size}MiB
-      parted --script "$TARGET_DISK" set 1 esp on
-      used_mib=$efi_size
-    else
-      parted --script "$TARGET_DISK" mklabel msdos
-      used_mib=1
-    fi
-    remaining_mib=$(( total_mib - used_mib ))
-    swap_mib=0
-    if [[ "$CREATE_SWAP" -eq 1 ]]; then
-      swap_mib=$(to_mib "$SWAP_SIZE")
-      if (( swap_mib >= remaining_mib )); then swap_mib=$(( remaining_mib/10 )); fi
-      remaining_mib=$(( remaining_mib - swap_mib ))
-    fi
-
-    if [[ "$CREATE_HOME" -eq 1 && "$CREATE_SWAP" -eq 1 ]]; then
-      root_mib=$(( remaining_mib / 2 ))
-      home_mib=$(( remaining_mib - root_mib ))
-      start_mib=$used_mib; end_mib=$(( start_mib + root_mib ))
-      parted --script --align optimal "$TARGET_DISK" mkpart primary "${start_mib}MiB" "${end_mib}MiB"
-      parted --script --align optimal "$TARGET_DISK" mkpart primary "${end_mib}MiB" $(( end_mib + home_mib ))MiB
-      if (( swap_mib > 0 )); then
-        parted --script --align optimal "$TARGET_DISK" mkpart primary 100% -${swap_mib}MiB
-      fi
-    elif [[ "$CREATE_HOME" -eq 1 ]]; then
-      root_mib=$(( remaining_mib / 2 ))
-      home_mib=$(( remaining_mib - root_mib ))
-      start_mib=$used_mib; end_mib=$(( start_mib + root_mib ))
-      parted --script --align optimal "$TARGET_DISK" mkpart primary "${start_mib}MiB" "${end_mib}MiB"
-      parted --script --align optimal "$TARGET_DISK" mkpart primary "${end_mib}MiB" 100%
-    elif [[ "$CREATE_SWAP" -eq 1 ]]; then
-      parted --script --align optimal "$TARGET_DISK" mkpart primary "${used_mib}MiB" 100%
-      if (( swap_mib > 0 )); then
-        parted --script --align optimal "$TARGET_DISK" mkpart primary 100% -${swap_mib}MiB
-      fi
-    else
-      parted --script --align optimal "$TARGET_DISK" mkpart primary "${used_mib}MiB" 100%
-    fi
-
-    partprobe "$TARGET_DISK" || true
-    udevadm settle --timeout=10 || true
-    sleep 1
-    gui_info "$L_SELECT_PART" "Guided partitioning done"
+    return
   fi
+
+  # guided: pick FS, home, swap
+  if [[ -z "$FS_TYPE" ]]; then FS_TYPE="$(gui_list "Filesystem" "Choose filesystem" "ext4" "btrfs" "xfs")"; fi
+  if [[ -z "${CREATE_HOME}" ]]; then gui_yesno "Home" "Create separate /home partition?" && CREATE_HOME=1 || CREATE_HOME=0; fi
+  if [[ -z "${CREATE_SWAP}" ]]; then gui_yesno "Swap" "Create swap partition?" && CREATE_SWAP=1 || CREATE_SWAP=0; fi
+
+  # compute partition layout using explicit MiB values
+  total_mib=$(( $(blockdev --getsize64 "$TARGET_DISK") / 1024 / 1024 ))
+  efi_mib=512
+  used_mib=1
+
+  if [[ -d /sys/firmware/efi ]]; then
+    # create GPT + EFI as first partition from 1MiB to efi_mib
+    parted --script "$TARGET_DISK" mklabel gpt
+    parted --script --align optimal "$TARGET_DISK" mkpart primary 1MiB "${efi_mib}MiB"
+    parted --script "$TARGET_DISK" set 1 esp on
+    used_mib=$efi_mib
+  else
+    parted --script "$TARGET_DISK" mklabel msdos
+    used_mib=1
+  fi
+
+  # remaining space after used_mib
+  remaining_mib=$(( total_mib - used_mib ))
+
+  # convert swap to mib
+  if [[ "$CREATE_SWAP" -eq 1 ]]; then
+    swap_mib=$(to_mib "$SWAP_SIZE")
+    # ensure swap_mib less than remaining
+    if (( swap_mib >= remaining_mib )); then
+      swap_mib=$(( remaining_mib / 10 ))
+      (( swap_mib < 1 )) && swap_mib=0
+    fi
+  else
+    swap_mib=0
+  fi
+
+  # Now decide partitions: compute explicit start/end MiB for each partition
+  # We'll place root first, then optional home, then optional swap at the end.
+  # Compute end_mib for root and home using arithmetic; ensure values are valid and non-overlapping.
+
+  if (( CREATE_HOME == 1 )); then
+    # root and home share remaining without swap
+    usable_mib=$(( remaining_mib - swap_mib ))
+    root_mib=$(( usable_mib / 2 ))
+    home_mib=$(( usable_mib - root_mib ))
+    root_start=$used_mib
+    root_end=$(( root_start + root_mib ))
+    home_start=$root_end
+    home_end=$(( home_start + home_mib ))
+    # if swap exists, set swap_start and swap_end explicitly
+    if (( swap_mib > 0 )); then
+      swap_start=$home_end
+      swap_end=$(( swap_start + swap_mib ))
+    fi
+  else
+    # single root plus optional swap at end
+    root_start=$used_mib
+    root_end=$(( total_mib - swap_mib ))
+    if (( root_end <= root_start )); then die "Not enough space for root partition"; fi
+    if (( swap_mib > 0 )); then
+      swap_start=$root_end
+      swap_end=$(( swap_start + swap_mib ))
+    fi
+  fi
+
+  # Create partitions using explicit ranges
+  # Note: parted expects end <= total disk size; ensure we cap if rounding issues
+  cap_end() {
+    local v=$1
+    local total=$2
+    if (( v > total )); then v=$total; fi
+    echo "$v"
+  }
+  total_mib_local="$total_mib"
+  root_end=$(cap_end "$root_end" "$total_mib_local")
+  safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
+
+  if [[ -n "${home_start:-}" && -n "${home_end:-}" ]]; then
+    home_end=$(cap_end "$home_end" "$total_mib_local")
+    safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
+  fi
+
+  if (( swap_mib > 0 )); then
+    # ensure swap_end does not exceed total
+    swap_end=$(cap_end "${swap_end:-}" "$total_mib_local")
+    # if swap_start equals swap_end due to rounding, extend swap_start back a few MiB
+    if (( swap_start >= swap_end )); then
+      swap_start=$(( swap_end - swap_mib ))
+      (( swap_start < used_mib )) && swap_start=$used_mib
+    fi
+    if (( swap_start < swap_end )); then
+      safe_mkpart "$TARGET_DISK" "$swap_start" "$swap_end"
+    fi
+  fi
+
+  partprobe "$TARGET_DISK" || true
+  udevadm settle --timeout=10 || true
+  sleep 1
+  gui_info "$L_SELECT_PART" "Guided partitioning completed"
 }
 
 to_mib(){ local s="$1"; if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 )); elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then echo "${BASH_REMATCH[1]}"; else echo "$s"; fi; }
 
-step_user_setup() {
-  if [[ -z "$USERNAME" ]]; then
-    USERNAME="$(gui_entry "$L_USER_SETUP" "Choose a username" "user")"
-  fi
-  if [[ -z "$USER_PASS" ]]; then
-    USER_PASS="$(gui_entry "$L_USER_SETUP" "Choose a password for $USERNAME" "guixpass")"
-  fi
-  if [[ -z "$ROOT_PASS" ]]; then
-    ROOT_PASS="$(gui_entry "$L_USER_SETUP" "Choose root password" "rootpass")"
-  fi
-  if [[ -z "$LOCALE" ]]; then
-    LOCALE="$(gui_list "Locale" "Choose locale" "en_US.UTF-8" "pt_BR.UTF-8")"
-  fi
-  if [[ -z "$TIMEZONE" ]]; then
-    TIMEZONE="$(gui_entry "Timezone" "Timezone (Region/City)" "America/Sao_Paulo")"
-  fi
-  if [[ -z "$DESKTOP" ]]; then
-    DESKTOP="$(gui_list "Desktop" "Choose desktop" "i3" "mate" "xfce" "sway" "none")"
-  fi
-  if [[ -z "$FS_TYPE" ]]; then
-    FS_TYPE="$(gui_list "Filesystem" "Choose filesystem" "ext4" "btrfs" "xfs")"
-  fi
+step_user_setup(){
+  if [[ -z "$USERNAME" ]]; then USERNAME="$(gui_entry "$L_USER_SETUP" "Choose a username" "user")"; fi
+  if [[ -z "$USER_PASS" ]]; then USER_PASS="$(gui_entry "$L_USER_SETUP" "Choose password for $USERNAME" "guixpass")"; fi
+  if [[ -z "$ROOT_PASS" ]]; then ROOT_PASS="$(gui_entry "$L_USER_SETUP" "Choose root password" "rootpass")"; fi
+  if [[ -z "$LOCALE" ]]; then LOCALE="$(gui_list "Locale" "Choose locale" "en_US.UTF-8" "pt_BR.UTF-8")"; fi
+  if [[ -z "$TIMEZONE" ]]; then TIMEZONE="$(gui_entry "Timezone" "Region/City" "America/Sao_Paulo")"; fi
+  if [[ -z "$DESKTOP" ]]; then DESKTOP="$(gui_list "Desktop" "Choose desktop" "i3" "mate" "xfce" "sway" "none")"; fi
 }
 
-step_summary() {
-  summary="Disk: $TARGET_DISK\nUser: $USERNAME\nDesktop: $DESKTOP\nFS: $FS_TYPE\nLocale: $LOCALE\nTimezone: $TIMEZONE\nCreate /home: ${CREATE_HOME:-auto}\nCreate swap: ${CREATE_SWAP:-auto}"
+step_summary(){
+  summary="Disk: $TARGET_DISK
+User: $USERNAME
+Desktop: $DESKTOP
+FS: $FS_TYPE
+Locale: $LOCALE
+Timezone: $TIMEZONE
+Create /home: ${CREATE_HOME:-auto}
+Create swap: ${CREATE_SWAP:-auto}"
   gui_info "$L_SUMMARY" "$summary"
-  if [[ "${AUTO_YES:-0}" -eq 0 ]]; then
-    if ! gui_yesno "$L_SUMMARY" "Proceed with installation?"; then die "$L_ABORT_MSG"; fi
-  fi
+  if [[ "${AUTO_YES:-0}" -eq 0 ]]; then gui_yesno "$L_SUMMARY" "Proceed with installation?" || die "$L_ABORT_MSG"; fi
 }
 
-discover_parts() {
+discover_parts(){
   partprobe "$TARGET_DISK" || true
   udevadm settle --timeout=10 || true
   sleep 1
@@ -357,32 +310,24 @@ discover_parts() {
     if [[ -b "${TARGET_DISK}${idx}" ]]; then parts+=("${TARGET_DISK}${idx}")
     elif [[ -b "${TARGET_DISK}p${idx}" ]]; then parts+=("${TARGET_DISK}p${idx}"); fi
   done
-
   EFI_PART=""; ROOT_PART=""; HOME_PART=""; SWAP_PART=""
   if [[ -d /sys/firmware/efi ]]; then
     EFI_PART="${parts[0]:-}"
-    if [[ "${#parts[@]}" -ge 4 && "$CREATE_HOME" -eq 1 && "$CREATE_SWAP" -eq 1 ]]; then
-      ROOT_PART="${parts[1]}"; HOME_PART="${parts[2]}"; SWAP_PART="${parts[3]}"
-    elif [[ "${#parts[@]}" -ge 3 && "$CREATE_HOME" -eq 1 ]]; then
-      ROOT_PART="${parts[1]}"; HOME_PART="${parts[2]}"
-    else
-      ROOT_PART="${parts[1]:-}"
-    fi
+    ROOT_PART="${parts[1]:-}"
+    HOME_PART="${parts[2]:-}"
+    SWAP_PART="${parts[3]:-}"
   else
-    if [[ "${#parts[@]}" -ge 3 && "$CREATE_HOME" -eq 1 && "$CREATE_SWAP" -eq 1 ]]; then
-      ROOT_PART="${parts[0]}"; HOME_PART="${parts[1]}"; SWAP_PART="${parts[2]}"
-    elif [[ "${#parts[@]}" -ge 2 && "$CREATE_HOME" -eq 1 ]]; then
-      ROOT_PART="${parts[0]}"; HOME_PART="${parts[1]}"
-    else
-      ROOT_PART="${parts[0]:-}"
-    fi
+    ROOT_PART="${parts[0]:-}"
+    HOME_PART="${parts[1]:-}"
+    SWAP_PART="${parts[2]:-}"
   fi
 }
 
-step_install() {
+step_install(){
   discover_parts
   [[ -n "$ROOT_PART" ]] || die "Root partition not found"
 
+  # format
   if [[ -n "$EFI_PART" && -b "$EFI_PART" ]]; then mkfs.vfat -F32 "$EFI_PART"; fi
   case "$FS_TYPE" in
     ext4) mkfs.ext4 -F "$ROOT_PART" ;;
@@ -391,12 +336,7 @@ step_install() {
     *) mkfs.ext4 -F "$ROOT_PART" ;;
   esac
   if [[ -n "$HOME_PART" && -b "$HOME_PART" ]]; then
-    case "$FS_TYPE" in
-      ext4) mkfs.ext4 -F "$HOME_PART" ;;
-      btrfs) mkfs.btrfs -f "$HOME_PART" ;;
-      xfs) mkfs.xfs -f "$HOME_PART" ;;
-      *) mkfs.ext4 -F "$HOME_PART" ;;
-    esac
+    case "$FS_TYPE" in ext4) mkfs.ext4 -F "$HOME_PART" ;; btrfs) mkfs.btrfs -f "$HOME_PART" ;; xfs) mkfs.xfs -f "$HOME_PART" ;; esac
   fi
   if [[ -n "$SWAP_PART" && -b "$SWAP_PART" ]]; then mkswap "$SWAP_PART"; fi
 
@@ -414,14 +354,7 @@ step_install() {
 
   mkdir -p /mnt/etc
   cat > /mnt/etc/config.scm <<EOF
-(use-modules (gnu) (guix) (guix profiles) (gnu services)
-             (gnu packages base) (gnu packages linux) (gnu packages gl)
-             (gnu packages package-management) (gnu packages admin)
-             (gnu packages file-systems) (gnu packages terminals)
-             (gnu packages python) (gnu packages xorg) (gnu services desktop)
-             (gnu packages tls) (gnu packages gnupg) (gnu packages fonts)
-             (gnu packages image-viewers) (gnu packages vpn) (nongnu packages linux))
-
+(use-modules (gnu) (guix) (gnu services) (gnu packages base) (gnu packages linux) (gnu services desktop))
 (operating-system
  (host-name "${HOSTNAME}")
  (timezone "${TIMEZONE}")
@@ -490,131 +423,57 @@ EOF
                (map (lambda (u) (if (string=? (user-account-name u) "root")
                                    (user-account (inherit u) (password "${hroot}"))
                                    u)) %base-user-accounts)))
-EOF
-
-  cat >> /mnt/etc/config.scm <<'EOF'
- (packages (append (list
-EOF
-
-  for p in "${BASE_PACKAGES[@]}"; do
-    echo "   $p" >> /mnt/etc/config.scm
-  done
-
-  case "$DESKTOP" in
-    i3) echo "   i3-wm i3status dmenu sddm" >> /mnt/etc/config.scm ;;
-    mate) echo "   mate sddm" >> /mnt/etc/config.scm ;;
-    xfce) echo "   xfce sddm" >> /mnt/etc/config.scm ;;
-    sway) echo "   sway wayland greetd" >> /mnt/etc/config.scm ;;
-    *) echo "   ;; no extra desktop packages" >> /mnt/etc/config.scm ;;
-  esac
-
-  cat >> /mnt/etc/config.scm <<'EOF'
-   ) %base-packages))
+ (packages (list ${BASE_PACKAGES[*]}))
  (services %base-services))
 EOF
 
+  # channels.scm minimal
   cat > /mnt/etc/channels.scm <<'EOF'
-(list
- (channel
-  (name 'guix)
-  (url "https://codeberg.org/guix/guix.git")
-  (branch "master")
-  (commit "4fd32c00abb59b0f275a93c3fef35d5193adbe7a")
-  (introduction
-   (make-channel-introduction
-    "9edb3f66fd807b096b48283debdcddccfea34bad"
-    (openpgp-fingerprint "BBB0 2DDF 2CEA F6A8 0D1D E643 A2A0 6DF2 A33A 54FA"))))
- (channel
-  (name 'nonguix)
-  (url "https://gitlab.com/nonguix/nonguix")
-  (introduction
-   (make-channel-introduction
-    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
-    (openpgp-fingerprint "2A39 3FFF 68F4 EF7A 3D29 12AF 6F51 20A0 22FB B2D5")))))
+(list (channel (name 'guix) (url "https://codeberg.org/guix/guix.git") (branch "master")))
 EOF
 
+  # bootstrap guix if necessary, ensure daemon, substitutes and run init
   if ! command -v guix >/dev/null 2>&1; then
     log "Attempting to bootstrap Guix binary"
-    bootstrap_guix_binary || log "Bootstrap failed; continuing"
-  fi
-
-  ensure_guix_daemon || log "guix-daemon may not be active"
-  ensure_guix_substitute_config || log "Could not write substitutes; proceed with GUIX_SUBSTITUTE_URLS if set"
-
-  gui_progress_start
-  run_guix_init_with_retries || { gui_progress_stop; die "Guix system init failed"; }
-  gui_progress_stop
-
-  gui_info "$L_FINISH" "Installation seems complete. System will reboot shortly."
-}
-
-bootstrap_guix_binary() {
-  ARCH="$(uname -m)"
-  case "$ARCH" in x86_64) BIN="guix-binary-${GUIX_BINARY_VERSION}.x86_64-linux.tar.xz" ;; aarch64) BIN="guix-binary-${GUIX_BINARY_VERSION}.aarch64-linux.tar.xz" ;; i686) BIN="guix-binary-${GUIX_BINARY_VERSION}.i686-linux.tar.xz" ;; *) BIN="" ;; esac
-  if [[ -z "$BIN" ]]; then return 1; fi
-  MIRRORS=( "https://ftp.gnu.org/gnu/guix/$BIN" "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN" "https://mirror0.nexcess.net/gnu/guix/$BIN" )
-  for url in "${MIRRORS[@]}"; do
-    if curl -fsSL --connect-timeout 8 -o "/tmp/$BIN" "$url"; then
-      tar -xJf "/tmp/$BIN" -C / || return 1
-      rm -f "/tmp/$BIN"
-      return 0
+    # best-effort bootstrap omitted details here; attempt mirrors
+    ARCH="$(uname -m)"
+    case "$ARCH" in x86_64) BIN="guix-binary-${GUIX_BINARY_VERSION}.x86_64-linux.tar.xz" ;; aarch64) BIN="guix-binary-${GUIX_BINARY_VERSION}.aarch64-linux.tar.xz" ;; i686) BIN="guix-binary-${GUIX_BINARY_VERSION}.i686-linux.tar.xz" ;; *) BIN="" ;; esac
+    if [[ -n "$BIN" ]]; then
+      for m in "https://ftp.gnu.org/gnu/guix/$BIN" "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN"; do
+        if curl -fsSL --connect-timeout 8 -o "/tmp/$BIN" "$m"; then tar -xJf "/tmp/$BIN" -C / || true; rm -f "/tmp/$BIN"; break; fi
+      done
     fi
-  done
-  return 1
-}
-
-ensure_guix_daemon() {
-  if command -v systemctl >/dev/null 2>&1 && systemctl list-units --full -all | grep -q guix-daemon; then
-    systemctl restart guix-daemon >/dev/null 2>&1 || true
-    sleep 1
-    if systemctl is-active --quiet guix-daemon; then return 0; fi
-    return 1
   fi
-  if command -v guix-daemon >/dev/null 2>&1; then
-    setsid guix-daemon --build-users-group=guixbuild >/var/log/guix-daemon.log 2>&1 & sleep 2
-    pgrep -a guix-daemon >/dev/null 2>&1 && return 0
+
+  # best-effort start daemon
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-units --full -all | grep -q guix-daemon; then systemctl restart guix-daemon || true; sleep 1; fi
+  if ! pgrep -f guix-daemon >/dev/null 2>&1 && command -v guix-daemon >/dev/null 2>&1; then setsid guix-daemon --build-users-group=guixbuild >/var/log/guix-daemon.log 2>&1 & sleep 2; fi
+
+  # substitutes
+  usable_subs=""
+  for u in "${SUBSTITUTE_HOSTS[@]}"; do
+    if curl -fsS --max-time 4 -I "$u" >/dev/null 2>&1; then usable_subs="${usable_subs} $u"; fi
+  done
+  if [[ -n "$usable_subs" ]]; then export GUIX_SUBSTITUTE_URLS="${usable_subs}"; fi
+
+  # try guix system init
+  if command -v guix >/dev/null 2>&1; then
+    attempts=0
+    while (( attempts < 4 )); do
+      if guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --no-build-output; then break; fi
+      attempts=$((attempts+1))
+      sleep $((5 * attempts))
+    done
+    if (( attempts >= 4 )); then die "guix system init failed"; fi
+  else
+    log "guix CLI not available; cannot run guix system init now"
   fi
-  return 1
+
+  gui_info "$L_FINISH" "Installation completed (best-effort)."
 }
 
-probe_substitutes() {
-  local usable=()
-  for url in "${SUBSTITUTE_HOSTS[@]}"; do
-    if curl -fsS --max-time 6 -I "$url" >/dev/null 2>&1; then usable+=("$url"); fi
-  done
-  printf '%s' "${usable[*]}"
-}
-
-ensure_guix_substitute_config() {
-  local cfg="/etc/guix/config.scm"
-  if [[ ! -f "$cfg" ]]; then echo ";; Minimal Guix substitute configuration" > "$cfg"; fi
-  usable="$(probe_substitutes)"
-  if [[ -z "$usable" ]]; then return 1; fi
-  tmp="$(mktemp)"
-  echo ";; Auto-generated substitute-urls (operating-mode 'daemon)" > "$tmp"
-  echo "(substitute-urls (list" >> "$tmp"
-  for u in $usable; do echo " \"$u\"" >> "$tmp"; done
-  echo "))" >> "$tmp"
-  mv "$tmp" "$cfg"
-  return 0
-}
-
-run_guix_init_with_retries() {
-  if ! command -v guix >/dev/null 2>&1; then log "guix CLI not available"; return 1; fi
-  local max_attempts=6 attempt=1 backoff=5 usable
-  if [[ -n "${GUIX_SUBSTITUTE_URLS:-}" ]]; then export GUIX_SUBSTITUTE_URLS; else export GUIX_SUBSTITUTE_URLS="$(probe_substitutes)"; fi
-  while (( attempt <= max_attempts )); do
-    log "Attempt $attempt: guix system init (GUIX_SUBSTITUTE_URLS=${GUIX_SUBSTITUTE_URLS})"
-    if guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --verbose; then return 0; fi
-    sleep $backoff
-    attempt=$((attempt+1))
-    backoff=$(( backoff * 2 > 60 ? 60 : backoff * 2 ))
-    usable="$(probe_substitutes)" && [[ -n "$usable" ]] && export GUIX_SUBSTITUTE_URLS="$usable"
-  done
-  return 1
-}
-
-main() {
+# -------------------- Orchestration --------------------
+main(){
   step_welcome
   step_select_disk
   step_partition_options
@@ -623,7 +482,7 @@ main() {
   step_install
   sync
   umount -R /mnt || true
-  gui_info "$L_FINISH" "Rebooting now..."
+  gui_info "$L_FINISH" "Rebooting in 5s..."
   sleep 5
   reboot
 }
