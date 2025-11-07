@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU Guix guided installer with LUKS support and robust guix init 
-# WARNING: This script performs destructive operations. Review TARGET_DISK before running.
+# GNU Guix guided installer
+# - GUI via yad/zenity when available; text fallback
+# IMPORTANT: This script performs destructive actions. Review TARGET_DISK before running. Run as root from a live environment.
 
 # -------------------- Configurable defaults --------------------
 LANG_OPT="${LANG_OPT:-en}"
 USE_GUI="${USE_GUI:-auto}"              # auto|gui|text
-AUTO_YES="${AUTO_YES:-0}"               # 1 to skip interactive confirmations
+AUTO_YES="${AUTO_YES:-1}"               # 1 to skip interactive confirmations
 TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sda
 USERNAME="${USERNAME:-}"                # username to create
 USER_PASS="${USER_PASS:-}"              # user password (plaintext for script only)
-ROOT_PASS="${ROOT_PASS:-}"              # root password for installed system
+ROOT_PASS="${ROOT_PASS:-}"              # root password for installed system or LUKS root passphrase (if used)
 LOCALE="${LOCALE:-en_US.UTF-8}"
-TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
-DESKTOP="${DESKTOP:-none}"              # none,i3,xfce,mate,sway
+TIMEZONE="${TIMEZONE:-America/New_York}"
+DESKTOP="${DESKTOP:-i3}"              # none,i3,xfce,mate,sway
 FS_TYPE="${FS_TYPE:-ext4}"              # ext4,btrfs,xfs
-CREATE_HOME="${CREATE_HOME:-}"          # 1=yes 0=no (guided)
-CREATE_SWAP="${CREATE_SWAP:-}"          # 1=yes 0=no
-SWAP_SIZE="${SWAP_SIZE:-4G}"
+CREATE_HOME="${CREATE_HOME:-1}"          # 1=yes 0=no (guided)
+CREATE_SWAP="${CREATE_SWAP:-1}"          # 1=yes 0=no (guided)
+SWAP_SIZE="${SWAP_SIZE:-2G}"
 LUKS_ROOT="${LUKS_ROOT:-}"              # 1=yes 0=no (guided)
 LUKS_HOME="${LUKS_HOME:-}"              # 1=yes 0=no (guided)
 LUKS_ROOT_NAME="${LUKS_ROOT_NAME:-cryptroot}"
@@ -242,21 +243,27 @@ ensure_guix() {
 
 # -------------------- Robust guix init (time-machine fallback to chroot method) --------------------
 robust_guix_init() {
-  local subs attempts backoff success=0 errbuf tmpf
+  local subs attempts backoff success=0 errbuf tmperr tmpf wrapper
   subs="$(probe_substitutes)"
   if [[ -n "$subs" ]]; then export GUIX_SUBSTITUTE_URLS="$subs"; fi
 
   if command -v guix >/dev/null 2>&1; then
     attempts=0; backoff=5
+    tmperr="$(mktemp)"
     while (( attempts < 3 )); do
       log "Attempting guix time-machine (attempt $((attempts+1)))"
-      if guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --no-build-output 2>/tmp/guix-time.err; then
+      if guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt --no-build-output 2>"$tmperr"; then
         log "guix time-machine succeeded"
+        rm -f "$tmperr" || true
         success=1; break
       fi
-      errbuf="$(cat /tmp/guix-time.err 2>/dev/null || true)"
+      errbuf="$(cat "$tmperr" 2>/dev/null || true)"
       if printf '%s' "$errbuf" | grep -qi "lacks.*introduction"; then
-        log "Channel lacks introduction; falling back to chroot method"
+        log "Detected channel 'lacks introduction' error; will fall back to chroot method"
+        break
+      fi
+      if printf '%s' "$errbuf" | grep -qi "cannot be authenticated"; then
+        log "Detected channel authentication error; will fall back to chroot method"
         break
       fi
       log "time-machine attempt failed; sleeping $backoff s"
@@ -264,7 +271,7 @@ robust_guix_init() {
       attempts=$((attempts+1))
       backoff=$(( backoff * 2 > 60 ? 60 : backoff * 2 ))
     done
-    rm -f /tmp/guix-time.err || true
+    rm -f "$tmperr" || true
   else
     log "guix CLI not on host; skipping time-machine tries"
   fi
@@ -281,10 +288,14 @@ robust_guix_init() {
   mount --bind /dev/pts /mnt/dev/pts || true
   mount --bind /proc /mnt/proc || true
   mount --bind /sys /mnt/sys || true
-  if [[ -f /etc/resolv.conf ]]; then cp -L /etc/resolv.conf /mnt/etc/resolv.conf 2>/dev/null || true; fi
+  if [[ -f /etc/resolv.conf ]]; then
+    cp -L /etc/resolv.conf /mnt/etc/resolv.conf 2>/dev/null || true
+  fi
 
-  # create wrapper inside chroot
-  tmpf="/mnt/tmp/guix-init-wrapper-$$.sh"
+  wrapper="/tmp/guix-init-wrapper-$$.sh"
+  tmpf="/mnt${wrapper}"
+
+  # create wrapper script inside the new root
   if [[ -n "$subs" ]]; then
     cat > "$tmpf" <<EOF
 #!/bin/sh
@@ -311,7 +322,8 @@ EOF
   fi
   chmod +x "$tmpf" || true
 
-  if chroot /mnt /tmp/"$(basename "$tmpf")"; then
+  # run wrapper inside chroot
+  if chroot /mnt "$wrapper"; then
     log "guix system init inside chroot succeeded"
     rm -f "$tmpf" || true
     umount /mnt/dev/pts || true
@@ -431,14 +443,27 @@ step_partition_options() {
   if (( LUKS_ROOT == 1 )); then
     safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-    sleep 1
-    PART_DEV=""
-    for idx in $(seq 1 16); do
-      if [[ -b "${TARGET_DISK}${idx}" ]]; then PART_DEV="${TARGET_DISK}${idx}"; fi
-      if [[ -b "${TARGET_DISK}p${idx}" ]]; then PART_DEV="${TARGET_DISK}p${idx}"; fi
-    done
-    [[ -n "$PART_DEV" ]] || die "Could not detect root partition device"
-    ROOT_PART="$PART_DEV"
+
+    # find the newly created partition in a robust way: look for partition whose size matches expected range
+    ROOT_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$root_start" -v end="$root_end" '
+      $2=="part" {
+        cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
+        cmd | getline s
+        close(cmd)
+        if (s>0) {
+          mib = int(s/1024/1024)
+          if (mib>=start && mib<=end) { print "/dev/"$1; exit }
+        }
+      }')"
+    if [[ -z "${ROOT_PART:-}" ]]; then
+      # Fallback: pick last partition on disk
+      if [[ -b "${TARGET_DISK}p"* ]]; then
+        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+      else
+        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
+      fi
+    fi
+    [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
 
     if [[ -z "$ROOT_PASS" ]]; then
       ROOT_PASS="$(gui_password "LUKS Root passphrase" "Enter LUKS passphrase for root")"
@@ -453,13 +478,25 @@ step_partition_options() {
   else
     safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-    sleep 1
-    ROOT_PART=""
-    for idx in $(seq 1 16); do
-      if [[ -b "${TARGET_DISK}${idx}" ]]; then ROOT_PART="${TARGET_DISK}${idx}"; fi
-      if [[ -b "${TARGET_DISK}p${idx}" ]]; then ROOT_PART="${TARGET_DISK}p${idx}"; fi
-    done
-    [[ -n "$ROOT_PART" ]] || die "Could not detect root partition"
+
+    ROOT_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$root_start" -v end="$root_end" '
+      $2=="part" {
+        cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
+        cmd | getline s
+        close(cmd)
+        if (s>0) {
+          mib = int(s/1024/1024)
+          if (mib>=start && mib<=end) { print "/dev/"$1; exit }
+        }
+      }')"
+    if [[ -z "${ROOT_PART:-}" ]]; then
+      if [[ -b "${TARGET_DISK}p"* ]]; then
+        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+      else
+        ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
+      fi
+    fi
+    [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
     case "$FS_TYPE" in ext4) mkfs.ext4 -F "$ROOT_PART" ;; btrfs) mkfs.btrfs -f "$ROOT_PART" ;; xfs) mkfs.xfs -f "$ROOT_PART" ;; *) mkfs.ext4 -F "$ROOT_PART" ;; esac
     MAPPED_ROOT="$ROOT_PART"
   fi
@@ -469,12 +506,25 @@ step_partition_options() {
     if (( LUKS_HOME == 1 )); then
       safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
       partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-      HOME_PART=""
-      for idx in $(seq 1 16); do
-        if [[ -b "${TARGET_DISK}${idx}" ]]; then HOME_PART="${TARGET_DISK}${idx}"; fi
-        if [[ -b "${TARGET_DISK}p${idx}" ]]; then HOME_PART="${TARGET_DISK}p${idx}"; fi
-      done
-      [[ -n "$HOME_PART" ]] || die "Could not detect home partition"
+
+      HOME_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$home_start" -v end="$home_end" '
+        $2=="part" {
+          cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
+          cmd | getline s
+          close(cmd)
+          if (s>0) {
+            mib = int(s/1024/1024)
+            if (mib>=start && mib<=end) { print "/dev/"$1; exit }
+          }
+        }')"
+      if [[ -z "${HOME_PART:-}" ]]; then
+        if [[ -b "${TARGET_DISK}p"* ]]; then
+          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+        else
+          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
+        fi
+      fi
+      [[ -n "$HOME_PART" && -b "$HOME_PART" ]] || die "Could not detect home partition device"
       HOME_PASS="${HOME_PASS:-}"
       if [[ -z "$HOME_PASS" ]]; then HOME_PASS="$(gui_password "LUKS Home passphrase" "Enter LUKS passphrase for /home")"; fi
       [[ -n "$HOME_PASS" ]] || die "Empty LUKS passphrase for home"
@@ -485,12 +535,25 @@ step_partition_options() {
     else
       safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
       partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-      HOME_PART=""
-      for idx in $(seq 1 16); do
-        if [[ -b "${TARGET_DISK}${idx}" ]]; then HOME_PART="${TARGET_DISK}${idx}"; fi
-        if [[ -b "${TARGET_DISK}p${idx}" ]]; then HOME_PART="${TARGET_DISK}p${idx}"; fi
-      done
-      [[ -n "$HOME_PART" ]] || die "Could not detect home partition"
+
+      HOME_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$home_start" -v end="$home_end" '
+        $2=="part" {
+          cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
+          cmd | getline s
+          close(cmd)
+          if (s>0) {
+            mib = int(s/1024/1024)
+            if (mib>=start && mib<=end) { print "/dev/"$1; exit }
+          }
+        }')"
+      if [[ -z "${HOME_PART:-}" ]]; then
+        if [[ -b "${TARGET_DISK}p"* ]]; then
+          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+        else
+          HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
+        fi
+      fi
+      [[ -n "$HOME_PART" && -b "$HOME_PART" ]] || die "Could not detect home partition device"
       case "$FS_TYPE" in ext4) mkfs.ext4 -F "$HOME_PART" ;; btrfs) mkfs.btrfs -f "$HOME_PART" ;; xfs) mkfs.xfs -f "$HOME_PART" ;; esac
       MAPPED_HOME="$HOME_PART"
     fi
@@ -500,11 +563,25 @@ step_partition_options() {
   if (( swap_mib > 0 )); then
     safe_mkpart "$TARGET_DISK" "$swap_start" "$swap_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-    SWAP_PART=""
-    for idx in $(seq 1 16); do
-      if [[ -b "${TARGET_DISK}${idx}" ]]; then SWAP_PART="${TARGET_DISK}${idx}"; fi
-      if [[ -b "${TARGET_DISK}p${idx}" ]]; then SWAP_PART="${TARGET_DISK}p${idx}"; fi
-    done
+
+    SWAP_PART="$(lsblk -ln -o NAME,TYPE,SIZE | awk -v disk="$(basename "$TARGET_DISK")" -v start="$swap_start" -v end="$swap_end" '
+      $2=="part" {
+        cmd = "blockdev --getsize64 /dev/"$1" 2>/dev/null"
+        cmd | getline s
+        close(cmd)
+        if (s>0) {
+          mib = int(s/1024/1024)
+          if (mib>=start && mib<=end) { print "/dev/"$1; exit }
+        }
+      }')"
+    if [[ -z "${SWAP_PART:-}" ]]; then
+      if [[ -b "${TARGET_DISK}p"* ]]; then
+        SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
+      else
+        SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
+      fi
+    fi
+    [[ -n "$SWAP_PART" ]] || log "Warning: swap partition not detected"
     [[ -n "$SWAP_PART" ]] && mkswap "$SWAP_PART"
   fi
 
@@ -517,7 +594,7 @@ step_partition_options() {
 step_user_setup() {
   if [[ -z "$USERNAME" ]]; then USERNAME="$(gui_entry "$USER_SETUP" "Choose a username" "user")"; fi
   if [[ -z "$USER_PASS" ]]; then USER_PASS="$(gui_password "$USER_SETUP" "Enter password for $USERNAME")"; fi
-  if [[ -z "$ROOT_PASS" ]]; then ROOT_PASS="$(gui_password "Root password" "Enter root password for installed system")"; fi
+  if [[ -z "$ROOT_PASS" ]]; then ROOT_PASS="$(gui_password "Root password" "Enter root password for installed system (or LUKS root passphrase if used)")"; fi
   if [[ -z "$LOCALE" ]]; then LOCALE="$(gui_list "Locale" "Choose locale" "en_US.UTF-8" "pt_BR.UTF-8")"; fi
   if [[ -z "$TIMEZONE" ]]; then TIMEZONE="$(gui_entry "Timezone" "Region/City" "America/Sao_Paulo")"; fi
   if [[ -z "$DESKTOP" ]]; then DESKTOP="$(gui_list "Desktop" "Choose desktop" "none" "i3" "xfce" "mate" "sway")"; fi
@@ -541,10 +618,7 @@ Create swap: ${CREATE_SWAP:-0}"
 discover_parts() {
   partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
   parts=()
-  for idx in 1 2 3 4 5 6 7 8 9 10; do
-    if [[ -b "${TARGET_DISK}${idx}" ]]; then parts+=("${TARGET_DISK}${idx}"); fi
-    if [[ -b "${TARGET_DISK}p${idx}" ]]; then parts+=("${TARGET_DISK}p${idx}"); fi
-  done
+  mapfile -t parts < <(lsblk -ln -o NAME,TYPE | awk -v disk="$(basename "$TARGET_DISK")" '$2=="part" {print "/dev/"$1}')
   EFI_PART=""; ROOT_PART=""; HOME_PART=""; SWAP_PART=""
   if [[ -d /sys/firmware/efi ]]; then
     EFI_PART="${parts[0]:-}"
@@ -701,22 +775,24 @@ EOF
 
     if ! robust_guix_init; then
       log "guix system init failed after fallbacks. Configuration left at /mnt/etc for manual init."
-      gui_info "$FINISH_MSG" "guix system init failed after retries. Configuration in /mnt/etc; run 'guix system init' manually."
+      gui_info "$FINISH_MSG" "guix system init failed after retries. Configuration in /mnt/etc; run 'guix system init' manually when ready."
+    else
+      gui_info "$FINISH_MSG" "guix system init completed successfully"
     fi
   else
     log "Could not ensure Guix CLI/daemon. Configuration written to /mnt/etc"
     gui_info "$FINISH_MSG" "Could not start Guix daemon. Configuration is at /mnt/etc."
   fi
 
+  # Clean up mounts, swaps and close LUKS mappings if necessary
   sync
   if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART}" ]]; then swapoff "$SWAP_PART" || true; fi
   umount -R /mnt || true
   if (( LUKS_HOME == 1 )) && cryptsetup status "$LUKS_HOME_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_HOME_NAME" || true; fi
   if (( LUKS_ROOT == 1 )) && cryptsetup status "$LUKS_ROOT_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_ROOT_NAME" || true; fi
 
-  gui_info "$FINISH_MSG" "Installation steps finished (best-effort). Rebooting in 5 seconds..."
-  sleep 5
-  reboot || true
+  # Do NOT reboot automatically; leave to the user to reboot the live environment and boot installed system
+  log "Installation finished (best-effort). Configuration and system files are under /mnt (if mounted) or written to target filesystem. Please reboot manually when ready."
 }
 
 # -------------------- Main --------------------
