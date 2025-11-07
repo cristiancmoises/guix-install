@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #=============================================================
-#                     GNU GUIX FULL OS INSTALLER 
+#                 GNU GUIX FULL OS INSTALLER 
 #=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
-|                    GNU GUIX FULL OS INSTALL                 | 
-|                        In Code We Trust                     |
+|                    GNU GUIX FULL OS INSTALL                  |
+|                        In Code We Trust                      |
 +-------------------------------------------------------------+
 B
 }
@@ -149,7 +149,6 @@ read -r -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
 # Robust mount check: ensure no partitions from target disk are mounted
 mounted_on_disk() {
   local base="$(basename "$disk")"
-  # list NAME and MOUNTPOINT; match lines starting with base (exact prefix), then check non-empty mountpoint
   lsblk -nr -o NAME,MOUNTPOINT | grep -E "^${base}[0-9p]*" | awk '$2 != ""' | grep -q . || return 1
 }
 if mounted_on_disk; then
@@ -175,21 +174,22 @@ if (( total_mib < min_required_mib )); then
   exit 1
 fi
 
-# detect logical sector size
-sector_size=512
-if [[ -r "/sys/block/$(basename "$disk")/queue/logical_block_size" ]]; then
-  sector_size=$(cat "/sys/block/$(basename "$disk")/queue/logical_block_size")
-fi
-
-# -------------------- sgdisk helper (robust) --------------------
+# -------------------- sgdisk helper (sequential create) --------------------
+# This helper will create partitions sequentially using sgdisk with start=0
+# so the kernel/gdisk chooses the next available start. This avoids calculating
+# exact start offsets and prevents "size too big" errors when previous partitions
+# consumed unexpected space.
 add_gpt_part() {
-  local start_mib="$1"; local size_mib="$2"; local type="$3"; local name="$4"
-  # compute start sector from MiB: start_mib MiB -> sectors
-  local start_sector=$(( start_mib * 1024 * 1024 / sector_size ))
+  local _start_mib="$1"    # legacy param (ignored for start); keep for compatibility
+  local size_mib="$2"      # size in MiB or "*" for rest
+  local type="$3"          # hex type code (ef00, 8300, 8200, etc.)
+  local name="$4"
   if [[ "$size_mib" == "*" ]]; then
-    sgdisk --new=0:${start_sector}s:0 --typecode=0:"$type" --change-name=0:"$name" "$disk"
+    # create partition that occupies remaining space
+    sgdisk --new=0:0:0 --typecode=0:"$type" --change-name=0:"$name" "$disk"
   else
-    sgdisk --new=0:${start_sector}s:+${size_mib}M --typecode=0:"$type" --change-name=0:"$name" "$disk"
+    # create next available partition with given size (use +<N>M)
+    sgdisk --new=0:0:+${size_mib}M --typecode=0:"$type" --change-name=0:"$name" "$disk"
   fi
 }
 
@@ -204,19 +204,19 @@ if command -v sgdisk >/dev/null 2>&1; then
       root_mib=$(( usable / 2 )); home_mib=$(( usable - root_mib ))
       add_gpt_part 1 511 ef00 "EFI"
       add_gpt_part 512 "$root_mib" 8300 "ROOT"
-      add_gpt_part $((512 + root_mib)) "$home_mib" 8300 "HOME"
-      add_gpt_part $((512 + root_mib + home_mib)) "$swap_mib" 8200 "SWAP"
+      add_gpt_part 0 "$home_mib" 8300 "HOME"
+      add_gpt_part 0 "$swap_mib" 8200 "SWAP"
     elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
       root_mib=$(( total_mib - efi_size - swap_mib ))
       add_gpt_part 1 511 ef00 "EFI"
       add_gpt_part 512 "$root_mib" 8300 "ROOT"
-      add_gpt_part $((512 + root_mib)) "$swap_mib" 8200 "SWAP"
+      add_gpt_part 0 "$swap_mib" 8200 "SWAP"
     elif [[ "$sep_home" =~ ^[yY]$ ]]; then
       usable=$(( total_mib - efi_size ))
       root_mib=$(( usable / 2 )); home_mib=$(( usable - root_mib ))
       add_gpt_part 1 511 ef00 "EFI"
       add_gpt_part 512 "$root_mib" 8300 "ROOT"
-      add_gpt_part $((512 + root_mib)) "$home_mib" 8300 "HOME"
+      add_gpt_part 0 "$home_mib" 8300 "HOME"
     else
       root_mib=$(( total_mib - efi_size ))
       add_gpt_part 1 511 ef00 "EFI"
@@ -228,7 +228,7 @@ if command -v sgdisk >/dev/null 2>&1; then
       crypt_mib=$(( total_mib - efi_size - swap_mib ))
       add_gpt_part 1 511 ef00 "EFI"
       add_gpt_part 512 "$crypt_mib" 8300 "CRYPTROOT"
-      add_gpt_part $((512 + crypt_mib)) "$swap_mib" 8200 "SWAP"
+      add_gpt_part 0 "$swap_mib" 8200 "SWAP"
     else
       crypt_mib=$(( total_mib - efi_size ))
       add_gpt_part 1 511 ef00 "EFI"
