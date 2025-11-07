@@ -1,32 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU Guix guided installer with LUKS support and robust guix init (English-only)
-# Defensive handling for swapoff: only call swapoff with a valid block device or swap UUID/label.
-# IMPORTANT: This script is destructive. Review TARGET_DISK before running. Run as root from a live environment.
+# GNU Guix guided installer 
+# - Writes channels.scm with the user-supplied content
+# - WARNING: destructive operations. Review TARGET_DISK before running. Run as root from a live environment.
 
 # -------------------- Configurable defaults --------------------
 LANG_OPT="${LANG_OPT:-en}"
 USE_GUI="${USE_GUI:-auto}"
 AUTO_YES="${AUTO_YES:-0}"
-TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdc
-USERNAME="${USERNAME:-}"                
-USER_PASS="${USER_PASS:-}"              
-ROOT_PASS="${ROOT_PASS:-}"              
-HOME_PASS="${HOME_PASS:-}"              
+TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdb
+USERNAME="${USERNAME:-}"
+USER_PASS="${USER_PASS:-}"
+ROOT_PASS="${ROOT_PASS:-}"
+HOME_PASS="${HOME_PASS:-}"
 LOCALE="${LOCALE:-en_US.UTF-8}"
 TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
-DESKTOP="${DESKTOP:-none}"              
-FS_TYPE="${FS_TYPE:-ext4}"              
-CREATE_HOME="${CREATE_HOME:-}"          
-CREATE_SWAP="${CREATE_SWAP:-}"          
+DESKTOP="${DESKTOP:-none}"
+FS_TYPE="${FS_TYPE:-ext4}"
+CREATE_HOME="${CREATE_HOME:-}"
+CREATE_SWAP="${CREATE_SWAP:-}"
 SWAP_SIZE="${SWAP_SIZE:-4G}"
-LUKS_ROOT="${LUKS_ROOT:-}"              
-LUKS_HOME="${LUKS_HOME:-}"              
+LUKS_ROOT="${LUKS_ROOT:-}"
+LUKS_HOME="${LUKS_HOME:-}"
 LUKS_ROOT_NAME="${LUKS_ROOT_NAME:-cryptroot}"
 LUKS_HOME_NAME="${LUKS_HOME_NAME:-crypthome}"
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.5.0}"
 
+# Updated substitute hosts (first changed as requested)
 SUBSTITUTE_HOSTS=(
   "https://bordeaux-us-east-mirror.cbaines.net"
   "https://hydra.gnu.org"
@@ -75,8 +76,8 @@ detect_gui() {
 gui_info() {
   local title="$1" msg="$2"
   if [[ -n "${GUI_TOOL:-}" ]]; then
-    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --info --text "$msg" --timeout=3 >/dev/null 2>&1 || true
-    else zenity --info --title="$title" --text="$msg" --timeout=3 >/dev/null 2>&1 || true; fi
+    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --info --text "$msg" --timeout=4 >/dev/null 2>&1 || true
+    else zenity --info --title="$title" --text="$msg" --timeout=4 >/dev/null 2>&1 || true; fi
   else
     printf '%s: %s\n' "$title" "$msg"
   fi
@@ -349,54 +350,117 @@ cap_end() {
   echo "$val"
 }
 
+# improved ensure_unmounted: finds all mountpoints using the device and unmounts them.
 ensure_unmounted() {
   local dev="$1"
-  # If input is a mount point, unmount it
-  if mountpoint -q "$dev" 2>/dev/null; then
-    umount "$dev" || return 1
+  if [[ -z "$dev" ]]; then return 0; fi
+  # resolve device to canonical path (resolve symlinks)
+  if command -v readlink >/dev/null 2>&1; then
+    dev="$(readlink -f "$dev" || echo "$dev")"
+  fi
+
+  # find all mount targets whose source is this device or begins with this device path
+  local targets
+  # use findmnt if available for robust detection
+  if command -v findmnt >/dev/null 2>&1; then
+    IFS=$'\n' read -r -d '' -a targets < <(findmnt -nr -S "$dev" -o TARGET 2>/dev/null || true; printf '\0')
+  else
+    # fallback parse /proc/mounts
+    IFS=$'\n' read -r -d '' -a targets < <(awk -v d="$dev" '$1==d || index($1,d)==1 {print $2}' /proc/mounts 2>/dev/null || true; printf '\0')
+  fi
+
+  # If no mountpoints found, also check for partitions (e.g., /dev/sdb -> /dev/sdb1)
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    # look for partitions of the device
+    local part
+    for part in $(ls "${dev}"* 2>/dev/null || true); do
+      if [[ -b "$part" ]]; then
+        if command -v findmnt >/dev/null 2>&1; then
+          IFS=$'\n' read -r -d '' -a more < <(findmnt -nr -S "$part" -o TARGET 2>/dev/null || true; printf '\0')
+        else
+          IFS=$'\n' read -r -d '' -a more < <(awk -v p="$part" '$1==p || index($1,p)==1 {print $2}' /proc/mounts 2>/dev/null || true; printf '\0')
+        fi
+        targets+=("${more[@]}")
+      fi
+    done
+  fi
+
+  # remove empty entries
+  local cleaned=()
+  local t
+  for t in "${targets[@]:-}"; do
+    [[ -n "$t" ]] && cleaned+=("$t")
+  done
+  targets=("${cleaned[@]}")
+
+  if [[ ${#targets[@]} -eq 0 ]]; then
+    # nothing mounted with this device
     return 0
   fi
-  # If device is present in /proc/mounts as source, unmount
-  if awk '$1==dev {exit 1}' dev="$dev" /proc/mounts 2>/dev/null; then
-    umount "$dev" || return 1
-  fi
+
+  # attempt orderly unmount: deepest mountpoint first
+  IFS=$'\n' sorted=($(printf '%s\n' "${targets[@]}" | awk '{print length,$0}' | sort -rn | cut -d' ' -f2-))
+  local mp
+  for mp in "${sorted[@]}"; do
+    log "Attempting to unmount $mp (backed by $dev)"
+    if umount "$mp" 2>/dev/null; then
+      log "Unmounted $mp"
+      continue
+    fi
+    log "Standard umount of $mp failed; trying lazy unmount -l"
+    if umount -l "$mp" 2>/dev/null; then
+      log "Lazy unmount succeeded for $mp"
+      continue
+    fi
+    # try to kill processes using the mount (best-effort)
+    if command -v fuser >/dev/null 2>&1; then
+      log "Killing processes using $mp via fuser -k"
+      fuser -k "$mp" >/dev/null 2>&1 || true
+      sleep 0.5
+      if umount "$mp" 2>/dev/null || umount -l "$mp" 2>/dev/null; then
+        log "Unmount after fuser succeeded for $mp"
+        continue
+      fi
+    elif command -v lsof >/dev/null 2>&1; then
+      log "Killing processes using $mp via lsof"
+      lsof +f -- "$mp" 2>/dev/null | awk 'NR>1 {print $2}' | xargs -r kill -TERM >/dev/null 2>&1 || true
+      sleep 0.5
+      if umount "$mp" 2>/dev/null || umount -l "$mp" 2>/dev/null; then
+        log "Unmount after lsof kill succeeded for $mp"
+        continue
+      fi
+    fi
+    log "Failed to unmount $mp (attempts exhausted)"
+    return 1
+  done
+
   return 0
 }
 
 # safe_swapoff: attempt to disable swap in a safe way.
-# Accepts either a block device path (e.g. /dev/sdc3), a UUID string (prefixed with UUID=), a label (LABEL=), or an empty value.
 safe_swapoff() {
   local arg="$1"
   if [[ -z "${arg:-}" ]]; then
     return 0
   fi
 
-  # If arg is a block device and exists
   if [[ -b "$arg" ]]; then
     log "Disabling swap on device $arg"
-    swapoff "$arg" || { log "swapoff $arg failed — trying to disable all swaps as fallback"; swapoff -a || true; }
+    swapoff "$arg" 2>/dev/null || { log "swapoff $arg failed — trying swapoff -a"; swapoff -a || true; }
     return 0
   fi
 
-  # If arg looks like UUID=... or LABEL=...
-  if [[ "$arg" == UUID=* || "$arg" == LABEL=* ]]; then
-    log "Disabling swap by spec $arg"
-    swapoff "$arg" 2>/dev/null || { log "swapoff $arg failed; trying swapoff -a"; swapoff -a || true; }
-    return 0
-  fi
-
-  # If arg is a plain UUID string (40+ hex) or shorter, attempt to find matching swap entry in /proc/swaps
+  # if arg is present in /proc/swaps (maybe UUID path), try to match and disable
   if grep -q "$arg" /proc/swaps 2>/dev/null; then
     local dev
     dev="$(awk -v a="$arg" '$1~a || $2~a {print $1; exit}' /proc/swaps 2>/dev/null || true)"
     if [[ -n "$dev" ]]; then
       log "Disabling swap on discovered device $dev for arg $arg"
-      swapoff "$dev" || swapoff -a || true
+      swapoff "$dev" 2>/dev/null || swapoff -a || true
       return 0
     fi
   fi
 
-  # As a last resort, disable all swaps
   log "swap spec '$arg' not a block device and not found in /proc/swaps; disabling all swaps as fallback"
   swapoff -a || true
   return 0
@@ -406,7 +470,7 @@ safe_swapoff() {
 detect_gui
 
 if [[ "$(id -u)" -ne 0 ]]; then die "Run this script as root"; fi
-log "Starting GNU Guix installer (safe-swapoff enabled)"
+log "Starting GNU Guix installer (improved unmount behavior)"
 
 step_welcome() { gui_info "$WELCOME_TITLE" "$WELCOME_SUB"; }
 
@@ -497,7 +561,11 @@ step_partition_options() {
     fi
     [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
 
-    if ! ensure_unmounted "$ROOT_PART"; then die "Partition $ROOT_PART appears mounted and could not be unmounted"; fi
+    if ! ensure_unmounted "$ROOT_PART"; then
+      log "Attempt to unmount $ROOT_PART failed; re-checking mountpoints for diagnostics"
+      findmnt -S "$ROOT_PART" || true
+      die "Partition $ROOT_PART appears mounted and could not be unmounted"
+    fi
 
     if [[ -z "$ROOT_PASS" ]]; then
       ROOT_PASS="$(gui_password "LUKS Root passphrase" "Enter LUKS passphrase for root")"
@@ -521,7 +589,11 @@ step_partition_options() {
     fi
     [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
 
-    if ! ensure_unmounted "$ROOT_PART"; then die "Partition $ROOT_PART appears mounted and could not be unmounted"; fi
+    if ! ensure_unmounted "$ROOT_PART"; then
+      log "Attempt to unmount $ROOT_PART failed; diagnostics:"
+      findmnt -S "$ROOT_PART" || true
+      die "Partition $ROOT_PART appears mounted and could not be unmounted"
+    fi
 
     case "$FS_TYPE" in ext4) mkfs.ext4 -F "$ROOT_PART" ;; btrfs) mkfs.btrfs -f "$ROOT_PART" ;; xfs) mkfs.xfs -f "$ROOT_PART" ;; *) mkfs.ext4 -F "$ROOT_PART" ;; esac
     MAPPED_ROOT="$ROOT_PART"
@@ -538,7 +610,11 @@ step_partition_options() {
         HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
       fi
       [[ -n "$HOME_PART" && -b "$HOME_PART" ]] || die "Could not detect home partition device"
-      if ! ensure_unmounted "$HOME_PART"; then die "Partition $HOME_PART appears mounted and could not be unmounted"; fi
+      if ! ensure_unmounted "$HOME_PART"; then
+        log "Attempt to unmount $HOME_PART failed; diagnostics:"
+        findmnt -S "$HOME_PART" || true
+        die "Partition $HOME_PART appears mounted and could not be unmounted"
+      fi
       HOME_PASS="${HOME_PASS:-}"
       if [[ -z "$HOME_PASS" ]]; then HOME_PASS="$(gui_password "LUKS Home passphrase" "Enter LUKS passphrase for /home")"; fi
       [[ -n "$HOME_PASS" ]] || die "Empty LUKS passphrase for home"
@@ -556,7 +632,11 @@ step_partition_options() {
         HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
       fi
       [[ -n "$HOME_PART" && -b "$HOME_PART" ]] || die "Could not detect home partition device"
-      if ! ensure_unmounted "$HOME_PART"; then die "Partition $HOME_PART appears mounted and could not be unmounted"; fi
+      if ! ensure_unmounted "$HOME_PART"; then
+        log "Attempt to unmount $HOME_PART failed; diagnostics:"
+        findmnt -S "$HOME_PART" || true
+        die "Partition $HOME_PART appears mounted and could not be unmounted"
+      fi
       case "$FS_TYPE" in ext4) mkfs.ext4 -F "$HOME_PART" ;; btrfs) mkfs.btrfs -f "$HOME_PART" ;; xfs) mkfs.xfs -f "$HOME_PART" ;; esac
       MAPPED_HOME="$HOME_PART"
     fi
@@ -573,7 +653,11 @@ step_partition_options() {
     fi
     [[ -n "$SWAP_PART" ]] || log "Warning: swap partition not detected"
     if [[ -n "$SWAP_PART" ]]; then
-      if ! ensure_unmounted "$SWAP_PART"; then die "Swap partition $SWAP_PART appears mounted and could not be unmounted"; fi
+      if ! ensure_unmounted "$SWAP_PART"; then
+        log "Attempt to unmount $SWAP_PART failed; diagnostics:"
+        findmnt -S "$SWAP_PART" || true
+        die "Swap partition $SWAP_PART appears mounted and could not be unmounted"
+      fi
       mkswap "$SWAP_PART"
     fi
   fi
@@ -651,17 +735,7 @@ step_install() {
     fi
   fi
 
-  # enable swap if present (safe check)
-  if [[ -n "${SWAP_PART:-}" ]]; then
-    if [[ -b "${SWAP_PART}" ]]; then
-      swapon "$SWAP_PART" || true
-    else
-      # try to enable by matching /proc/swaps if a UUID/label was provided earlier
-      if grep -q "$(basename "$SWAP_PART")" /proc/swaps 2>/dev/null; then
-        swapon -a || true
-      fi
-    fi
-  fi
+  if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART}" ]]; then swapon "$SWAP_PART" || true; fi
 
   huser="$(openssl passwd -6 -- "$USER_PASS" 2>/dev/null || true)"
   hroot_hashed="$(openssl passwd -6 -- "$ROOT_PASS" 2>/dev/null || true)"
@@ -766,7 +840,7 @@ EOF
  (services %base-services))
 EOF
 
-  # write channels.scm exactly as requested
+  # write channels.scm exactly as requested by user
   cat > /mnt/etc/channels.scm <<'EOF'
 (use-modules (guix ci))
 
@@ -820,11 +894,9 @@ EOF
 
   # cleanup: use safe_swapoff to avoid invalid-argument errors
   sync
-  # Only attempt to safe_swapoff if SWAP_PART is set or swaps are active
   if [[ -n "${SWAP_PART:-}" ]]; then
     safe_swapoff "$SWAP_PART" || true
   else
-    # If no SWAP_PART variable but swaps active, disable them
     if [ -s /proc/swaps ]; then
       log "No SWAP_PART variable set but swaps are active; disabling all swaps"
       swapoff -a || true
