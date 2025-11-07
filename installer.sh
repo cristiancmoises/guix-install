@@ -764,7 +764,13 @@ EOF
 EOF
 
   cat > /mnt/etc/channels.scm <<'EOF'
-(list (channel (name 'guix) (url "https://codeberg.org/guix/guix.git") (branch "master")))
+(use-modules (guix ci))
+(list
+ (channel-with-substitutes-available 
+  %default-guix-channel 
+  "https://ci.guix.gnu.org")
+
+(channel (name 'guix) (url "https://codeberg.org/guix/guix.git") (branch "master")))
 EOF
 
   gui_info "Guix" "$GUIX_BOOTSTRAP_MSG"
