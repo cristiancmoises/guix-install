@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
-#=============================================================
-#            GNU GUIX FULL OS INSTALLER 
-#=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
 |                    GNU GUIX FULL OS INSTALL                  |
-|                         In Code We Trust                     |
+|                        WITH KERNEL LINUX                     |
 +-------------------------------------------------------------+
 B
 }
@@ -17,11 +14,10 @@ if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root"; exit 1
 fi
 
-# Optional proxies
+# Optional proxies (export before running if needed)
 # export http_proxy="http://proxy:port"
 # export https_proxy="http://proxy:port"
 
-# Safety: require live environment (override with ALLOW_NON_LIVE=YES)
 ALLOW_NON_LIVE="${ALLOW_NON_LIVE:-}"
 if [[ -z "$ALLOW_NON_LIVE" ]]; then
   ROOT_SRC="$(findmnt -n -o SOURCE / || true)"
@@ -32,7 +28,7 @@ if [[ -z "$ALLOW_NON_LIVE" ]]; then
   fi
 fi
 
-# Detect package manager
+# Detect package manager (best-effort)
 PKG=""
 if command -v apt >/dev/null 2>&1; then PKG="apt"
 elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
@@ -44,60 +40,44 @@ if [[ -n "$PKG" ]]; then
   case "$PKG" in
     apt)
       apt update
-      apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs uidmap || true
+      apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs uidmap openssl whois || true
       ;;
     dnf)
-      dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs shadow-utils || true
+      dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs shadow-utils openssl whois || true
       ;;
     pacman)
-      pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs uidmap || true
+      pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs uidmap openssl whois || true
       ;;
   esac
 fi
 
 # Ensure required host commands exist
-for cmd in parted mkfs.ext4 mkfs.xfs mkfs.btrfs mkfs.vfat cryptsetup blkid lsblk partprobe udevadm sgdisk; do
+for cmd in parted mkfs.ext4 mkfs.xfs mkfs.btrfs mkfs.vfat cryptsetup blkid lsblk partprobe udevadm sgdisk openssl; do
   if ! command -v "${cmd%% *}" >/dev/null 2>&1; then
     echo "Required command '${cmd%% *}' missing. Install it and re-run." >&2
     exit 1
   fi
 done
 
-# Ensure uidmap helpers exist
-if ! command -v newuidmap >/dev/null 2>&1 || ! command -v newgidmap >/dev/null 2>&1; then
-  echo "Installing uidmap/newuidmap/newgidmap (best-effort)..."
-  if [[ "$PKG" == "apt" ]]; then apt install -y uidmap || true; fi
-  if [[ "$PKG" == "dnf" ]]; then dnf install -y shadow-utils || true; fi
-  if [[ "$PKG" == "pacman" ]]; then pacman -Sy --noconfirm uidmap || true; fi
-fi
-
 # Fetch helper
 fetch_with_fallback(){
   local out="$1"; shift
   rm -f "$out" 2>/dev/null || true
   for u in "$@"; do
-    echo "[+] Fetching: $u"
     if command -v curl >/dev/null 2>&1; then
-      if curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u"; then return 0; fi
+      curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u" && return 0
     else
-      if wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u"; then return 0; fi
+      wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u" && return 0
     fi
-    echo "[!] Failed: $u"
   done
   return 1
 }
 
-# Bootstrap or ensure Guix CLI matches 1.4.0
+# Try to make guix available (best-effort) but continue even if not installed
 ensure_guix_1_4_0(){
-  if command -v guix >/dev/null 2>&1; then
-    ver="$(guix --version 2>/dev/null || true)"
-    if [[ "$ver" == *"1.4.0"* ]]; then
-      echo "[+] Guix 1.4.0 already available."
-      return 0
-    fi
-    echo "[!] Guix CLI present but not 1.4.0: $ver"
+  if command -v guix >/dev/null 2>&1 && guix --version 2>/dev/null | grep -q "1.4.0"; then
+    return 0
   fi
-
   ARCH="$(uname -m)"
   case "$ARCH" in
     x86_64) BIN="guix-binary-1.4.0.x86_64-linux.tar.xz" ;;
@@ -105,54 +85,37 @@ ensure_guix_1_4_0(){
     i686) BIN="guix-binary-1.4.0.i686-linux.tar.xz" ;;
     *) BIN="" ;;
   esac
-
-  if [[ -z "$BIN" ]]; then
-    echo "No prebuilt guix binary for arch: $ARCH" >&2
-    return 1
-  fi
-
-  # Try multiple mirrors
+  if [[ -z "$BIN" ]]; then return 1; fi
   if fetch_with_fallback "$BIN" \
        "https://ftp.gnu.org/gnu/guix/$BIN" \
-       "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN" \
-       "https://mirror0.nexcess.net/gnu/guix/$BIN"; then
-    echo "[+] Extracting Guix binary $BIN (this will place files under /gnu/store if present)"
-    mkdir -p /gnu /gnu/store /var/guix || true
+       "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN"; then
     tar -xJf "$BIN" -C / || true
     rm -f "$BIN" || true
-    # Source profile if available
     if [[ -f "/root/.config/guix/current/etc/profile" ]]; then
       export GUIX_PROFILE="/root/.config/guix/current"
       export PATH="$GUIX_PROFILE/bin:$PATH"
       # shellcheck disable=SC1090
       . "$GUIX_PROFILE/etc/profile" || true
     fi
-    # verify guix version
-    if command -v guix >/dev/null 2>&1 && guix --version | grep -q "1.4.0"; then
-      echo "[+] Guix 1.4.0 installed/available."
+    if command -v guix >/dev/null 2>&1 && guix --version 2>/dev/null | grep -q "1.4.0"; then
       return 0
-    else
-      echo "[!] Guix binary extraction did not produce guix CLI in PATH."
-      return 1
     fi
-  else
-    echo "[!] Could not fetch guix binary $BIN" >&2
-    return 1
   fi
+  return 1
 }
 
 ensure_guix_1_4_0 || echo "[!] Warning: could not ensure Guix 1.4.0; continuing but guix time-machine may fail."
 
 # -------------------- User prompts --------------------
 echo
-echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX (1.4.0 compatible)."
+echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | sed 's/^/  /'
 read -r -p "Target disk (e.g., /dev/sda or /dev/vda or /dev/nvme0n1): " disk
 [[ -b "$disk" ]] || { echo "Invalid disk: $disk"; exit 1; }
 
 if [[ "$disk" =~ ^/dev/nvme ]]; then disk_base="$disk"; else disk_base="$(echo "$disk" | sed 's/[0-9]*$//')"; fi
 
-if [[ -d /sys/firmware/efi ]]; then default_scheme=1; echo "[+] UEFI detected"; else default_scheme=3; echo "[+] BIOS detected"; fi
+if [[ -d /sys/firmware/efi ]]; then default_scheme=1; else default_scheme=3; fi
 
 echo "Partition schemes:"
 echo " 1) UEFI GPT: EFI + root"
@@ -209,6 +172,13 @@ if (( total_mib < min_required_mib )); then
   exit 1
 fi
 
+# Validate swap size: non-negative and not larger than remaining disk
+if (( swap_mib < 0 )); then swap_mib=0; fi
+if [[ "$mk_swap" =~ ^[yY]$ ]] && (( swap_mib == 0 )); then
+  echo "Swap requested but size parsed as 0. Aborting." >&2
+  exit 1
+fi
+
 # -------------------- Partitioning using parted (robust) --------------------
 if [[ "$scheme" == "3" || "$scheme" == "4" ]]; then
   parted --script "$disk" mklabel msdos
@@ -216,6 +186,7 @@ else
   parted --script "$disk" mklabel gpt
 fi
 
+# create EFI for GPT schemes
 if [[ "$scheme" -eq 1 || "$scheme" -eq 2 ]]; then
   parted --script --align optimal "$disk" mkpart primary 1MiB ${efi_size}MiB
   parted --script "$disk" set 1 esp on
@@ -224,41 +195,57 @@ else
   used_mib=1
 fi
 
+# helper to safely create partition by size in MiB or "rest"
 create_part_mib(){
   local size_mib="$1"
-  local start_mib="$used_mib"
-  local end_spec
   if [[ "$size_mib" == "rest" ]]; then
-    end_spec="100%"
-  else
-    local end_mib=$(( start_mib + size_mib ))
-    end_spec="${end_mib}MiB"
-  fi
-  parted --script --align optimal "$disk" mkpart primary "${start_mib}MiB" "${end_spec}"
-  if [[ "$size_mib" == "rest" ]]; then
+    parted --script --align optimal "$disk" mkpart primary "${used_mib}MiB" 100%
     used_mib=$total_mib
-  else
-    used_mib=$(( used_mib + size_mib ))
+    return 0
   fi
+  if (( size_mib <= 0 )); then
+    echo "Skipping zero-sized partition request" >&2
+    return 1
+  fi
+  local start_mib=$used_mib
+  local end_mib=$(( start_mib + size_mib ))
+  if (( end_mib >= total_mib )); then
+    # create rest instead to avoid off-by-one errors
+    parted --script --align optimal "$disk" mkpart primary "${start_mib}MiB" 100%
+    used_mib=$total_mib
+    return 0
+  fi
+  parted --script --align optimal "$disk" mkpart primary "${start_mib}MiB" "${end_mib}MiB"
+  used_mib=$end_mib
 }
 
+# Allocate partitions according to chosen scheme; ensure swap does not exceed remaining
 if [[ "$scheme" == "1" ]]; then
   remaining_mib=$(( total_mib - used_mib ))
-  if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
-    root_mib=$(( (remaining_mib - swap_mib) / 2 ))
-    home_mib=$(( remaining_mib - swap_mib - root_mib ))
+  if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    if (( swap_mib >= remaining_mib )); then
+      echo "Requested swap (${swap_mib}MiB) too large for disk; reducing to fit remaining space minus 1MiB." >&2
+      swap_mib=$(( remaining_mib - 1 ))
+      if (( swap_mib <= 0 )); then echo "Not enough space for swap; skipping swap." >&2; swap_mib=0; mk_swap="N"; fi
+    fi
+    remaining_mib=$(( remaining_mib - swap_mib ))
+  fi
+
+  if [[ "$sep_home" =~ ^[yY]$ ]] && [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    root_mib=$(( remaining_mib / 2 ))
+    home_mib=$(( remaining_mib - root_mib ))
     create_part_mib "$root_mib"
     create_part_mib "$home_mib"
-    create_part_mib "$swap_mib"
-  elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
-    root_mib=$(( remaining_mib - swap_mib ))
-    create_part_mib "$root_mib"
-    create_part_mib "$swap_mib"
+    if (( swap_mib > 0 )); then create_part_mib "$swap_mib"; fi
   elif [[ "$sep_home" =~ ^[yY]$ ]]; then
     root_mib=$(( remaining_mib / 2 ))
     home_mib=$(( remaining_mib - root_mib ))
     create_part_mib "$root_mib"
     create_part_mib "$home_mib"
+  elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    root_mib=$remaining_mib
+    create_part_mib "$root_mib"
+    if (( swap_mib > 0 )); then create_part_mib "$swap_mib"; fi
   else
     create_part_mib "rest"
   fi
@@ -266,9 +253,13 @@ if [[ "$scheme" == "1" ]]; then
 elif [[ "$scheme" == "2" ]]; then
   remaining_mib=$(( total_mib - used_mib ))
   if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    if (( swap_mib >= remaining_mib )); then
+      swap_mib=$(( remaining_mib - 1 ))
+      if (( swap_mib <= 0 )); then echo "Not enough space for swap; skipping swap." >&2; swap_mib=0; mk_swap="N"; fi
+    fi
     crypt_mib=$(( remaining_mib - swap_mib ))
     create_part_mib "$crypt_mib"
-    create_part_mib "$swap_mib"
+    if (( swap_mib > 0 )); then create_part_mib "$swap_mib"; fi
   else
     create_part_mib "rest"
   fi
@@ -278,6 +269,7 @@ elif [[ "$scheme" == "3" ]]; then
 elif [[ "$scheme" == "4" ]]; then
   if [[ "$mk_swap" =~ ^[yY]$ ]]; then
     crypt_mib=$(( total_mib - swap_mib - 1 ))
+    if (( crypt_mib <= 0 )); then echo "Not enough space for encrypted root"; exit 1; fi
     parted --script --align optimal "$disk" mkpart primary 1MiB ${crypt_mib}MiB
     parted --script --align optimal "$disk" mkpart primary ${crypt_mib}MiB 100%
   else
@@ -289,7 +281,7 @@ partprobe "$disk" || true
 udevadm settle --timeout=10 || true
 sleep 1
 
-# -------------------- Resolve partitions --------------------
+# -------------------- Resolve partition nodes robustly --------------------
 part_node(){
   local idx="$1"
   if [[ -b "${disk}${idx}" ]]; then echo "${disk}${idx}"
@@ -302,15 +294,16 @@ for idx in 1 2 3 4 5 6; do
   if [[ -n "$node" ]]; then parts+=("$node"); fi
 done
 
+# Map roles
 efi=""
 rootp=""; homep=""; swapp=""; cryptp=""
 if [[ "$scheme" == "1" ]]; then
   efi="${parts[0]}"
-  if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
+  if [[ "${#parts[@]}" -ge 4 ]] && [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
     rootp="${parts[1]}"; homep="${parts[2]}"; swapp="${parts[3]}"
-  elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
+  elif [[ "${#parts[@]}" -ge 3 ]] && [[ "$mk_swap" =~ ^[yY]$ ]]; then
     rootp="${parts[1]}"; swapp="${parts[2]}"
-  elif [[ "$sep_home" =~ ^[yY]$ ]]; then
+  elif [[ "${#parts[@]}" -ge 3 ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
     rootp="${parts[1]}"; homep="${parts[2]}"
   else
     rootp="${parts[1]}"
@@ -318,7 +311,7 @@ if [[ "$scheme" == "1" ]]; then
 
 elif [[ "$scheme" == "2" ]]; then
   efi="${parts[0]}"
-  if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+  if [[ "${#parts[@]}" -ge 3 ]] && [[ "$mk_swap" =~ ^[yY]$ ]]; then
     cryptp="${parts[1]}"; swapp="${parts[2]}"
   else
     cryptp="${parts[1]}"
@@ -328,7 +321,7 @@ elif [[ "$scheme" == "2" ]]; then
 elif [[ "$scheme" == "3" ]]; then
   rootp="${parts[0]}"
 elif [[ "$scheme" == "4" ]]; then
-  if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+  if [[ "${#parts[@]}" -ge 2 ]] && [[ "$mk_swap" =~ ^[yY]$ ]]; then
     cryptp="${parts[0]}"; swapp="${parts[1]}"
   else
     cryptp="${parts[0]}"
@@ -338,12 +331,10 @@ fi
 
 if [[ -z "$rootp" ]]; then echo "Root partition not found; aborting." >&2; exit 1; fi
 
-# -------------------- Format and LUKS --------------------
+# -------------------- Format and LUKS handling --------------------
 echo "[+] Formatting filesystems..."
 
-if [[ -n "$efi" && -b "$efi" ]]; then
-  mkfs.vfat -F32 "$efi"
-fi
+if [[ -n "$efi" && -b "$efi" ]]; then mkfs.vfat -F32 "$efi"; fi
 
 if [[ "$scheme" == "2" || "$scheme" == "4" ]]; then
   [[ -b "$cryptp" ]] || { echo "Expected LUKS partition $cryptp not found"; exit 1; }
@@ -351,7 +342,7 @@ if [[ "$scheme" == "2" || "$scheme" == "4" ]]; then
   cryptsetup open "$cryptp" guixroot
   case "$fs_type" in
     ext4) mkfs.ext4 -F /dev/mapper/guixroot ;;
-    btrfs) mkfs.btrfs -f /dev/mapper/guixroot ;;
+    btrfs) mkfs.btrss=$(command -v mkfs.btrfs 2>/dev/null || true); if [[ -n "$mkfs.btrss" ]]; then mkfs.btrfs -f /dev/mapper/guixroot; else mkfs.ext4 -F /dev/mapper/guixroot; fi ;;
     xfs) mkfs.xfs -f /dev/mapper/guixroot ;;
   esac
   rootp="/dev/mapper/guixroot"
@@ -424,25 +415,18 @@ case "$desk_choice" in
   *) echo "Invalid"; exit 1 ;;
 esac
 
-# Hash passwords (sha512)
-huser="$(python3 - <<PY
-import crypt
-print(crypt.crypt("${upass}", crypt.mksalt(crypt.METHOD_SHA512)))
-PY
-)"
-hroot="$(python3 - <<PY
-import crypt
-print(crypt.crypt("${rpass}", crypt.mksalt(crypt.METHOD_SHA512)))
-PY
-)"
+# Replace Python crypt with openssl to avoid DeprecationWarning
+# Use salted SHA-512 hashes for /etc/shadow style
+huser="$(openssl passwd -6 -- "$upass" 2>/dev/null || (echo "$upass" | mkpasswd -m sha-512 -s))"
+hroot="$(openssl passwd -6 -- "$rpass" 2>/dev/null || (echo "$rpass" | mkpasswd -m sha-512 -s))"
 
 # Get UUIDs
 root_uuid=""; home_uuid=""; efi_uuid=""
 if [[ -b "$rootp" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)"; fi
-[[ -n "$homep" && -b "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep" || true)"
-[[ -n "$efi" && -b "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi" || true)"
+if [[ -n "$homep" && -b "$homep" ]]; then home_uuid="$(blkid -s UUID -o value "$homep" || true)"; fi
+if [[ -n "$efi" && -b "$efi" ]]; then efi_uuid="$(blkid -s UUID -o value "$efi" || true)"; fi
 
-# -------------------- Write config.scm (preserve user's use-modules & packages) --------------------
+# -------------------- Write config.scm preserving user's modules and package list --------------------
 mkdir -p /mnt/etc
 
 cat > /mnt/etc/config.scm <<'EOF'
@@ -607,18 +591,17 @@ cat > /mnt/etc/channels.scm <<'EOF'
           "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
-# -------------------- Run Guix init using matching 1.4.0 CLI if available --------------------
+# -------------------- Guix init using local guix (1.4.0 preferred) --------------------
 if command -v guix >/dev/null 2>&1; then
-  # Force time-machine to use channels.scm but prefer binary substitutes
-  echo "[+] Running guix time-machine -- system init (may take long)..."
+  echo "[+] Running guix time-machine -- system init (may take a long time)..."
   GUIX_SUBSTITUTE_URLS="https://hydra.gnu.org https://ci.guix.info" \
     guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt || {
-      echo "[!] guix system init failed. Check guix-daemon logs and /tmp/guix-init.log" >&2
+      echo "[!] guix system init failed. Check guix-daemon logs." >&2
       exit 1
     }
 else
-  echo "[!] Guix CLI not available. Attempted bootstrap may have failed."
-  echo "Please ensure guix 1.4.0 is installed before running the installer."
+  echo "[!] Guix CLI not available. Attempted bootstrap may have failed." >&2
+  echo "Please ensure guix 1.4.0 is installed before running the installer." >&2
   exit 1
 fi
 
