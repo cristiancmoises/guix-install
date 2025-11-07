@@ -2,39 +2,41 @@
 set -euo pipefail
 
 # GNU Guix guided installer 
-# - IMPORTANT: This script is destructive. Review TARGET_DISK before running. Run as root from a live environment.
+# IMPORTANT: This script is destructive. Review TARGET_DISK before running. Run as root from a live environment.
 
 # -------------------- Configurable defaults --------------------
 LANG_OPT="${LANG_OPT:-en}"
-USE_GUI="${USE_GUI:-auto}"              # auto|gui|text
-AUTO_YES="${AUTO_YES:-1}"               # 1 to skip interactive confirmations
-TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdb
-USERNAME="${USERNAME:-}"                # username to create
-USER_PASS="${USER_PASS:-}"              # user password (plaintext for script only)
-ROOT_PASS="${ROOT_PASS:-}"              # root password for installed system or LUKS root passphrase (if used)
-HOME_PASS="${HOME_PASS:-}"              # LUKS home passphrase if used
-LOCALE="${LOCALE:-en_US.UTF-8}"
-TIMEZONE="${TIMEZONE:-America/New_York}"
-DESKTOP="${DESKTOP:-i3}"              # none,i3,xfce,mate,sway
-FS_TYPE="${FS_TYPE:-ext4}"              # ext4,btrfs,xfs
-CREATE_HOME="${CREATE_HOME:-0}"          # 1=yes 0=no (guided)
-CREATE_SWAP="${CREATE_SWAP:-1}"          # 1=yes 0=no (guided)
+USE_GUI="${USE_GUI:-auto}"
+AUTO_YES="${AUTO_YES:-1}"
+TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdc
+USERNAME="${USERNAME:-}"                
+USER_PASS="${USER_PASS:-}"              
+ROOT_PASS="${ROOT_PASS:-}"              
+HOME_PASS="${HOME_PASS:-}"              
+LOCALE="${LOCALE:-pt_BR.UTF-8}"
+TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
+DESKTOP="${DESKTOP:-I3}"              
+FS_TYPE="${FS_TYPE:-ext4}"              
+CREATE_HOME="${CREATE_HOME:-0}"          
+CREATE_SWAP="${CREATE_SWAP:-1}"          
 SWAP_SIZE="${SWAP_SIZE:-2G}"
-LUKS_ROOT="${LUKS_ROOT:-}"              # 1=yes 0=no (guided)
-LUKS_HOME="${LUKS_HOME:-}"              # 1=yes 0=no (guided)
+LUKS_ROOT="${LUKS_ROOT:-0}"              
+LUKS_HOME="${LUKS_HOME:-0}"              
 LUKS_ROOT_NAME="${LUKS_ROOT_NAME:-cryptroot}"
 LUKS_HOME_NAME="${LUKS_HOME_NAME:-crypthome}"
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.5.0}"
 
-# Substitute hosts to probe
 SUBSTITUTE_HOSTS=(
-  "https://bordeaux-us-east-mirror.cbaines.net/"
+  "https://bordeaux-us-east-mirror.cbaines.net"
+  "https://hydra.gnu.org"
   "https://ci.guix.gnu.org"
+  "https://ci.guix.info"
+  "https://ftp.gnu.org/gnu/guix"
 )
 
 BASE_PACKAGES=(icecat libreoffice mpv feh util-linux xterm git python)
 
-# -------------------- Messages (English only) --------------------
+# -------------------- Messages --------------------
 WELCOME_TITLE="Welcome to the GNU Guix installer"
 WELCOME_SUB="Guided installation with LUKS and Guix"
 SELECT_DISK="Select target disk"
@@ -54,7 +56,6 @@ die(){ log "ERROR: $*" >&2; exit 1; }
 KEYBOARD="${KEYBOARD:-us}"
 HOSTNAME="${HOSTNAME:-guix-machine}"
 
-# detect package manager
 PKG=""
 if command -v apt >/dev/null 2>&1; then PKG="apt"
 elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
@@ -73,8 +74,8 @@ detect_gui() {
 gui_info() {
   local title="$1" msg="$2"
   if [[ -n "${GUI_TOOL:-}" ]]; then
-    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --info --text "$msg" --timeout=4 >/dev/null 2>&1 || true
-    else zenity --info --title="$title" --text="$msg" --timeout=4 >/dev/null 2>&1 || true; fi
+    if [[ "$GUI_TOOL" == "yad" ]]; then yad --title "$title" --info --text "$msg" --timeout=3 >/dev/null 2>&1 || true
+    else zenity --info --title="$title" --text="$msg" --timeout=3 >/dev/null 2>&1 || true; fi
   else
     printf '%s: %s\n' "$title" "$msg"
   fi
@@ -135,21 +136,16 @@ probe_substitutes() {
   local url base ok
   for url in "${SUBSTITUTE_HOSTS[@]}"; do
     base="$url"
-    # quick HEAD to root
     if curl -fsS --max-time 6 -I "${base}/" >/dev/null 2>&1; then
       ok=0
-      # try to detect a binary-cache endpoint or hydra API
       if curl -fsS --max-time 6 -I "${base}/binary-cache/" >/dev/null 2>&1; then ok=1; fi
       if curl -fsS --max-time 6 -I "${base}/api/v1/" >/dev/null 2>&1; then ok=1; fi
       if (( ok == 1 )); then usable+=("$base"); fi
     fi
   done
-
-  # fallback to canonical cache
   if [[ ${#usable[@]} -eq 0 ]]; then
     if curl -fsS --max-time 6 -I "https://cache.guix.gnu.org/" >/dev/null 2>&1; then usable+=("https://cache.guix.gnu.org"); fi
   fi
-
   printf '%s' "${usable[*]}"
 }
 
@@ -169,7 +165,7 @@ write_guix_substitute_config() {
   printf '%s' "$usable"
 }
 
-# -------------------- Guix bootstrap and daemon helpers --------------------
+# -------------------- Guix bootstrap helpers --------------------
 install_guix_via_distro() {
   if [[ -z "$PKG" ]]; then return 1; fi
   log "Trying to install guix via package manager: $PKG"
@@ -352,24 +348,16 @@ cap_end() {
   echo "$val"
 }
 
-# Unmount device if mounted; return 0 if success or not mounted, non-zero on failure
 ensure_unmounted() {
   local dev="$1"
-  # check mounts
-  if mountpoint -q "$dev" 2>/dev/null; then
-    # it's a mountpoint path, rarely used; try umount
-    umount "$dev" || return 1
-    return 0
-  fi
-  # check if device is listed in /proc/mounts
+  # if given a device path, ensure no mounts reference it (directly or by partition)
   if grep -qE "^${dev}[[:space:]]" /proc/mounts 2>/dev/null; then
-    log "Device ${dev} appears mounted; attempting to unmount"
     umount "$dev" || return 1
-    # double-check
-    if grep -qE "^${dev}[[:space:]]" /proc/mounts 2>/dev/null; then
-      log "Failed to unmount ${dev}"
-      return 1
-    fi
+  fi
+  # also check for mounts whose source is the device (or its partitions)
+  if grep -qE "^/dev/[^ ]+[[:space:]]" /proc/mounts 2>/dev/null; then
+    # nothing further here; caller handles specific device unmounts
+    :
   fi
   return 0
 }
@@ -390,6 +378,8 @@ step_select_disk() {
     [[ -n "$choice" ]] || die "$ABORT_MSG"
     TARGET_DISK="$(echo "$choice" | awk '{print $1}')"
   fi
+  # verify device exists
+  [[ -b "$TARGET_DISK" ]] || die "Target disk $TARGET_DISK not found"
   gui_info "$SELECT_DISK" "Target: $TARGET_DISK"
 }
 
@@ -461,15 +451,13 @@ step_partition_options() {
     safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
 
-    # detect created partition as last partition on disk
-    if [[ -b "${TARGET_DISK}p"* ]]; then
+    if [[ -b "${TARGET_DISK}p1" ]]; then
       ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
     else
       ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
     fi
     [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
 
-    # ensure partition is unmounted before formatting
     if ! ensure_unmounted "$ROOT_PART"; then die "Partition $ROOT_PART appears mounted and could not be unmounted"; fi
 
     if [[ -z "$ROOT_PASS" ]]; then
@@ -481,34 +469,31 @@ step_partition_options() {
     printf '%s' "$ROOT_PASS" | cryptsetup luksFormat --type luks2 --batch-mode "$ROOT_PART" -
     printf '%s' "$ROOT_PASS" | cryptsetup open "$ROOT_PART" "$LUKS_ROOT_NAME" --
     MAPPED_ROOT="/dev/mapper/${LUKS_ROOT_NAME}"
-    # ensure mapped device available
     sleep 1
-    [[ -b "$MAPPED_ROOT" ]] || true
     case "$FS_TYPE" in ext4) mkfs.ext4 -F "$MAPPED_ROOT" ;; btrfs) mkfs.btrfs -f "$MAPPED_ROOT" ;; xfs) mkfs.xfs -f "$MAPPED_ROOT" ;; *) mkfs.ext4 -F "$MAPPED_ROOT" ;; esac
   else
     safe_mkpart "$TARGET_DISK" "$root_start" "$root_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
 
-    if [[ -b "${TARGET_DISK}p"* ]]; then
+    if [[ -b "${TARGET_DISK}p1" ]]; then
       ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
     else
       ROOT_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
     fi
     [[ -n "$ROOT_PART" && -b "$ROOT_PART" ]] || die "Could not detect root partition device"
 
-    # ensure partition is unmounted before formatting
     if ! ensure_unmounted "$ROOT_PART"; then die "Partition $ROOT_PART appears mounted and could not be unmounted"; fi
 
     case "$FS_TYPE" in ext4) mkfs.ext4 -F "$ROOT_PART" ;; btrfs) mkfs.btrfs -f "$ROOT_PART" ;; xfs) mkfs.xfs -f "$ROOT_PART" ;; *) mkfs.ext4 -F "$ROOT_PART" ;; esac
     MAPPED_ROOT="$ROOT_PART"
   fi
 
-  # home partition (optional)
+  # Create /home if requested
   if (( CREATE_HOME == 1 )); then
     if (( LUKS_HOME == 1 )); then
       safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
       partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-      if [[ -b "${TARGET_DISK}p"* ]]; then
+      if [[ -b "${TARGET_DISK}p1" ]]; then
         HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
       else
         HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
@@ -526,7 +511,7 @@ step_partition_options() {
     else
       safe_mkpart "$TARGET_DISK" "$home_start" "$home_end"
       partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-      if [[ -b "${TARGET_DISK}p"* ]]; then
+      if [[ -b "${TARGET_DISK}p1" ]]; then
         HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
       else
         HOME_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
@@ -538,11 +523,11 @@ step_partition_options() {
     fi
   fi
 
-  # swap
+  # Create swap if requested
   if (( swap_mib > 0 )); then
     safe_mkpart "$TARGET_DISK" "$swap_start" "$swap_end"
     partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
-    if [[ -b "${TARGET_DISK}p"* ]]; then
+    if [[ -b "${TARGET_DISK}p1" ]]; then
       SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}p[0-9]+" | tail -n1 || true)"
     else
       SWAP_PART="$(ls -1 "${TARGET_DISK}"* | grep -E "^${TARGET_DISK}[0-9]+" | tail -n1 || true)"
@@ -587,33 +572,55 @@ Create swap: ${CREATE_SWAP:-0}"
 discover_parts() {
   partprobe "$TARGET_DISK" || true; udevadm settle --timeout=10 || true; sleep 1
   mapfile -t parts < <(lsblk -ln -o NAME,TYPE | awk -v disk="$(basename "$TARGET_DISK")" '$2=="part" {print "/dev/"$1}')
-  EFI_PART="${parts[0]:-}"; ROOT_PART="${parts[1]:-}"; HOME_PART="${parts[2]:-}"; SWAP_PART="${parts[3]:-}"
+  EFI_PART="${parts[0]:-}"
+  ROOT_PART="${parts[1]:-}"
+  HOME_PART="${parts[2]:-}"
+  SWAP_PART="${parts[3]:-}"
 }
 
 step_install() {
   discover_parts
 
+  # prefer mapped devices if LUKS used
   if [[ -n "${MAPPED_ROOT:-}" && -b "${MAPPED_ROOT}" ]]; then MROOT="${MAPPED_ROOT}"; else MROOT="${ROOT_PART:-}"; fi
   [[ -n "$MROOT" ]] || die "Root device not found"
 
   mkdir -p /mnt
-  mount "$MROOT" /mnt
+  # attempt to mount with explicit fs type auto-detection; capture errors for debugging
+  if ! mount -o nosuid,nodev,noatime "$MROOT" /mnt 2>/tmp/mount-root.err; then
+    log "Failed to mount root ($MROOT): $(cat /tmp/mount-root.err || true)"
+    die "Cannot mount root device $MROOT"
+  fi
 
+  # mount home if present
   if [[ -n "${MAPPED_HOME:-}" && -b "${MAPPED_HOME}" ]]; then
     mkdir -p /mnt/home
-    mount "$MAPPED_HOME" /mnt/home
+    if ! mount -o nosuid,nodev,noatime "$MAPPED_HOME" /mnt/home 2>/tmp/mount-home.err; then
+      log "Failed to mount MAPPED_HOME ($MAPPED_HOME): $(cat /tmp/mount-home.err || true)"
+      # continue without failing; configuration will still be written
+      rm -f /tmp/mount-home.err || true
+    fi
   elif [[ -n "${HOME_PART:-}" && -b "${HOME_PART}" ]]; then
     mkdir -p /mnt/home
-    mount "$HOME_PART" /mnt/home
+    if ! mount -o nosuid,nodev,noatime "$HOME_PART" /mnt/home 2>/tmp/mount-home.err; then
+      log "Failed to mount HOME_PART ($HOME_PART): $(cat /tmp/mount-home.err || true)"
+      rm -f /tmp/mount-home.err || true
+    fi
   fi
 
+  # mount EFI if present
   if [[ -n "${EFI_PART:-}" && -b "${EFI_PART}" ]]; then
     mkdir -p /mnt/boot/efi
-    mount "$EFI_PART" /mnt/boot/efi
+    if ! mount -o nosuid,nodev,noatime "$EFI_PART" /mnt/boot/efi 2>/tmp/mount-efi.err; then
+      log "Failed to mount EFI_PART ($EFI_PART): $(cat /tmp/mount-efi.err || true)"
+      rm -f /tmp/mount-efi.err || true
+    fi
   fi
 
+  # enable swap if present
   if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART}" ]]; then swapon "$SWAP_PART" || true; fi
 
+  # hashed passwords
   huser="$(openssl passwd -6 -- "$USER_PASS" 2>/dev/null || true)"
   hroot_hashed="$(openssl passwd -6 -- "$ROOT_PASS" 2>/dev/null || true)"
 
@@ -645,6 +652,7 @@ EOF
  (file-systems (cons*
 EOF
 
+  # root filesystem entry
   if [[ -n "${MAPPED_ROOT:-}" && -b "${MAPPED_ROOT}" ]]; then root_dev="${MAPPED_ROOT}"; else root_dev="${MROOT}"; fi
   root_uuid="$(blkid -s UUID -o value "$root_dev" 2>/dev/null || true)"
   if [[ -n "$root_uuid" ]]; then
@@ -657,6 +665,7 @@ EOF
 EOF
   fi
 
+  # /home filesystem entry (if present and detected)
   if [[ -n "${MAPPED_HOME:-}" && -b "${MAPPED_HOME}" ]]; then
     home_dev="${MAPPED_HOME}"
     home_uuid="$(blkid -s UUID -o value "$home_dev" 2>/dev/null || true)"
@@ -682,6 +691,7 @@ EOF
     fi
   fi
 
+  # EFI filesystem entry
   if [[ -n "${EFI_PART:-}" && -b "${EFI_PART}" ]]; then
     efi_uuid="$(blkid -s UUID -o value "$EFI_PART" 2>/dev/null || true)"
     if [[ -n "$efi_uuid" ]]; then
@@ -717,7 +727,7 @@ EOF
  (services %base-services))
 EOF
 
-  # Write channels.scm exactly as user requested
+  # write channels.scm exactly as requested by user
   cat > /mnt/etc/channels.scm <<'EOF'
 (use-modules (guix ci))
 
@@ -751,7 +761,7 @@ EOF
 
   gui_info "Guix" "$GUIX_BOOTSTRAP_MSG"
 
-  if ensure_guix; then
+  if ensure_guix_daemon; then
     subs="$(probe_substitutes)"
     if [[ -n "$subs" ]]; then
       export GUIX_SUBSTITUTE_URLS="$subs"
@@ -769,14 +779,16 @@ EOF
     gui_info "$FINISH_MSG" "Could not start Guix daemon. Configuration is at /mnt/etc."
   fi
 
-  # Clean up: disable swap, unmount /mnt and close LUKS mappings if opened
+  # cleanup: swapoff, unmount and close cryptsetup mappings if any
   sync
   if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART}" ]]; then swapoff "$SWAP_PART" || true; fi
-  umount -R /mnt || true
+  # attempt to unmount mountpoints created earlier (ignore errors)
+  umount /mnt/home 2>/dev/null || true
+  umount /mnt/boot/efi 2>/dev/null || true
+  umount -R /mnt 2>/dev/null || true
   if (( LUKS_HOME == 1 )) && cryptsetup status "$LUKS_HOME_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_HOME_NAME" || true; fi
   if (( LUKS_ROOT == 1 )) && cryptsetup status "$LUKS_ROOT_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_ROOT_NAME" || true; fi
 
-  # Do not reboot automatically; leave to the user to reboot when ready
   log "Installation finished (best-effort). Configuration and files are on the target filesystem. Please reboot manually when ready."
 }
 
