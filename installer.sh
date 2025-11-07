@@ -1,28 +1,29 @@
 #!/usr/bin/env bash
 #=============================================================
-#                 GNU GUIX FULL OS INSTALLER 
+#            GNU GUIX FULL OS INSTALLER (parted-first, fixed)
+#       Preserves user's modules, packages and channels lists
+#       Robust partitioning via parted, reliable mount checks,
+#       LUKS support, and Guix bootstrap (best-effort).
 #=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
 |                    GNU GUIX FULL OS INSTALL                  |
-|                        In Code We Trust                      |
+|                                                              |
 +-------------------------------------------------------------+
 B
 }
 banner
 
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Run as root"
-  exit 1
+  echo "Run as root"; exit 1
 fi
 
 # Optional proxies (export before running if needed)
 # export http_proxy="http://proxy:port"
 # export https_proxy="http://proxy:port"
 
-# Ensure live environment by default (override with ALLOW_NON_LIVE=YES)
 ALLOW_NON_LIVE="${ALLOW_NON_LIVE:-}"
 if [[ -z "$ALLOW_NON_LIVE" ]]; then
   ROOT_SRC="$(findmnt -n -o SOURCE / || true)"
@@ -33,68 +34,35 @@ if [[ -z "$ALLOW_NON_LIVE" ]]; then
   fi
 fi
 
-# Detect package manager (best-effort)
+# detect package manager (best-effort)
 PKG=""
 if command -v apt >/dev/null 2>&1; then PKG="apt"
 elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
 elif command -v pacman >/dev/null 2>&1; then PKG="pacman"
 fi
 
-# Try to install helper packages if package manager is available (best-effort)
+# ensure tools (best-effort)
 if [[ -n "$PKG" ]]; then
-  echo "[+] Ensuring common helper packages are present (best-effort)..."
   case "$PKG" in
-    apt)
-      apt update
-      apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs uidmap || true
-      ;;
-    dnf)
-      dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs shadow-utils || true
-      ;;
-    pacman)
-      pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs uidmap || true
-      ;;
+    apt) apt update && apt install -y parted e2fsprogs xfsprogs btrfs-progs dosfstools udiskie util-linux cryptsetup uidmap curl wget ca-certificates gdisk || true ;;
+    dnf) dnf install -y parted e2fsprogs xfsprogs btrfs-progs dosfstools util-linux cryptsetup shadow-utils curl wget ca-certificates gdisk || true ;;
+    pacman) pacman -Sy --noconfirm parted e2fsprogs xfsprogs btrfs-progs dosfstools util-linux cryptsetup uidmap curl wget ca-certificates gdisk || true ;;
   esac
 fi
 
-# Verify essential commands exist; fail early with clear message
-for cmd in parted cryptsetup blkid lsblk sgdisk; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Required command '$cmd' not found. Install it in the live environment and re-run." >&2
+# ensure required commands
+for cmd in parted mkfs.ext4 mkfs.xfs mkfs.btrfs mkfs.vfat cryptsetup blkid lsblk partprobe udevadm sgdisk; do
+  if ! command -v "${cmd%% *}" >/dev/null 2>&1; then
+    echo "Required command '${cmd%% *}' missing. Install it and re-run." >&2
     exit 1
   fi
 done
 
-# Check for newuidmap/newgidmap (uidmap)
-if ! command -v newgidmap >/dev/null 2>&1 || ! command -v newuidmap >/dev/null 2>&1; then
-  echo "Warning: newgidmap/newuidmap missing. Attempting best-effort install."
-  if [[ "$PKG" == "apt" ]]; then apt install -y uidmap || true; fi
-  if [[ "$PKG" == "dnf" ]]; then dnf install -y shadow-utils || true; fi
-  if [[ "$PKG" == "pacman" ]]; then pacman -Sy --noconfirm uidmap || true; fi
-  if ! command -v newgidmap >/dev/null 2>&1 || ! command -v newuidmap >/dev/null 2>&1; then
-    echo "newgidmap/newuidmap still missing. Some operations may fail; install uidmap in the live image and re-run." >&2
-  fi
-fi
+# fetch helper
+fetch_with_fallback(){ local out="$1"; shift; rm -f "$out" 2>/dev/null || true; for u in "$@"; do if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u" && return 0; else wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u" && return 0; fi; done; return 1; }
 
-# Robust fetch helper
-fetch_with_fallback() {
-  local out="$1"; shift
-  rm -f "$out" 2>/dev/null || true
-  for u in "$@"; do
-    echo "[+] Fetching: $u"
-    if command -v curl >/dev/null 2>&1; then
-      if curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u"; then return 0; fi
-    else
-      if wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u"; then return 0; fi
-    fi
-    echo "[!] Failed: $u"
-  done
-  return 1
-}
-
-# Try to make guix available (best-effort) but continue even if not installed
+# attempt guix CLI availability (best-effort)
 if ! command -v guix >/dev/null 2>&1; then
-  echo "[+] Guix not found; attempting to fetch installer (best-effort)"
   if fetch_with_fallback guix-install.sh \
        "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh" \
        "https://git.savannah.gnu.org/git/guix.git/plain/etc/guix-install.sh"; then
@@ -102,8 +70,8 @@ if ! command -v guix >/dev/null 2>&1; then
     ./guix-install.sh || true
     rm -f guix-install.sh || true
   fi
-  if [[ -f "/root/.config/guix/current/etc/profile" ]]; then
-    export GUIX_PROFILE="/root/.config/guix/current"
+  if [[ -f /root/.config/guix/current/etc/profile ]]; then
+    export GUIX_PROFILE=/root/.config/guix/current
     export PATH="$GUIX_PROFILE/bin:$PATH"
     # shellcheck disable=SC1090
     . "$GUIX_PROFILE/etc/profile" || true
@@ -114,20 +82,21 @@ fi
 echo
 echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | sed 's/^/  /'
-read -r -p "Target disk (e.g., /dev/sda or /dev/nvme0n1): " disk
+read -r -p "Target disk (e.g., /dev/sda or /dev/vda or /dev/nvme0n1): " disk
 [[ -b "$disk" ]] || { echo "Invalid disk: $disk"; exit 1; }
 
-# derive disk_base for BIOS grub install
+# derive disk_base for grub target if needed
 if [[ "$disk" =~ ^/dev/nvme ]]; then disk_base="$disk"; else disk_base="$(echo "$disk" | sed 's/[0-9]*$//')"; fi
 
-# Detect firmware
+# detect firmware
 if [[ -d /sys/firmware/efi ]]; then default_scheme=1; echo "[+] UEFI detected"; else default_scheme=3; echo "[+] BIOS detected"; fi
 
 echo "Partition schemes:"
 echo " 1) UEFI GPT: EFI + root"
 echo " 2) UEFI GPT + LUKS: EFI + encrypted root"
 echo " 3) BIOS MBR: bootable root"
-read -r -p "Choice (1/2/3) [${default_scheme}]: " scheme; scheme="${scheme:-$default_scheme}"
+echo " 4) BIOS MBR + LUKS: boot + encrypted root"
+read -r -p "Choice (1/2/3/4) [${default_scheme}]: " scheme; scheme="${scheme:-$default_scheme}"
 
 echo "Filesystem options: 1=ext4 2=btrfs 3=xfs"
 read -r -p "Root filesystem (1/2/3) [1]: " fs_choice; fs_choice="${fs_choice:-1}"
@@ -146,18 +115,22 @@ read -r -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
 [[ "$confirm" = "YES I WANT GUIX" ]] || { echo "Aborted."; exit 1; }
 
 # -------------------- Sanity checks --------------------
-# Robust mount check: ensure no partitions from target disk are mounted
-mounted_on_disk() {
+mounted_on_disk(){
   local base="$(basename "$disk")"
-  lsblk -nr -o NAME,MOUNTPOINT | grep -E "^${base}[0-9p]*" | awk '$2 != ""' | grep -q . || return 1
+  while read -r name mnt; do
+    [[ -z "$name" ]] && continue
+    if [[ "$name" =~ ^"$base" ]]; then
+      if [[ -n "$mnt" ]]; then return 0; fi
+    fi
+  done < <(lsblk -nr -o NAME,MOUNTPOINT)
+  return 1
 }
 if mounted_on_disk; then
   echo "One or more partitions on $disk are mounted. Unmount them and re-run." >&2
   exit 1
 fi
 
-# helper to convert sizes to MiB
-to_mib() {
+to_mib(){
   local s="$1"
   if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 ))
   elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then echo "${BASH_REMATCH[1]}"
@@ -165,7 +138,6 @@ to_mib() {
 }
 if [[ "$mk_swap" =~ ^[yY]$ ]]; then swap_mib=$(to_mib "$swap_size"); else swap_mib=0; fi
 
-# disk size in MiB and basic sanity
 total_mib=$(( $(blockdev --getsize64 "$disk") / 1024 / 1024 ))
 efi_size=512
 min_required_mib=$(( 2048 + efi_size ))
@@ -174,197 +146,161 @@ if (( total_mib < min_required_mib )); then
   exit 1
 fi
 
-# -------------------- sgdisk helper (sequential create) --------------------
-# This helper will create partitions sequentially using sgdisk with start=0
-# so the kernel/gdisk chooses the next available start. This avoids calculating
-# exact start offsets and prevents "size too big" errors when previous partitions
-# consumed unexpected space.
-add_gpt_part() {
-  local _start_mib="$1"    # legacy param (ignored for start); keep for compatibility
-  local size_mib="$2"      # size in MiB or "*" for rest
-  local type="$3"          # hex type code (ef00, 8300, 8200, etc.)
-  local name="$4"
-  if [[ "$size_mib" == "*" ]]; then
-    # create partition that occupies remaining space
-    sgdisk --new=0:0:0 --typecode=0:"$type" --change-name=0:"$name" "$disk"
+# -------------------- Partitioning using parted (robust) --------------------
+# Use gpt for UEFI schemes and msdos for BIOS MBR schemes
+if [[ "$scheme" == "3" || "$scheme" == "4" ]]; then
+  parted --script "$disk" mklabel msdos
+else
+  parted --script "$disk" mklabel gpt
+fi
+
+# create EFI for GPT schemes
+if [[ "$scheme" -eq 1 || "$scheme" -eq 2 ]]; then
+  parted --script --align optimal "$disk" mkpart primary 1MiB ${efi_size}MiB
+  parted --script "$disk" set 1 esp on
+  used_mib=$efi_size
+else
+  used_mib=1
+fi
+
+# helper to create partition by size in MiB or "rest"
+create_part_mib(){
+  local size_mib="$1"
+  local start_mib="$used_mib"
+  local end_spec
+  if [[ "$size_mib" == "rest" ]]; then
+    end_spec="100%"
   else
-    # create next available partition with given size (use +<N>M)
-    sgdisk --new=0:0:+${size_mib}M --typecode=0:"$type" --change-name=0:"$name" "$disk"
+    local end_mib=$(( start_mib + size_mib ))
+    end_spec="${end_mib}MiB"
+  fi
+  parted --script --align optimal "$disk" mkpart primary "${start_mib}MiB" "${end_spec}"
+  if [[ "$size_mib" == "rest" ]]; then
+    used_mib=$total_mib
+  else
+    used_mib=$(( used_mib + size_mib ))
   fi
 }
 
-# -------------------- Partitioning --------------------
-if command -v sgdisk >/dev/null 2>&1; then
-  echo "[+] Using sgdisk (gdisk) for partitioning"
-  sgdisk --zap-all "$disk"
-
-  if [[ "$scheme" == "1" ]]; then
-    if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
-      usable=$(( total_mib - efi_size - swap_mib ))
-      root_mib=$(( usable / 2 )); home_mib=$(( usable - root_mib ))
-      add_gpt_part 1 511 ef00 "EFI"
-      add_gpt_part 512 "$root_mib" 8300 "ROOT"
-      add_gpt_part 0 "$home_mib" 8300 "HOME"
-      add_gpt_part 0 "$swap_mib" 8200 "SWAP"
-    elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
-      root_mib=$(( total_mib - efi_size - swap_mib ))
-      add_gpt_part 1 511 ef00 "EFI"
-      add_gpt_part 512 "$root_mib" 8300 "ROOT"
-      add_gpt_part 0 "$swap_mib" 8200 "SWAP"
-    elif [[ "$sep_home" =~ ^[yY]$ ]]; then
-      usable=$(( total_mib - efi_size ))
-      root_mib=$(( usable / 2 )); home_mib=$(( usable - root_mib ))
-      add_gpt_part 1 511 ef00 "EFI"
-      add_gpt_part 512 "$root_mib" 8300 "ROOT"
-      add_gpt_part 0 "$home_mib" 8300 "HOME"
-    else
-      root_mib=$(( total_mib - efi_size ))
-      add_gpt_part 1 511 ef00 "EFI"
-      add_gpt_part 512 "$root_mib" 8300 "ROOT"
-    fi
-
-  elif [[ "$scheme" == "2" ]]; then
-    if [[ "$mk_swap" =~ ^[yY]$ ]]; then
-      crypt_mib=$(( total_mib - efi_size - swap_mib ))
-      add_gpt_part 1 511 ef00 "EFI"
-      add_gpt_part 512 "$crypt_mib" 8300 "CRYPTROOT"
-      add_gpt_part 0 "$swap_mib" 8200 "SWAP"
-    else
-      crypt_mib=$(( total_mib - efi_size ))
-      add_gpt_part 1 511 ef00 "EFI"
-      add_gpt_part 512 "$crypt_mib" 8300 "CRYPTROOT"
-    fi
-
+# Allocate partitions according to chosen scheme
+if [[ "$scheme" == "1" ]]; then
+  remaining_mib=$(( total_mib - used_mib ))
+  if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
+    root_mib=$(( (remaining_mib - swap_mib) / 2 ))
+    home_mib=$(( remaining_mib - swap_mib - root_mib ))
+    create_part_mib "$root_mib"
+    create_part_mib "$home_mib"
+    create_part_mib "$swap_mib"
+  elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    root_mib=$(( remaining_mib - swap_mib ))
+    create_part_mib "$root_mib"
+    create_part_mib "$swap_mib"
+  elif [[ "$sep_home" =~ ^[yY]$ ]]; then
+    root_mib=$(( remaining_mib / 2 ))
+    home_mib=$(( remaining_mib - root_mib ))
+    create_part_mib "$root_mib"
+    create_part_mib "$home_mib"
   else
-    echo "[+] BIOS scheme selected - using parted for msdos partitioning"
-    parted --script "$disk" mklabel msdos
-    if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
-      usable=$(( total_mib - swap_mib )); root_mib=$(( usable / 2 )); home_mib=$(( usable - root_mib ))
-      parted --script --align optimal "$disk" mkpart primary 1MiB "${root_mib}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${root_mib}MiB" "$((root_mib + home_mib))MiB"
-      parted --script --align optimal "$disk" mkpart primary "$((root_mib + home_mib))MiB" 100%
-    elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
-      root_mib=$(( total_mib - swap_mib ))
-      parted --script --align optimal "$disk" mkpart primary 1MiB "${root_mib}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${root_mib}MiB" 100%
-    elif [[ "$sep_home" =~ ^[yY]$ ]]; then
-      root_mib=$(( total_mib / 2 ))
-      parted --script --align optimal "$disk" mkpart primary 1MiB "${root_mib}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${root_mib}MiB" 100%
-    else
-      parted --script --align optimal "$disk" mklabel msdos
-      parted --script --align optimal "$disk" mkpart primary 1MiB 100%
-      parted --script "$disk" set 1 boot on
-    fi
+    create_part_mib "rest"
   fi
 
-  partprobe "$disk" || true
-  udevadm settle --timeout=10 || true
-
-  # Wait for partition device nodes to appear (max 30s)
-  wait_for_partitions() {
-    local max_wait=30
-    local i=0
-    while (( i < max_wait )); do
-      sleep 1
-      i=$((i+1))
-      pcount=0
-      for idx in 1 2 3 4; do
-        if [[ -b "${disk}${idx}" ]] || [[ -b "${disk}p${idx}" ]]; then pcount=$((pcount+1)); fi
-      done
-      if (( pcount > 0 )); then return 0; fi
-    done
-    return 1
-  }
-
-  if ! wait_for_partitions; then
-    echo "Warning: partition device nodes did not appear promptly; consider running partprobe or reboot before continuing." >&2
+elif [[ "$scheme" == "2" ]]; then
+  remaining_mib=$(( total_mib - used_mib ))
+  if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    crypt_mib=$(( remaining_mib - swap_mib ))
+    create_part_mib "$crypt_mib"
+    create_part_mib "$swap_mib"
+  else
+    create_part_mib "rest"
   fi
 
-else
-  echo "[+] sgdisk (gdisk) not found; using robust parted-only flow"
-  parted --script "$disk" mklabel gpt
-  parted --script --align optimal "$disk" mkpart primary 1MiB 512MiB
-  parted --script "$disk" set 1 esp on
-  if [[ "$scheme" == "1" ]]; then
-    if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
-      usable=$(( total_mib - efi_size - swap_mib ))
-      root_mib=$(( usable / 2 )); root_end=$((512 + root_mib)); home_end=$((root_end + (usable - root_mib)))
-      parted --script --align optimal "$disk" mkpart primary 512MiB "${root_end}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${root_end}MiB" "${home_end}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${home_end}MiB" 100%
-    elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
-      root_mib=$(( total_mib - efi_size - swap_mib )); root_end=$((512 + root_mib))
-      parted --script --align optimal "$disk" mkpart primary 512MiB "${root_end}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${root_end}MiB" 100%
-    elif [[ "$sep_home" =~ ^[yY]$ ]]; then
-      root_mib=$(( (total_mib - efi_size) / 2 )); root_end=$((512 + root_mib))
-      parted --script --align optimal "$disk" mkpart primary 512MiB "${root_end}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${root_end}MiB" 100%
-    else
-      parted --script --align optimal "$disk" mkpart primary 512MiB 100%
-    fi
-  elif [[ "$scheme" == "2" ]]; then
-    if [[ "$mk_swap" =~ ^[yY]$ ]]; then
-      crypt_mib=$(( total_mib - efi_size - swap_mib )); crypt_end=$((512 + crypt_mib))
-      parted --script --align optimal "$disk" mkpart primary 512MiB "${crypt_end}MiB"
-      parted --script --align optimal "$disk" mkpart primary "${crypt_end}MiB" 100%
-    else
-      parted --script --align optimal "$disk" mkpart primary 512MiB 100%
-    fi
+elif [[ "$scheme" == "3" ]]; then
+  parted --script --align optimal "$disk" mkpart primary 1MiB 100%
+elif [[ "$scheme" == "4" ]]; then
+  # msdos label with encrypted root + swap partition(s)
+  if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    crypt_mib=$(( total_mib - swap_mib - 1 ))
+    parted --script --align optimal "$disk" mkpart primary 1MiB ${crypt_mib}MiB
+    parted --script --align optimal "$disk" mkpart primary ${crypt_mib}MiB 100%
   else
-    parted --script --align optimal "$disk" mklabel msdos
     parted --script --align optimal "$disk" mkpart primary 1MiB 100%
-    parted --script "$disk" set 1 boot on
   fi
-
-  partprobe "$disk" || true
-  udevadm settle --timeout=10 || true
 fi
 
-# -------------------- Partition nodes resolution --------------------
-part_node() {
+partprobe "$disk" || true
+udevadm settle --timeout=10 || true
+sleep 1
+
+# -------------------- Resolve partition nodes --------------------
+part_node(){
   local idx="$1"
   if [[ -b "${disk}${idx}" ]]; then echo "${disk}${idx}"
   elif [[ -b "${disk}p${idx}" ]]; then echo "${disk}p${idx}"
   else echo ""; fi
 }
-p1=$(part_node 1); p2=$(part_node 2); p3=$(part_node 3); p4=$(part_node 4)
+p1=$(part_node 1); p2=$(part_node 2); p3=$(part_node 3); p4=$(part_node 4); p5=$(part_node 5)
 
-efi=""; rootp=""; homep=""; swapp=""; cryptp=""
+# collect created partitions in order
+parts=()
+for idx in 1 2 3 4 5 6; do
+  node=$(part_node "$idx")
+  if [[ -n "$node" ]]; then parts+=("$node"); fi
+done
+
+# map roles
+efi=""
+rootp=""; homep=""; swapp=""; cryptp=""
 if [[ "$scheme" == "1" ]]; then
-  efi="$p1"; rootp="$p2"; [[ "$sep_home" =~ ^[yY]$ ]] && homep="$p3"
-  if [[ "$mk_swap" =~ ^[yY]$ ]]; then
-    if [[ -n "$homep" ]]; then swapp="$p4"; else swapp="$p3"; fi
+  efi="${parts[0]}"
+  if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
+    rootp="${parts[1]}"; homep="${parts[2]}"; swapp="${parts[3]}"
+  elif [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    rootp="${parts[1]}"; swapp="${parts[2]}"
+  elif [[ "$sep_home" =~ ^[yY]$ ]]; then
+    rootp="${parts[1]}"; homep="${parts[2]}"
+  else
+    rootp="${parts[1]}"
   fi
+
 elif [[ "$scheme" == "2" ]]; then
-  efi="$p1"; cryptp="$p2"; rootp="/dev/mapper/guixroot"
-  if [[ "$mk_swap" =~ ^[yY]$ ]]; then swapp="$p3"; fi
-else
-  rootp="$p1"; [[ "$sep_home" =~ ^[yY]$ ]] && homep="$p2"
+  efi="${parts[0]}"
   if [[ "$mk_swap" =~ ^[yY]$ ]]; then
-    if [[ -n "$homep" ]]; then swapp="$p3"; else swapp="$p2"; fi
+    cryptp="${parts[1]}"; swapp="${parts[2]}"
+  else
+    cryptp="${parts[1]}"
   fi
+  rootp="/dev/mapper/guixroot"
+
+elif [[ "$scheme" == "3" ]]; then
+  rootp="${parts[0]}"
+elif [[ "$scheme" == "4" ]]; then
+  if [[ "$mk_swap" =~ ^[yY]$ ]]; then
+    cryptp="${parts[0]}"; swapp="${parts[1]}"
+  else
+    cryptp="${parts[0]}"
+  fi
+  rootp="/dev/mapper/guixroot"
 fi
 
-# Verify expected partition nodes exist
-if [[ -z "$rootp" || ( "$scheme" != "2" && ! -b "$rootp" ) ]]; then
-  echo "Expected root partition not found. Aborting." >&2
-  exit 1
+# sanity check
+if [[ -z "$rootp" ]]; then echo "Root partition not found; aborting." >&2; exit 1; fi
+
+# -------------------- Format filesystems and handle LUKS --------------------
+echo "[+] Formatting filesystems..."
+
+if [[ -n "$efi" && -b "$efi" ]]; then
+  mkfs.vfat -F32 "$efi"
 fi
 
-# -------------------- Format and LUKS --------------------
-echo "[+] Formatting filesystems and configuring LUKS if requested..."
-if [[ -n "$efi" && -b "$efi" ]]; then mkfs.vfat -F32 "$efi"; fi
-
-if [[ "$scheme" == "2" ]]; then
+if [[ "$scheme" == "2" || "$scheme" == "4" ]]; then
   [[ -b "$cryptp" ]] || { echo "Expected LUKS partition $cryptp not found"; exit 1; }
-  echo "[+] Creating LUKS container for root on $cryptp"
   cryptsetup luksFormat "$cryptp"
   cryptsetup open "$cryptp" guixroot
-  if [[ "$fs_type" == "ext4" ]]; then mkfs.ext4 -F /dev/mapper/guixroot
-  elif [[ "$fs_type" == "btrfs" ]]; then mkfs.btrfs -f /dev/mapper/guixroot
-  else mkfs.xfs -f /dev/mapper/guixroot; fi
+  case "$fs_type" in
+    ext4) mkfs.ext4 -F /dev/mapper/guixroot ;;
+    btrfs) mkfs.btrss=$(command -v mkfs.btrfs 2>/dev/null || true); if [[ -n "$mkfs.btrss" ]]; then mkfs.btrfs -f /dev/mapper/guixroot; else mkfs.ext4 -F /dev/mapper/guixroot; fi ;;
+    xfs) mkfs.xfs -f /dev/mapper/guixroot ;;
+  esac
   rootp="/dev/mapper/guixroot"
 
   if [[ -n "$swapp" && -b "$swapp" ]]; then
@@ -379,15 +315,19 @@ if [[ "$scheme" == "2" ]]; then
   fi
 
 else
-  if [[ -n "$rootp" && -b "$rootp" ]]; then
-    if [[ "$fs_type" == "ext4" ]]; then mkfs.ext4 -F "$rootp"
-    elif [[ "$fs_type" == "btrfs" ]]; then mkfs.btrfs -f "$rootp"
-    else mkfs.xfs -f "$rootp"; fi
+  if [[ -b "$rootp" ]]; then
+    case "$fs_type" in
+      ext4) mkfs.ext4 -F "$rootp" ;;
+      btrfs) mkfs.btrfs -f "$rootp" ;;
+      xfs) mkfs.xfs -f "$rootp" ;;
+    esac
   fi
   if [[ -n "$homep" && -b "$homep" ]]; then
-    if [[ "$fs_type" == "ext4" ]]; then mkfs.ext4 -F "$homep"
-    elif [[ "$fs_type" == "btrfs" ]]; then mkfs.btrfs -f "$homep"
-    else mkfs.xfs -f "$homep"; fi
+    case "$fs_type" in
+      ext4) mkfs.ext4 -F "$homep" ;;
+      btrfs) mkfs.btrfs -f "$homep" ;;
+      xfs) mkfs.xfs -f "$homep" ;;
+    esac
   fi
   if [[ -n "$swapp" && -b "$swapp" ]]; then
     if [[ "$swap_encrypt" =~ ^[yY]$ ]]; then
@@ -401,13 +341,17 @@ else
   fi
 fi
 
+partprobe "$disk" || true
+udevadm settle --timeout=10 || true
+sleep 1
+
 # -------------------- Mount target FS --------------------
 mkdir -p /mnt
 mount "$rootp" /mnt
 if [[ -n "$efi" ]]; then mkdir -p /mnt/boot/efi; mount "$efi" /mnt/boot/efi; fi
 if [[ -n "$homep" ]]; then mkdir -p /mnt/home; mount "$homep" /mnt/home; fi
 
-# -------------------- Collect user/system info --------------------
+# -------------------- Collect system/user details --------------------
 read -r -p "Hostname: " hostname
 read -r -p "Timezone (e.g., America/Sao_Paulo): " timezone
 read -r -p "Locale (e.g., en_US.UTF-8): " locale
@@ -419,15 +363,15 @@ read -r -s -p "Root password: " rpass; echo
 echo "Desktop: 1=i3 2=mate 3=xfce 4=sway 5=none"
 read -r -p "Choice (1/2/3/4/5): " desk_choice
 case "$desk_choice" in
-  1) session="i3.desktop"; extra="i3-wm i3status dmenu"; display_mgr="sddm"; sway=0 ;;
-  2) session="mate.desktop"; extra="mate"; display_mgr="sddm"; sway=0 ;;
-  3) session="xfce.desktop"; extra="xfce"; display_mgr="sddm"; sway=0 ;;
-  4) session=""; extra="sway wayland"; display_mgr="greetd"; sway=1 ;;
-  5) session=""; extra=""; display_mgr=""; sway=0 ;;
+  1) session="i3.desktop"; extra_pkgs="i3-wm i3status dmenu"; display_mgr="sddm"; sway=0 ;;
+  2) session="mate.desktop"; extra_pkgs="mate"; display_mgr="sddm"; sway=0 ;;
+  3) session="xfce.desktop"; extra_pkgs="xfce"; display_mgr="sddm"; sway=0 ;;
+  4) session=""; extra_pkgs="sway wayland"; display_mgr="greetd"; sway=1 ;;
+  5) session=""; extra_pkgs=""; display_mgr=""; sway=0 ;;
   *) echo "Invalid"; exit 1 ;;
 esac
 
-# Hash passwords (sha512)
+# Hash passwords
 huser="$(python3 - <<PY
 import crypt
 print(crypt.crypt("${upass}", crypt.mksalt(crypt.METHOD_SHA512)))
@@ -441,13 +385,14 @@ PY
 
 # Get UUIDs
 root_uuid=""; home_uuid=""; efi_uuid=""
-if [[ "$scheme" != "2" && -b "$rootp" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)"; fi
+if [[ -b "$rootp" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)"; fi
 [[ -n "$homep" && -b "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep" || true)"
 [[ -n "$efi" && -b "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi" || true)"
 
-# -------------------- Write config.scm --------------------
+# -------------------- Write config.scm preserving user's modules and package list --------------------
 mkdir -p /mnt/etc
-cat > /mnt/etc/config.scm <<'EOF'
+
+cat > /mnt/etc/config.scm <<EOF
 (use-modules (gnu)
              (gnu packages admin) (gnu packages base) (gnu packages commencement)
              (gnu packages disk) (gnu packages file-systems) (gnu packages fonts)
@@ -488,7 +433,7 @@ cat >> /mnt/etc/config.scm <<EOF
   (firmware (list linux-firmware))
 EOF
 
-if [[ "$scheme" == "2" ]]; then
+if [[ "$scheme" == "2" || "$scheme" == "4" ]]; then
   cat >> /mnt/etc/config.scm <<EOF
   (device-mappings
     (list (device-mapping
@@ -502,7 +447,7 @@ cat >> /mnt/etc/config.scm <<EOF
     (cons*
 EOF
 
-if [[ "$scheme" == "2" ]]; then
+if [[ "$scheme" == "2" || "$scheme" == "4" ]]; then
   cat >> /mnt/etc/config.scm <<EOF
       (file-system
         (device "/dev/mapper/guixroot")
@@ -518,7 +463,7 @@ else
 EOF
 fi
 
-if [[ -n "$homep" && "$scheme" != "2" ]]; then
+if [[ -n "$homep" && "$scheme" != "2" && "$scheme" != "4" ]]; then
   cat >> /mnt/etc/config.scm <<EOF
       (file-system
         (device (uuid "${home_uuid}"))
@@ -558,17 +503,73 @@ cat >> /mnt/etc/config.scm <<EOF
                      %base-user-accounts)))
   (packages
    (append
-    (list vim htop git curl wget
-          icecat mpv feh
-          util-linux mesa linux-firmware
-          lf parted exfatprogs dosfstools e2fsprogs xfsprogs btrfs-progs
-          git python cmake meson kitty alacritty fish)
+    (list icecat torbrowser libreoffice mpv feh
+          acpi-call-linux-module util-linux v4l2loopback-linux-module
+          mesa mesa-headers llvm-for-mesa libva libva-utils linux-firmware
+          xterm xorg-xdpyinfo xorg-xset xorg-xwininfo xorg-xprop
+          xpra xorg-xkill xorg-setxkbmap xorg-xmodmap xdg-utils xorg-xrandr
+          lf mergerfs parted ntfs-3g exfat-utils exfatprogs fuse-exfat
+          dosfstools bcachefs-tools smartmontools e2fsprogs xfsprogs
+          emacs gcc gcc-toolchain linux-libre-headers git git-lfs
+          python python-pip cmake meson binutils strace edk2-tools
+          kitty alacritty fish zoxide pfetch
+          sysstat nftables clamav gnupg libfido2 firejail privoxy
+          openvpn tor torsocks nmap tcpdump openssl keepassxc
+          htop btop glances inxi lm-sensors net-tools fping netdiscover
+          whois macchanger procps coreutils grep sed nix
+          alsa-lib alsa-utils pulseaudio pipewire wireplumber
+          font-iosevka-term font-iosevka-term-slab font-iosevka-slab
+          font-iosevka-etoile font-iosevka-curly font-iosevka-curly-slab
+          font-iosevka-aile font-iosevka-ss01 font-iosevka-ss02 font-iosevka-ss03
+          font-iosevka-ss04 font-iosevka-ss05 font-iosevka-ss06 font-iosevka-ss07
+          font-iosevka-ss08 font-iosevka-ss09 font-iosevka-ss10 font-iosevka-ss11
+          font-iosevka-ss12 font-iosevka-ss13 font-iosevka-ss14 font-iosevka-ss15
+          font-iosevka-ss16 font-iosevka-ss17 font-iosevka-ss18
+          font-sarasa-gothic font-aporetic font-adwaita)
+    (map specification->package '(${extra_pkgs}))
     %base-packages))
-  (services
-   %base-services))
 EOF
 
-# -------------------- channels.scm --------------------
+if [[ "${sway:-0}" -eq 1 ]]; then
+cat >> /mnt/etc/config.scm <<EOF
+  (services
+   (append
+     (list (service greetd-service-type
+                   (greetd-configuration
+                     (terminal-vt "tty1")
+                     (greeter-sessions
+                       (list (greetd-session (name "sway") (command "sway"))))
+                     (initial-session
+                       (greetd-initial-session
+                         (user "${username}")
+                         (command "sway"))))))
+     (modify-services %base-services (delete gdm-service-type))))
+EOF
+else
+  if [[ -n "${display_mgr:-}" ]]; then
+cat >> /mnt/etc/config.scm <<EOF
+  (services
+   (append
+     (list (service sddm-service-type
+                   (sddm-configuration
+                     (display-server "x11")
+                     (auto-login-user "${username}")
+                     (auto-login-session "${session}"))))
+     (modify-services %desktop-services (delete gdm-service-type))))
+EOF
+  else
+cat >> /mnt/etc/config.scm <<'EOF'
+  (services
+   %base-services)
+EOF
+  fi
+fi
+
+cat >> /mnt/etc/config.scm <<'EOF'
+)
+EOF
+
+# -------------------- channels.scm (preserve user's channels) --------------------
 cat > /mnt/etc/channels.scm <<'EOF'
 (list
   (channel
@@ -591,17 +592,16 @@ if command -v herd >/dev/null 2>&1; then
 fi
 
 if command -v guix >/dev/null 2>&1; then
-  echo "[+] Running guix time-machine -- system init (this may take a long time)..."
+  echo "[+] Running guix time-machine -- system init (may take long)..."
   guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
 else
-  echo "Guix command not found; please ensure guix is installed in the live environment, then run:"
+  echo "Guix CLI not found; please ensure guix is installed in the live environment, then run:"
   echo "  guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt"
-  echo "Exiting."
   exit 1
 fi
 
-echo "[+] Installation finished. Syncing and rebooting in 10 seconds..."
 sync
 umount -R /mnt || true
+echo "Installation finished. Rebooting in 10 seconds..."
 sleep 10
 reboot
