@@ -1,12 +1,13 @@
+#!/usr/bin/env bash
 #=============================================================
-#                   GNU GUIX FULL OS INSTALLER 
+#                     GNU GUIX FULL OS INSTALLER 
 #=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
-|                    GNU GUIX FULL OS INSTALL                  |
-|                        In Code We Trust                      |
+|                    GNU GUIX FULL OS INSTALL                 | 
+|                        In Code We Trust                     |
 +-------------------------------------------------------------+
 B
 }
@@ -147,12 +148,9 @@ read -r -p "Type EXACTLY 'YES I WANT GUIX' to continue: " confirm
 # -------------------- Sanity checks --------------------
 # Robust mount check: ensure no partitions from target disk are mounted
 mounted_on_disk() {
-  # list partition names for disk (e.g., sda -> sda1 sda2; nvme0n1 -> nvme0n1p1)
   local base="$(basename "$disk")"
-  if lsblk -nr -o NAME,MOUNTPOINT | awk -v b="$base" '$1 ~ ("^"b) { if ($2 != "") exit 0 } END { if (NR==0) exit 1 }'; then
-    return 0
-  fi
-  return 1
+  # list NAME and MOUNTPOINT; match lines starting with base (exact prefix), then check non-empty mountpoint
+  lsblk -nr -o NAME,MOUNTPOINT | grep -E "^${base}[0-9p]*" | awk '$2 != ""' | grep -q . || return 1
 }
 if mounted_on_disk; then
   echo "One or more partitions on $disk are mounted. Unmount them and re-run." >&2
