@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-#   GNU GUIX - POWERED BY ALIENS
+#   GNU GUIX - EASY INSTALL - POWERED BY ALIENS
 # - Step-based GUI installer flow (Welcome, Disk, Partition, User, Summary, Install, Finish)
 # - Uses yad or zenity for GUI; falls back to text-mode dialogs
+# - Preserves full config.scm, channels.scm, packages list and substitute logic
 # - Supports pt-BR / en-US, AUTO_YES and env-driven non-interactive usage
 # - Meant to be run from a live environment as root
 #
@@ -79,6 +80,7 @@ choose_lang() {
     L_ABORT_MSG="Abortado pelo usuário"
     L_OK="OK"
     L_CANCEL="Cancelar"
+    L_PLEASE="Por favor responda sim/não"
   else
     L_WELCOME="Welcome to the GNU Guix installer"
     L_WELCOME_SUB="Easy guided installation — Calamares-like"
@@ -93,12 +95,20 @@ choose_lang() {
     L_ABORT_MSG="Aborted by user"
     L_OK="OK"
     L_CANCEL="Cancel"
+    L_PLEASE="Please answer yes/no"
   fi
 }
 
 # -------------------- Helpers --------------------
 log() { printf '%s %s\n' "$(date --iso-8601=seconds)" "$*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
+
+# -------------------- Detect package manager early (fix for unbound PKG) --------------------
+PKG=""
+if command -v apt >/dev/null 2>&1; then PKG="apt"
+elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
+elif command -v pacman >/dev/null 2>&1; then PKG="pacman"
+fi
 
 # -------------------- GUI toolkit detection --------------------
 detect_gui() {
@@ -126,7 +136,7 @@ gui_yesno() {
     case "$ans" in
       [YySs]* ) return 0 ;;
       [Nn]* ) return 1 ;;
-      *) echo "Please answer yes/no" ;;
+      *) echo "$L_PLEASE" ;;
     esac
   done
 }
@@ -164,7 +174,6 @@ gui_info() {
   fi
 }
 gui_progress_start() {
-  # For yad: create pipe; for zenity: background output with --progress --auto-close
   if [[ "$GUI_TOOL" == "yad" ]]; then
     PROG_PIPE="$(mktemp -u)"
     mkfifo "$PROG_PIPE"
@@ -222,7 +231,6 @@ step_welcome() {
 }
 
 step_select_disk() {
-  # detect available disks for user convenience
   mapfile -t disks < <(lsblk -dn -o NAME,SIZE,TYPE | awk '$3=="disk" {print "/dev/"$1" ("$2")"}')
   if [[ ${#disks[@]} -eq 0 ]]; then die "No block devices found"; fi
 
@@ -231,16 +239,13 @@ step_select_disk() {
     if [[ -z "$choice" ]]; then
       die "$L_ABORT_MSG"
     fi
-    # extract /dev/XXX
     TARGET_DISK="$(echo "$choice" | awk '{print $1}')"
   fi
 
-  # quick confirm
   gui_info "$L_SELECT_DISK" "Target: $TARGET_DISK"
 }
 
 step_partition_options() {
-  # offer simple partition options: Guided (use whole disk), Manual (open parted), Cancel
   if ! gui_yesno "$L_SELECT_PART" "Use guided partitioning (whole disk, creates EFI/root[/home[/swap]])?"; then
     if gui_yesno "$L_SELECT_PART" "Open parted in a terminal for manual partitioning?"; then
       xterm -e "parted --script $TARGET_DISK unit MiB print; echo 'Run parted commands then close this window'; bash" >/dev/null 2>&1 || true
@@ -249,7 +254,6 @@ step_partition_options() {
       die "$L_ABORT_MSG"
     fi
   else
-    # gather guided partition choices
     if [[ -z "$FS_TYPE" ]]; then
       FS_TYPE="$(gui_list "Filesystem" "Choose filesystem" "ext4" "btrfs" "xfs")"
     fi
@@ -260,7 +264,6 @@ step_partition_options() {
       if gui_yesno "Swap" "Create swap partition?"; then CREATE_SWAP=1; else CREATE_SWAP=0; fi
     fi
 
-    # Partition automatically (similar to earlier logic)
     total_mib=$(( $(blockdev --getsize64 "$TARGET_DISK") / 1024 / 1024 ))
     efi_size=512
     if [[ -d /sys/firmware/efi ]]; then
@@ -285,7 +288,7 @@ step_partition_options() {
       home_mib=$(( remaining_mib - root_mib ))
       start_mib=$used_mib; end_mib=$(( start_mib + root_mib ))
       parted --script --align optimal "$TARGET_DISK" mkpart primary "${start_mib}MiB" "${end_mib}MiB"
-      parted --script --align optimal "$TARGET_DISK" mkpart primary "${end_mib}MiB" 100%
+      parted --script --align optimal "$TARGET_DISK" mkpart primary "${end_mib}MiB" $(( end_mib + home_mib ))MiB
       if (( swap_mib > 0 )); then
         parted --script --align optimal "$TARGET_DISK" mkpart primary 100% -${swap_mib}MiB
       fi
@@ -311,7 +314,6 @@ step_partition_options() {
   fi
 }
 
-# helper: to_mib reused
 to_mib(){ local s="$1"; if [[ "$s" =~ ^([0-9]+)[Gg]$ ]]; then echo $(( ${BASH_REMATCH[1]} * 1024 )); elif [[ "$s" =~ ^([0-9]+)[Mm]$ ]]; then echo "${BASH_REMATCH[1]}"; else echo "$s"; fi; }
 
 step_user_setup() {
@@ -346,7 +348,6 @@ step_summary() {
   fi
 }
 
-# Partition discovery (resolve created partitions)
 discover_parts() {
   partprobe "$TARGET_DISK" || true
   udevadm settle --timeout=10 || true
@@ -360,7 +361,6 @@ discover_parts() {
   EFI_PART=""; ROOT_PART=""; HOME_PART=""; SWAP_PART=""
   if [[ -d /sys/firmware/efi ]]; then
     EFI_PART="${parts[0]:-}"
-    # subsequent mapping heuristics
     if [[ "${#parts[@]}" -ge 4 && "$CREATE_HOME" -eq 1 && "$CREATE_SWAP" -eq 1 ]]; then
       ROOT_PART="${parts[1]}"; HOME_PART="${parts[2]}"; SWAP_PART="${parts[3]}"
     elif [[ "${#parts[@]}" -ge 3 && "$CREATE_HOME" -eq 1 ]]; then
@@ -383,7 +383,6 @@ step_install() {
   discover_parts
   [[ -n "$ROOT_PART" ]] || die "Root partition not found"
 
-  # Format partitions
   if [[ -n "$EFI_PART" && -b "$EFI_PART" ]]; then mkfs.vfat -F32 "$EFI_PART"; fi
   case "$FS_TYPE" in
     ext4) mkfs.ext4 -F "$ROOT_PART" ;;
@@ -401,22 +400,18 @@ step_install() {
   fi
   if [[ -n "$SWAP_PART" && -b "$SWAP_PART" ]]; then mkswap "$SWAP_PART"; fi
 
-  # Mount
   mkdir -p /mnt
   mount "$ROOT_PART" /mnt
   if [[ -n "$EFI_PART" ]]; then mkdir -p /mnt/boot/efi; mount "$EFI_PART" /mnt/boot/efi; fi
   if [[ -n "$HOME_PART" ]]; then mkdir -p /mnt/home; mount "$HOME_PART" /mnt/home; fi
 
-  # Hash passwords
   huser="$(openssl passwd -6 -- "$USER_PASS")"
   hroot="$(openssl passwd -6 -- "$ROOT_PASS")"
 
-  # UUIDs
   root_uuid="$(blkid -s UUID -o value "$ROOT_PART" 2>/dev/null || true)"
   home_uuid="$(blkid -s UUID -o value "$HOME_PART" 2>/dev/null || true)"
   efi_uuid="$(blkid -s UUID -o value "$EFI_PART" 2>/dev/null || true)"
 
-  # Write config.scm
   mkdir -p /mnt/etc
   cat > /mnt/etc/config.scm <<EOF
 (use-modules (gnu) (guix) (guix profiles) (gnu services)
@@ -434,7 +429,6 @@ step_install() {
  (keyboard-layout (keyboard-layout "${KEYBOARD}")))
 EOF
 
-  # append bootloader stanza
   if [[ -n "$EFI_PART" ]]; then
     cat >> /mnt/etc/config.scm <<EOF
  (bootloader (bootloader-configuration (bootloader grub-efi-bootloader) (targets '("/boot/efi"))))
@@ -498,7 +492,6 @@ EOF
                                    u)) %base-user-accounts)))
 EOF
 
-  # packages and desktop-specific extras
   cat >> /mnt/etc/config.scm <<'EOF'
  (packages (append (list
 EOF
@@ -507,7 +500,6 @@ EOF
     echo "   $p" >> /mnt/etc/config.scm
   done
 
-  # desktop extras:
   case "$DESKTOP" in
     i3) echo "   i3-wm i3status dmenu sddm" >> /mnt/etc/config.scm ;;
     mate) echo "   mate sddm" >> /mnt/etc/config.scm ;;
@@ -521,7 +513,6 @@ EOF
  (services %base-services))
 EOF
 
-  # channels.scm
   cat > /mnt/etc/channels.scm <<'EOF'
 (list
  (channel
@@ -542,19 +533,14 @@ EOF
     (openpgp-fingerprint "2A39 3FFF 68F4 EF7A 3D29 12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
-  # Ensure guix installed (best-effort)
   if ! command -v guix >/dev/null 2>&1; then
     log "Attempting to bootstrap Guix binary"
     bootstrap_guix_binary || log "Bootstrap failed; continuing"
   fi
 
-  # Ensure guix-daemon
   ensure_guix_daemon || log "guix-daemon may not be active"
-
-  # Write substitutes
   ensure_guix_substitute_config || log "Could not write substitutes; proceed with GUIX_SUBSTITUTE_URLS if set"
 
-  # Try to run guix system init with retries
   gui_progress_start
   run_guix_init_with_retries || { gui_progress_stop; die "Guix system init failed"; }
   gui_progress_stop
@@ -562,7 +548,6 @@ EOF
   gui_info "$L_FINISH" "Installation seems complete. System will reboot shortly."
 }
 
-# -------------------- Supporting guix functions --------------------
 bootstrap_guix_binary() {
   ARCH="$(uname -m)"
   case "$ARCH" in x86_64) BIN="guix-binary-${GUIX_BINARY_VERSION}.x86_64-linux.tar.xz" ;; aarch64) BIN="guix-binary-${GUIX_BINARY_VERSION}.aarch64-linux.tar.xz" ;; i686) BIN="guix-binary-${GUIX_BINARY_VERSION}.i686-linux.tar.xz" ;; *) BIN="" ;; esac
@@ -629,7 +614,6 @@ run_guix_init_with_retries() {
   return 1
 }
 
-# -------------------- Orchestration --------------------
 main() {
   step_welcome
   step_select_disk
@@ -637,7 +621,6 @@ main() {
   step_user_setup
   step_summary
   step_install
-  # finish: unmount & reboot
   sync
   umount -R /mnt || true
   gui_info "$L_FINISH" "Rebooting now..."
