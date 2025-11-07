@@ -1,16 +1,14 @@
+```bash
 #!/usr/bin/env bash
 #=============================================================
-#            GNU GUIX FULL OS INSTALLER (parted-first, fixed)
-#       Preserves user's modules, packages and channels lists
-#       Robust partitioning via parted, reliable mount checks,
-#       LUKS support, and Guix bootstrap (best-effort).
+#            GNU GUIX FULL OS INSTALLER 
 #=============================================================
 set -euo pipefail
 
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
 |                    GNU GUIX FULL OS INSTALL                  |
-|                     Parted-first Hardened Script             |
+|                         In Code We Trust                     |
 +-------------------------------------------------------------+
 B
 }
@@ -20,37 +18,45 @@ if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root"; exit 1
 fi
 
-# Optional proxies (export before running if needed)
+# Optional proxies
 # export http_proxy="http://proxy:port"
 # export https_proxy="http://proxy:port"
 
+# Safety: require live environment (override with ALLOW_NON_LIVE=YES)
 ALLOW_NON_LIVE="${ALLOW_NON_LIVE:-}"
 if [[ -z "$ALLOW_NON_LIVE" ]]; then
   ROOT_SRC="$(findmnt -n -o SOURCE / || true)"
   if [[ "$ROOT_SRC" == /dev/* ]]; then
     echo "Refusing to run on a non-live system (root on $ROOT_SRC)."
-    echo "Boot a live environment or set ALLOW_NON_LIVE=YES to override."
+    echo "Set ALLOW_NON_LIVE=YES to override." >&2
     exit 1
   fi
 fi
 
-# detect package manager (best-effort)
+# Detect package manager
 PKG=""
 if command -v apt >/dev/null 2>&1; then PKG="apt"
 elif command -v dnf >/dev/null 2>&1; then PKG="dnf"
 elif command -v pacman >/dev/null 2>&1; then PKG="pacman"
 fi
 
-# ensure tools (best-effort)
+# Best-effort install of host tools
 if [[ -n "$PKG" ]]; then
   case "$PKG" in
-    apt) apt update && apt install -y parted e2fsprogs xfsprogs btrfs-progs dosfstools udiskie util-linux cryptsetup uidmap curl wget ca-certificates gdisk || true ;;
-    dnf) dnf install -y parted e2fsprogs xfsprogs btrfs-progs dosfstools util-linux cryptsetup shadow-utils curl wget ca-certificates gdisk || true ;;
-    pacman) pacman -Sy --noconfirm parted e2fsprogs xfsprogs btrfs-progs dosfstools util-linux cryptsetup uidmap curl wget ca-certificates gdisk || true ;;
+    apt)
+      apt update
+      apt install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz-utils btrfs-progs xfsprogs uidmap || true
+      ;;
+    dnf)
+      dnf install -y wget curl ca-certificates python3 util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs shadow-utils || true
+      ;;
+    pacman)
+      pacman -Sy --noconfirm wget curl ca-certificates python util-linux gdisk parted e2fsprogs dosfstools cryptsetup xz btrfs-progs xfsprogs uidmap || true
+      ;;
   esac
 fi
 
-# ensure required commands
+# Ensure required host commands exist
 for cmd in parted mkfs.ext4 mkfs.xfs mkfs.btrfs mkfs.vfat cryptsetup blkid lsblk partprobe udevadm sgdisk; do
   if ! command -v "${cmd%% *}" >/dev/null 2>&1; then
     echo "Required command '${cmd%% *}' missing. Install it and re-run." >&2
@@ -58,37 +64,95 @@ for cmd in parted mkfs.ext4 mkfs.xfs mkfs.btrfs mkfs.vfat cryptsetup blkid lsblk
   fi
 done
 
-# fetch helper
-fetch_with_fallback(){ local out="$1"; shift; rm -f "$out" 2>/dev/null || true; for u in "$@"; do if command -v curl >/dev/null 2>&1; then curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u" && return 0; else wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u" && return 0; fi; done; return 1; }
-
-# attempt guix CLI availability (best-effort)
-if ! command -v guix >/dev/null 2>&1; then
-  if fetch_with_fallback guix-install.sh \
-       "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh" \
-       "https://git.savannah.gnu.org/git/guix.git/plain/etc/guix-install.sh"; then
-    chmod +x guix-install.sh
-    ./guix-install.sh || true
-    rm -f guix-install.sh || true
-  fi
-  if [[ -f /root/.config/guix/current/etc/profile ]]; then
-    export GUIX_PROFILE=/root/.config/guix/current
-    export PATH="$GUIX_PROFILE/bin:$PATH"
-    # shellcheck disable=SC1090
-    . "$GUIX_PROFILE/etc/profile" || true
-  fi
+# Ensure uidmap helpers exist
+if ! command -v newuidmap >/dev/null 2>&1 || ! command -v newgidmap >/dev/null 2>&1; then
+  echo "Installing uidmap/newuidmap/newgidmap (best-effort)..."
+  if [[ "$PKG" == "apt" ]]; then apt install -y uidmap || true; fi
+  if [[ "$PKG" == "dnf" ]]; then dnf install -y shadow-utils || true; fi
+  if [[ "$PKG" == "pacman" ]]; then pacman -Sy --noconfirm uidmap || true; fi
 fi
+
+# Fetch helper
+fetch_with_fallback(){
+  local out="$1"; shift
+  rm -f "$out" 2>/dev/null || true
+  for u in "$@"; do
+    echo "[+] Fetching: $u"
+    if command -v curl >/dev/null 2>&1; then
+      if curl -fsSL --retry 5 --retry-delay 3 --connect-timeout 10 -o "$out" "$u"; then return 0; fi
+    else
+      if wget -q --tries=5 --waitretry=3 --timeout=10 -O "$out" "$u"; then return 0; fi
+    fi
+    echo "[!] Failed: $u"
+  done
+  return 1
+}
+
+# Bootstrap or ensure Guix CLI matches 1.4.0
+ensure_guix_1_4_0(){
+  if command -v guix >/dev/null 2>&1; then
+    ver="$(guix --version 2>/dev/null || true)"
+    if [[ "$ver" == *"1.4.0"* ]]; then
+      echo "[+] Guix 1.4.0 already available."
+      return 0
+    fi
+    echo "[!] Guix CLI present but not 1.4.0: $ver"
+  fi
+
+  ARCH="$(uname -m)"
+  case "$ARCH" in
+    x86_64) BIN="guix-binary-1.4.0.x86_64-linux.tar.xz" ;;
+    aarch64) BIN="guix-binary-1.4.0.aarch64-linux.tar.xz" ;;
+    i686) BIN="guix-binary-1.4.0.i686-linux.tar.xz" ;;
+    *) BIN="" ;;
+  esac
+
+  if [[ -z "$BIN" ]]; then
+    echo "No prebuilt guix binary for arch: $ARCH" >&2
+    return 1
+  fi
+
+  # Try multiple mirrors
+  if fetch_with_fallback "$BIN" \
+       "https://ftp.gnu.org/gnu/guix/$BIN" \
+       "https://mirror.csclub.uwaterloo.ca/gnu/guix/$BIN" \
+       "https://mirror0.nexcess.net/gnu/guix/$BIN"; then
+    echo "[+] Extracting Guix binary $BIN (this will place files under /gnu/store if present)"
+    mkdir -p /gnu /gnu/store /var/guix || true
+    tar -xJf "$BIN" -C / || true
+    rm -f "$BIN" || true
+    # Source profile if available
+    if [[ -f "/root/.config/guix/current/etc/profile" ]]; then
+      export GUIX_PROFILE="/root/.config/guix/current"
+      export PATH="$GUIX_PROFILE/bin:$PATH"
+      # shellcheck disable=SC1090
+      . "$GUIX_PROFILE/etc/profile" || true
+    fi
+    # verify guix version
+    if command -v guix >/dev/null 2>&1 && guix --version | grep -q "1.4.0"; then
+      echo "[+] Guix 1.4.0 installed/available."
+      return 0
+    else
+      echo "[!] Guix binary extraction did not produce guix CLI in PATH."
+      return 1
+    fi
+  else
+    echo "[!] Could not fetch guix binary $BIN" >&2
+    return 1
+  fi
+}
+
+ensure_guix_1_4_0 || echo "[!] Warning: could not ensure Guix 1.4.0; continuing but guix time-machine may fail."
 
 # -------------------- User prompts --------------------
 echo
-echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX."
+echo "THIS SCRIPT WILL ERASE THE TARGET DISK AND INSTALL GNU GUIX (1.4.0 compatible)."
 lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | sed 's/^/  /'
 read -r -p "Target disk (e.g., /dev/sda or /dev/vda or /dev/nvme0n1): " disk
 [[ -b "$disk" ]] || { echo "Invalid disk: $disk"; exit 1; }
 
-# derive disk_base for grub target if needed
 if [[ "$disk" =~ ^/dev/nvme ]]; then disk_base="$disk"; else disk_base="$(echo "$disk" | sed 's/[0-9]*$//')"; fi
 
-# detect firmware
 if [[ -d /sys/firmware/efi ]]; then default_scheme=1; echo "[+] UEFI detected"; else default_scheme=3; echo "[+] BIOS detected"; fi
 
 echo "Partition schemes:"
@@ -147,14 +211,12 @@ if (( total_mib < min_required_mib )); then
 fi
 
 # -------------------- Partitioning using parted (robust) --------------------
-# Use gpt for UEFI schemes and msdos for BIOS MBR schemes
 if [[ "$scheme" == "3" || "$scheme" == "4" ]]; then
   parted --script "$disk" mklabel msdos
 else
   parted --script "$disk" mklabel gpt
 fi
 
-# create EFI for GPT schemes
 if [[ "$scheme" -eq 1 || "$scheme" -eq 2 ]]; then
   parted --script --align optimal "$disk" mkpart primary 1MiB ${efi_size}MiB
   parted --script "$disk" set 1 esp on
@@ -163,7 +225,6 @@ else
   used_mib=1
 fi
 
-# helper to create partition by size in MiB or "rest"
 create_part_mib(){
   local size_mib="$1"
   local start_mib="$used_mib"
@@ -182,7 +243,6 @@ create_part_mib(){
   fi
 }
 
-# Allocate partitions according to chosen scheme
 if [[ "$scheme" == "1" ]]; then
   remaining_mib=$(( total_mib - used_mib ))
   if [[ "$mk_swap" =~ ^[yY]$ ]] && [[ "$sep_home" =~ ^[yY]$ ]]; then
@@ -217,7 +277,6 @@ elif [[ "$scheme" == "2" ]]; then
 elif [[ "$scheme" == "3" ]]; then
   parted --script --align optimal "$disk" mkpart primary 1MiB 100%
 elif [[ "$scheme" == "4" ]]; then
-  # msdos label with encrypted root + swap partition(s)
   if [[ "$mk_swap" =~ ^[yY]$ ]]; then
     crypt_mib=$(( total_mib - swap_mib - 1 ))
     parted --script --align optimal "$disk" mkpart primary 1MiB ${crypt_mib}MiB
@@ -231,23 +290,19 @@ partprobe "$disk" || true
 udevadm settle --timeout=10 || true
 sleep 1
 
-# -------------------- Resolve partition nodes --------------------
+# -------------------- Resolve partitions --------------------
 part_node(){
   local idx="$1"
   if [[ -b "${disk}${idx}" ]]; then echo "${disk}${idx}"
   elif [[ -b "${disk}p${idx}" ]]; then echo "${disk}p${idx}"
   else echo ""; fi
 }
-p1=$(part_node 1); p2=$(part_node 2); p3=$(part_node 3); p4=$(part_node 4); p5=$(part_node 5)
-
-# collect created partitions in order
 parts=()
 for idx in 1 2 3 4 5 6; do
   node=$(part_node "$idx")
   if [[ -n "$node" ]]; then parts+=("$node"); fi
 done
 
-# map roles
 efi=""
 rootp=""; homep=""; swapp=""; cryptp=""
 if [[ "$scheme" == "1" ]]; then
@@ -282,10 +337,9 @@ elif [[ "$scheme" == "4" ]]; then
   rootp="/dev/mapper/guixroot"
 fi
 
-# sanity check
 if [[ -z "$rootp" ]]; then echo "Root partition not found; aborting." >&2; exit 1; fi
 
-# -------------------- Format filesystems and handle LUKS --------------------
+# -------------------- Format and LUKS --------------------
 echo "[+] Formatting filesystems..."
 
 if [[ -n "$efi" && -b "$efi" ]]; then
@@ -298,7 +352,7 @@ if [[ "$scheme" == "2" || "$scheme" == "4" ]]; then
   cryptsetup open "$cryptp" guixroot
   case "$fs_type" in
     ext4) mkfs.ext4 -F /dev/mapper/guixroot ;;
-    btrfs) mkfs.btrss=$(command -v mkfs.btrfs 2>/dev/null || true); if [[ -n "$mkfs.btrss" ]]; then mkfs.btrfs -f /dev/mapper/guixroot; else mkfs.ext4 -F /dev/mapper/guixroot; fi ;;
+    btrfs) mkfs.btrfs -f /dev/mapper/guixroot ;;
     xfs) mkfs.xfs -f /dev/mapper/guixroot ;;
   esac
   rootp="/dev/mapper/guixroot"
@@ -371,7 +425,7 @@ case "$desk_choice" in
   *) echo "Invalid"; exit 1 ;;
 esac
 
-# Hash passwords
+# Hash passwords (sha512)
 huser="$(python3 - <<PY
 import crypt
 print(crypt.crypt("${upass}", crypt.mksalt(crypt.METHOD_SHA512)))
@@ -389,10 +443,10 @@ if [[ -b "$rootp" ]]; then root_uuid="$(blkid -s UUID -o value "$rootp" || true)
 [[ -n "$homep" && -b "$homep" ]] && home_uuid="$(blkid -s UUID -o value "$homep" || true)"
 [[ -n "$efi" && -b "$efi" ]] && efi_uuid="$(blkid -s UUID -o value "$efi" || true)"
 
-# -------------------- Write config.scm preserving user's modules and package list --------------------
+# -------------------- Write config.scm (preserve user's use-modules & packages) --------------------
 mkdir -p /mnt/etc
 
-cat > /mnt/etc/config.scm <<EOF
+cat > /mnt/etc/config.scm <<'EOF'
 (use-modules (gnu)
              (gnu packages admin) (gnu packages base) (gnu packages commencement)
              (gnu packages disk) (gnu packages file-systems) (gnu packages fonts)
@@ -528,45 +582,8 @@ cat >> /mnt/etc/config.scm <<EOF
           font-sarasa-gothic font-aporetic font-adwaita)
     (map specification->package '(${extra_pkgs}))
     %base-packages))
-EOF
-
-if [[ "${sway:-0}" -eq 1 ]]; then
-cat >> /mnt/etc/config.scm <<EOF
   (services
-   (append
-     (list (service greetd-service-type
-                   (greetd-configuration
-                     (terminal-vt "tty1")
-                     (greeter-sessions
-                       (list (greetd-session (name "sway") (command "sway"))))
-                     (initial-session
-                       (greetd-initial-session
-                         (user "${username}")
-                         (command "sway"))))))
-     (modify-services %base-services (delete gdm-service-type))))
-EOF
-else
-  if [[ -n "${display_mgr:-}" ]]; then
-cat >> /mnt/etc/config.scm <<EOF
-  (services
-   (append
-     (list (service sddm-service-type
-                   (sddm-configuration
-                     (display-server "x11")
-                     (auto-login-user "${username}")
-                     (auto-login-session "${session}"))))
-     (modify-services %desktop-services (delete gdm-service-type))))
-EOF
-  else
-cat >> /mnt/etc/config.scm <<'EOF'
-  (services
-   %base-services)
-EOF
-  fi
-fi
-
-cat >> /mnt/etc/config.scm <<'EOF'
-)
+   %base-services))
 EOF
 
 # -------------------- channels.scm (preserve user's channels) --------------------
@@ -591,17 +608,18 @@ cat > /mnt/etc/channels.scm <<'EOF'
           "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
 EOF
 
-# -------------------- Guix init --------------------
-if command -v herd >/dev/null 2>&1; then
-  herd start cow-store /mnt || true
-fi
-
+# -------------------- Run Guix init using matching 1.4.0 CLI if available --------------------
 if command -v guix >/dev/null 2>&1; then
+  # Force time-machine to use channels.scm but prefer binary substitutes
   echo "[+] Running guix time-machine -- system init (may take long)..."
-  guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
+  GUIX_SUBSTITUTE_URLS="https://hydra.gnu.org https://ci.guix.info" \
+    guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt || {
+      echo "[!] guix system init failed. Check guix-daemon logs and /tmp/guix-init.log" >&2
+      exit 1
+    }
 else
-  echo "Guix CLI not found; please ensure guix is installed in the live environment, then run:"
-  echo "  guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt"
+  echo "[!] Guix CLI not available. Attempted bootstrap may have failed."
+  echo "Please ensure guix 1.4.0 is installed before running the installer."
   exit 1
 fi
 
@@ -610,4 +628,3 @@ umount -R /mnt || true
 echo "Installation finished. Rebooting in 10 seconds..."
 sleep 10
 reboot
-
