@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# GNU Guix guided installer 
+# GNU Guix guided installer with LUKS support and robust guix init (English-only)
+# Defensive handling for swapoff: only call swapoff with a valid block device or swap UUID/label.
 # IMPORTANT: This script is destructive. Review TARGET_DISK before running. Run as root from a live environment.
 
 # -------------------- Configurable defaults --------------------
 LANG_OPT="${LANG_OPT:-en}"
 USE_GUI="${USE_GUI:-auto}"
-AUTO_YES="${AUTO_YES:-1}"
+AUTO_YES="${AUTO_YES:-0}"
 TARGET_DISK="${TARGET_DISK:-}"          # e.g. /dev/sdc
 USERNAME="${USERNAME:-}"                
 USER_PASS="${USER_PASS:-}"              
 ROOT_PASS="${ROOT_PASS:-}"              
 HOME_PASS="${HOME_PASS:-}"              
-LOCALE="${LOCALE:-pt_BR.UTF-8}"
+LOCALE="${LOCALE:-en_US.UTF-8}"
 TIMEZONE="${TIMEZONE:-America/Sao_Paulo}"
-DESKTOP="${DESKTOP:-I3}"              
+DESKTOP="${DESKTOP:-none}"              
 FS_TYPE="${FS_TYPE:-ext4}"              
-CREATE_HOME="${CREATE_HOME:-0}"          
-CREATE_SWAP="${CREATE_SWAP:-1}"          
-SWAP_SIZE="${SWAP_SIZE:-2G}"
-LUKS_ROOT="${LUKS_ROOT:-0}"              
-LUKS_HOME="${LUKS_HOME:-0}"              
+CREATE_HOME="${CREATE_HOME:-}"          
+CREATE_SWAP="${CREATE_SWAP:-}"          
+SWAP_SIZE="${SWAP_SIZE:-4G}"
+LUKS_ROOT="${LUKS_ROOT:-}"              
+LUKS_HOME="${LUKS_HOME:-}"              
 LUKS_ROOT_NAME="${LUKS_ROOT_NAME:-cryptroot}"
 LUKS_HOME_NAME="${LUKS_HOME_NAME:-crypthome}"
 GUIX_BINARY_VERSION="${GUIX_BINARY_VERSION:-1.5.0}"
@@ -350,15 +351,54 @@ cap_end() {
 
 ensure_unmounted() {
   local dev="$1"
-  # if given a device path, ensure no mounts reference it (directly or by partition)
-  if grep -qE "^${dev}[[:space:]]" /proc/mounts 2>/dev/null; then
+  # If input is a mount point, unmount it
+  if mountpoint -q "$dev" 2>/dev/null; then
+    umount "$dev" || return 1
+    return 0
+  fi
+  # If device is present in /proc/mounts as source, unmount
+  if awk '$1==dev {exit 1}' dev="$dev" /proc/mounts 2>/dev/null; then
     umount "$dev" || return 1
   fi
-  # also check for mounts whose source is the device (or its partitions)
-  if grep -qE "^/dev/[^ ]+[[:space:]]" /proc/mounts 2>/dev/null; then
-    # nothing further here; caller handles specific device unmounts
-    :
+  return 0
+}
+
+# safe_swapoff: attempt to disable swap in a safe way.
+# Accepts either a block device path (e.g. /dev/sdc3), a UUID string (prefixed with UUID=), a label (LABEL=), or an empty value.
+safe_swapoff() {
+  local arg="$1"
+  if [[ -z "${arg:-}" ]]; then
+    return 0
   fi
+
+  # If arg is a block device and exists
+  if [[ -b "$arg" ]]; then
+    log "Disabling swap on device $arg"
+    swapoff "$arg" || { log "swapoff $arg failed — trying to disable all swaps as fallback"; swapoff -a || true; }
+    return 0
+  fi
+
+  # If arg looks like UUID=... or LABEL=...
+  if [[ "$arg" == UUID=* || "$arg" == LABEL=* ]]; then
+    log "Disabling swap by spec $arg"
+    swapoff "$arg" 2>/dev/null || { log "swapoff $arg failed; trying swapoff -a"; swapoff -a || true; }
+    return 0
+  fi
+
+  # If arg is a plain UUID string (40+ hex) or shorter, attempt to find matching swap entry in /proc/swaps
+  if grep -q "$arg" /proc/swaps 2>/dev/null; then
+    local dev
+    dev="$(awk -v a="$arg" '$1~a || $2~a {print $1; exit}' /proc/swaps 2>/dev/null || true)"
+    if [[ -n "$dev" ]]; then
+      log "Disabling swap on discovered device $dev for arg $arg"
+      swapoff "$dev" || swapoff -a || true
+      return 0
+    fi
+  fi
+
+  # As a last resort, disable all swaps
+  log "swap spec '$arg' not a block device and not found in /proc/swaps; disabling all swaps as fallback"
+  swapoff -a || true
   return 0
 }
 
@@ -366,7 +406,7 @@ ensure_unmounted() {
 detect_gui
 
 if [[ "$(id -u)" -ne 0 ]]; then die "Run this script as root"; fi
-log "Starting GNU Guix installer"
+log "Starting GNU Guix installer (safe-swapoff enabled)"
 
 step_welcome() { gui_info "$WELCOME_TITLE" "$WELCOME_SUB"; }
 
@@ -378,7 +418,6 @@ step_select_disk() {
     [[ -n "$choice" ]] || die "$ABORT_MSG"
     TARGET_DISK="$(echo "$choice" | awk '{print $1}')"
   fi
-  # verify device exists
   [[ -b "$TARGET_DISK" ]] || die "Target disk $TARGET_DISK not found"
   gui_info "$SELECT_DISK" "Target: $TARGET_DISK"
 }
@@ -581,23 +620,19 @@ discover_parts() {
 step_install() {
   discover_parts
 
-  # prefer mapped devices if LUKS used
   if [[ -n "${MAPPED_ROOT:-}" && -b "${MAPPED_ROOT}" ]]; then MROOT="${MAPPED_ROOT}"; else MROOT="${ROOT_PART:-}"; fi
   [[ -n "$MROOT" ]] || die "Root device not found"
 
   mkdir -p /mnt
-  # attempt to mount with explicit fs type auto-detection; capture errors for debugging
   if ! mount -o nosuid,nodev,noatime "$MROOT" /mnt 2>/tmp/mount-root.err; then
     log "Failed to mount root ($MROOT): $(cat /tmp/mount-root.err || true)"
     die "Cannot mount root device $MROOT"
   fi
 
-  # mount home if present
   if [[ -n "${MAPPED_HOME:-}" && -b "${MAPPED_HOME}" ]]; then
     mkdir -p /mnt/home
     if ! mount -o nosuid,nodev,noatime "$MAPPED_HOME" /mnt/home 2>/tmp/mount-home.err; then
       log "Failed to mount MAPPED_HOME ($MAPPED_HOME): $(cat /tmp/mount-home.err || true)"
-      # continue without failing; configuration will still be written
       rm -f /tmp/mount-home.err || true
     fi
   elif [[ -n "${HOME_PART:-}" && -b "${HOME_PART}" ]]; then
@@ -608,7 +643,6 @@ step_install() {
     fi
   fi
 
-  # mount EFI if present
   if [[ -n "${EFI_PART:-}" && -b "${EFI_PART}" ]]; then
     mkdir -p /mnt/boot/efi
     if ! mount -o nosuid,nodev,noatime "$EFI_PART" /mnt/boot/efi 2>/tmp/mount-efi.err; then
@@ -617,10 +651,18 @@ step_install() {
     fi
   fi
 
-  # enable swap if present
-  if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART}" ]]; then swapon "$SWAP_PART" || true; fi
+  # enable swap if present (safe check)
+  if [[ -n "${SWAP_PART:-}" ]]; then
+    if [[ -b "${SWAP_PART}" ]]; then
+      swapon "$SWAP_PART" || true
+    else
+      # try to enable by matching /proc/swaps if a UUID/label was provided earlier
+      if grep -q "$(basename "$SWAP_PART")" /proc/swaps 2>/dev/null; then
+        swapon -a || true
+      fi
+    fi
+  fi
 
-  # hashed passwords
   huser="$(openssl passwd -6 -- "$USER_PASS" 2>/dev/null || true)"
   hroot_hashed="$(openssl passwd -6 -- "$ROOT_PASS" 2>/dev/null || true)"
 
@@ -652,7 +694,6 @@ EOF
  (file-systems (cons*
 EOF
 
-  # root filesystem entry
   if [[ -n "${MAPPED_ROOT:-}" && -b "${MAPPED_ROOT}" ]]; then root_dev="${MAPPED_ROOT}"; else root_dev="${MROOT}"; fi
   root_uuid="$(blkid -s UUID -o value "$root_dev" 2>/dev/null || true)"
   if [[ -n "$root_uuid" ]]; then
@@ -665,7 +706,6 @@ EOF
 EOF
   fi
 
-  # /home filesystem entry (if present and detected)
   if [[ -n "${MAPPED_HOME:-}" && -b "${MAPPED_HOME}" ]]; then
     home_dev="${MAPPED_HOME}"
     home_uuid="$(blkid -s UUID -o value "$home_dev" 2>/dev/null || true)"
@@ -691,7 +731,6 @@ EOF
     fi
   fi
 
-  # EFI filesystem entry
   if [[ -n "${EFI_PART:-}" && -b "${EFI_PART}" ]]; then
     efi_uuid="$(blkid -s UUID -o value "$EFI_PART" 2>/dev/null || true)"
     if [[ -n "$efi_uuid" ]]; then
@@ -727,7 +766,7 @@ EOF
  (services %base-services))
 EOF
 
-  # write channels.scm exactly as requested by user
+  # write channels.scm exactly as requested
   cat > /mnt/etc/channels.scm <<'EOF'
 (use-modules (guix ci))
 
@@ -779,13 +818,24 @@ EOF
     gui_info "$FINISH_MSG" "Could not start Guix daemon. Configuration is at /mnt/etc."
   fi
 
-  # cleanup: swapoff, unmount and close cryptsetup mappings if any
+  # cleanup: use safe_swapoff to avoid invalid-argument errors
   sync
-  if [[ -n "${SWAP_PART:-}" && -b "${SWAP_PART}" ]]; then swapoff "$SWAP_PART" || true; fi
-  # attempt to unmount mountpoints created earlier (ignore errors)
+  # Only attempt to safe_swapoff if SWAP_PART is set or swaps are active
+  if [[ -n "${SWAP_PART:-}" ]]; then
+    safe_swapoff "$SWAP_PART" || true
+  else
+    # If no SWAP_PART variable but swaps active, disable them
+    if [ -s /proc/swaps ]; then
+      log "No SWAP_PART variable set but swaps are active; disabling all swaps"
+      swapoff -a || true
+    fi
+  fi
+
+  # unmount earlier mountpoints if present
   umount /mnt/home 2>/dev/null || true
   umount /mnt/boot/efi 2>/dev/null || true
   umount -R /mnt 2>/dev/null || true
+
   if (( LUKS_HOME == 1 )) && cryptsetup status "$LUKS_HOME_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_HOME_NAME" || true; fi
   if (( LUKS_ROOT == 1 )) && cryptsetup status "$LUKS_ROOT_NAME" >/dev/null 2>&1; then cryptsetup close "$LUKS_ROOT_NAME" || true; fi
 
