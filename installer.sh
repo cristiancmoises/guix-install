@@ -10,7 +10,7 @@ set -euo pipefail
 banner(){ cat <<'B'
 +-------------------------------------------------------------+
 |                    GNU GUIX FULL OS INSTALL                  |
-|                                                              |
+|                     Parted-first Hardened Script             |
 +-------------------------------------------------------------+
 B
 }
@@ -605,3 +605,4 @@ umount -R /mnt || true
 echo "Installation finished. Rebooting in 10 seconds..."
 sleep 10
 reboot
+
