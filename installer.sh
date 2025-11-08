@@ -29,11 +29,6 @@ fi
 mkdir -p /root/.config/guix
 cat > /root/.config/guix/channels.scm <<'EOF'
 ;; === YOUR CUSTOM CHANNELS ===
-;; (use-modules (guix ci))
-(list
-  (channel-with-substitutes-available
-    %default-guix-channel
-    "https://ci.guix.gnu.org")
  (channel
        (name 'guix)
        (url "https://codeberg.org/guix/guix.git")
