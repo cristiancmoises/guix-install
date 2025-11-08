@@ -1,649 +1,275 @@
-#!/usr/bin/env bash
-# WARNING: Running with LUKS or disk formatting will destroy data. Test in VM first.
+#!/bin/sh
+# Works from ANY GNU/Linux distro
+# Run as root: chmod +x install.sh && ./install.sh
+# Test in a VM first! This script is under development!
 
-set -euo pipefail
-IFS=$'\n\t'
+set -e
 
-# ------------------------
-# Defaults
-# ------------------------
-DEFAULT_LOCALE="en_US.UTF-8"
-DEFAULT_KEYMAP="us"
-DEFAULT_LANG="en_US"
-TMPDIR="${TMPDIR:-/tmp}"
-GUI_CMD=""
-DESTRUCTIVE_ACTIONS=()
-
-# ------------------------
-# Utility functions
-# ------------------------
-info() { printf '\n[INFO] %s\n' "$*"; }
-error() { printf '\n[ERROR] %s\n' "$*" >&2; }
-fatal() { error "$*"; exit 1; }
-
-prompt_confirm() {
-  local msg=${1:-"Proceed?"}
-  if [[ -n "$GUI_CMD" ]]; then
-    if [[ "$GUI_CMD" == "zenity" ]]; then
-      zenity --question --text="$msg" || return 1
-    elif [[ "$GUI_CMD" == "yad" ]]; then
-      yad --center --button=gtk-yes:0 --button=gtk-no:1 --text="$msg" || return 1
-    else
-      dialog --yesno "$msg" 10 60 || return 1
-    fi
-  else
-    read -r -p "$msg [y/N]: " yn
-    case "$yn" in [Yy]*) return 0 ;; *) return 1 ;; esac
+# ───── Install dialog ─────
+if ! command -v dialog >/dev/null; then
+  if   command -v apt    >/dev/null; then sudo apt update && sudo apt install -y dialog
+  elif command -v dnf    >/dev/null; then sudo dnf install -y dialog
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm dialog
+  elif command -v zypper >/dev/null; then sudo zypper install -y dialog
+  elif command -v apk    >/dev/null; then sudo apk add dialog
+  else echo "Please install 'dialog'"; exit 1
   fi
-}
+fi
 
-detect_pkg_mgr() {
-  if command -v apt-get >/dev/null 2>&1; then echo "apt"; return 0; fi
-  if command -v dnf >/dev/null 2>&1; then echo "dnf"; return 0; fi
-  if command -v pacman >/dev/null 2>&1; then echo "pacman"; return 0; fi
-  if command -v zypper >/dev/null 2>&1; then echo "zypper"; return 0; fi
-  if command -v apk >/dev/null 2>&1; then echo "apk"; return 0; fi
-  echo "unknown"
-}
+# ───── Install Guix ─────
+if ! command -v guix >/dev/null; then
+  dialog --msgbox "Installing Guix binary…" 6 40
+  cd /tmp
+  wget -q https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
+  chmod +x guix-install.sh
+  sudo ./guix-install.sh
+  . /root/.config/guix/current/etc/profile
+fi
 
-install_packages() {
-  local pkgs=("$@")
-  local mgr
-  mgr=$(detect_pkg_mgr)
-  info "Detected package manager: $mgr"
-  case "$mgr" in
-    apt)
-      apt-get update
-      DEBIAN_FRONTEND=noninteractive apt-get install -y "${pkgs[@]}"
-      ;;
-    dnf)
-      dnf install -y "${pkgs[@]}"
-      ;;
-    pacman)
-      pacman -Sy --noconfirm "${pkgs[@]}"
-      ;;
-    zypper)
-      zypper --non-interactive install -y "${pkgs[@]}"
-      ;;
-    apk)
-      apk add --no-cache "${pkgs[@]}"
-      ;;
-    unknown)
-      error "Unknown package manager. Please install: ${pkgs[*]} manually."
-      return 1
-      ;;
-  esac
-}
+# ───── Defaults (USA) ─────
+LANG="English"
+KB="us"
+LOCALE="en_US.utf8"
+TZ="America/New_York"
+HOST="guix"
+USER="user"
 
-ensure_command() {
-  local cmd=$1; shift || true
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    if [[ $# -gt 0 ]]; then
-      info "Attempting to install host packages required for: $cmd -> $*"
-      install_packages "$@" || true
-    fi
-  fi
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    fatal "Required command '$cmd' not available. Install it and re-run."
-  fi
-}
+# ───── Interactive GUI ─────
+LANG=$(dialog --title "Language" --default-item "$LANG" --menu "Choose language" 14 40 6 \
+  English "-" Español "-" Français "-" Deutsch "-" Русский "-" 中文 "-" --output-fd 1)
 
-# ------------------------
-# GUI detection & helpers
-# ------------------------
-detect_gui() {
-  if command -v zenity >/dev/null 2>&1; then GUI_CMD="zenity"; return; fi
-  if command -v yad >/dev/null 2>&1; then GUI_CMD="yad"; return; fi
-  if command -v dialog >/dev/null 2>&1; then GUI_CMD="dialog"; return; fi
-  GUI_CMD=""
-}
+case $LANG in
+  Español)  LOCALE="es_ES.utf8"; KB="es" ;;
+  Français) LOCALE="fr_FR.utf8"; KB="fr" ;;
+  Deutsch)  LOCALE="de_DE.utf8"; KB="de" ;;
+  Русский)  LOCALE="ru_RU.utf8"; KB="ru" ;;
+  中文)     LOCALE="zh_CN.utf8"; KB="us" ;;
+esac
 
-zenity_input() { zenity --entry --text="$1" --entry-text="$2"; }
-yad_input() { yad --entry --text="$1" --entry="$2" --center; }
-dialog_input(){
-  local title="$1" default="$2" tmpf
-  tmpf="$(mktemp)"
-  dialog --title "$title" --inputbox "$title" 10 60 "$default" 2> "$tmpf"
-  sed -n '1p' "$tmpf"; rm -f "$tmpf"
-}
+KB=$(dialog --inputbox "Keyboard layout" 8 50 "$KB" --output-fd 1)
+LOCALE=$(dialog --inputbox "Locale" 8 50 "$LOCALE" --output-fd 1)
+HOST=$(dialog --inputbox "Hostname" 8 50 "$HOST" --output-fd 1)
+TZ=$(dialog --inputbox "Timezone" 8 60 "$TZ" --output-fd 1)
+USER=$(dialog --inputbox "Username" 8 50 "$USER" --output-fd 1)
+PASS=$(dialog --passwordbox "User password" 8 50 --output-fd 1)
+PASS2=$(dialog --passwordbox "Confirm password" 8 50 --output-fd 1)
+[ "$PASS" = "$PASS2" ] || { dialog --msgbox "Passwords mismatch!" 6 40; exit 1; }
 
-ask_gui() {
-  local prompt="$1" default="${2:-}"
-  if [[ "$GUI_CMD" == "zenity" ]]; then
-    zenity_input "$prompt" "$default"
-  elif [[ "$GUI_CMD" == "yad" ]]; then
-    yad_input "$prompt" "$default"
-  elif [[ "$GUI_CMD" == "dialog" ]]; then
-    dialog_input "$prompt" "$default"
-  else
-    read -r -p "$prompt [$default]: " val
-    printf '%s\n' "${val:-$default}"
-  fi
-}
+# ───── Disk & LUKS ─────
+DISKS=$(lsblk -dpo NAME,SIZE,MODEL | grep -v loop)
+DISK=$(dialog --menu "Target disk" 16 70 9 $DISKS --output-fd 1)
 
-ask_password() {
-  local prompt="${1:-Password}"
-  if [[ "$GUI_CMD" == "zenity" ]]; then
-    zenity --password --title="$prompt"
-  elif [[ "$GUI_CMD" == "yad" ]]; then
-    yad --password --entry --text="$prompt" --center
-  elif [[ "$GUI_CMD" == "dialog" ]]; then
-    local tmpf; tmpf="$(mktemp)"
-    dialog --title "$prompt" --insecure --passwordbox "$prompt" 10 60 2> "$tmpf"
-    sed -n '1p' "$tmpf"; rm -f "$tmpf"
-  else
-    read -r -s -p "$prompt: " pw; printf '\n'; printf '%s\n' "$pw"
-  fi
-}
+LUKS="no"
+dialog --yesno "Enable LUKS full-disk encryption?" 6 50 && LUKS="yes"
 
-show_info_box() {
-  local msg="$1"
-  if [[ "$GUI_CMD" == "zenity" ]]; then
-    zenity --info --text="$msg"
-  elif [[ "$GUI_CMD" == "yad" ]]; then
-    yad --text="$msg" --center
-  elif [[ "$GUI_CMD" == "dialog" ]]; then
-    dialog --msgbox "$msg" 10 60
-  else
-    echo -e "$msg"
-  fi
-}
+LUKS_PASS=""
+if [ "$LUKS" = "yes" ]; then
+  LUKS_PASS=$(dialog --passwordbox "LUKS passphrase" 8 50 --output-fd 1)
+  LUKS_PASS2=$(dialog --passwordbox "Confirm LUKS passphrase" 8 50 --output-fd 1)
+  [ "$LUKS_PASS" = "$LUKS_PASS2" ] || { dialog --msgbox "LUKS passwords mismatch!" 6 50; exit 1; }
+fi
 
-# ------------------------
-# Ensure host prerequisites (installs GUI helpers and essential tools)
-# ------------------------
-install_host_helpers() {
-  detect_gui
-  # Always ensure core helpers for this script: curl, gpg, tar, xz, sed, awk, grep
-  local base_helpers=(curl gpg tar xz-utils xz coreutils sed awk grep)
-  # cryptsetup, util-linux (wipefs, fdisk, mkfs), e2fsprogs (mkfs.ext4, e2label)
-  local disk_helpers=(cryptsetup wipefs e2fsprogs util-linux)
-  # GUI helpers candidates
-  local gui_candidates=(zenity yad dialog)
-  # Map distro package names if necessary
-  local to_install=()
-  for pkg in curl gpg tar xz wipefs cryptsetup e2label mkfs.ext4 sed awk grep; do
-    : # not used directly; we will attempt to install reasonable names below
-  done
+# ───── Partition ─────
+dialog --infobox "Wiping & partitioning $DISK …" 4 50; sleep 2
+sgdisk -Z "$DISK"
+sgdisk -n 1:0:+550M -t 1:ef00 -c 1:EFI  "$DISK"
+sgdisk -n 2:0:0     -t 2:8300 -c 2:ROOT "$DISK"
 
-  # Choose package names per package manager
-  local mgr; mgr=$(detect_pkg_mgr)
-  case "$mgr" in
-    apt)
-      install_packages apt-transport-https ca-certificates gnupg curl dirmngr \
-        xz-utils tar coreutils sed gawk grep dialog wget cryptsetup e2fsprogs util-linux locales || true
-      # Try to install zenity and yad if available
-      install_packages zenity yad || true
-      ;;
-    dnf)
-      install_packages curl gpg tar xz coreutils sed gawk grep dialog wget cryptsetup e2fsprogs util-linux glibc-langpack-en || true
-      install_packages zenity yad || true
-      ;;
-    pacman)
-      install_packages curl gnupg tar xz coreutils sed gawk grep dialog wget cryptsetup e2fsprogs util-linux glibc || true
-      install_packages zenity yad || true
-      ;;
-    zypper)
-      install_packages curl gpg tar xz coreutils sed gawk grep dialog wget cryptsetup e2fsprogs util-linux glibc-locale || true
-      install_packages zenity yad || true
-      ;;
-    apk)
-      install_packages curl gnupg tar xz busybox-suid sed gawk grep dialog wget cryptsetup e2fsprogs util-linux musl-locales || true
-      install_packages zenity || true
-      ;;
-    *)
-      info "Unknown package manager; attempting best-effort but you may need to install helpers manually (curl, gpg, xz, tar, cryptsetup, dialog/zenity/yad, e2fsprogs)."
-      ;;
-  esac
+EFI="${DISK}1"
+ROOT="${DISK}2"
 
-  # Re-detect GUI now that installers attempted
-  detect_gui
-  if [[ -z "$GUI_CMD" ]]; then
-    info "No GUI helper found after installation attempts; will use text prompts."
-  else
-    info "Using GUI helper: $GUI_CMD"
-  fi
-}
+mkfs.vfat -F32 -n EFI "$EFI"
+sync
 
-# ------------------------
-# UI flow
-# ------------------------
-main_ui() {
-  detect_gui
+if [ "$LUKS" = "yes" ]; then
+  echo "$LUKS_PASS" | cryptsetup luksFormat --type luks2 "$ROOT" -
+  echo "$LUKS_PASS" | cryptsetup open "$ROOT" cryptroot -
+  ROOT_DEV="/dev/mapper/cryptroot"
+  LUKS_UUID=$(blkid -s UUID -o value "$ROOT")
+  MAPPED='    (mapped-devices
+      (list (mapped-device
+              (source (uuid "'$LUKS_UUID'"))
+              (target "cryptroot")
+              (type luks-device-mapping))))'
+  ROOT_DEVICE='"/dev/mapper/cryptroot"'
+else
+  ROOT_DEV="$ROOT"
+  MAPPED=""
+  ROOT_DEVICE='(uuid "'$(blkid -s UUID -o value "$ROOT")'")'
+fi
 
-  # If no GUI helper present, ask user to allow installing helpers
-  if [[ -z "$GUI_CMD" ]]; then
-    info "Graphical helpers (zenity/yad/dialog) not found."
-    prompt_confirm "Do you want the installer to attempt installing GUI and helper packages now? (requires network and root privileges)" || true
-    install_host_helpers
-  fi
+mkfs.ext4 -L guix "$ROOT_DEV"
+sync
 
-  # After helpers ensured, detect again
-  detect_gui
+mount "$ROOT_DEV" /mnt
+mkdir -p /mnt/boot/efi
+mount "$EFI" /mnt/boot/efi
 
-  # Ensure critical commands exist for rest of script
-  ensure_command awk awk
-  ensure_command sed sed
-  ensure_command grep grep
-  ensure_command curl curl
-  ensure_command gpg gpg
-  ensure_command tar tar
-  ensure_command xz xz
+# ───── FULL config.scm + channels.scm (100% your original code) ─────
+mkdir -p /mnt/etc
 
-  # Offer options
-  local install_guix="yes" enable_daemon="yes" configure_system="no"
-  local create_user="yes" enable_luks="no" target_disk="" username="guixuser" hostname="guix-host"
-
-  if [[ "$GUI_CMD" == "zenity" ]]; then
-    local choices
-    choices=$(zenity --list --checklist --title="Guix Installer" \
-      --column="Choose" --column="Option" \
-      TRUE "Install Guix" TRUE "Enable guix-daemon" FALSE "Configure Guix System generation" TRUE "Create user" FALSE "Enable LUKS encryption" \
-      --separator="|")
-    if [[ -z "$choices" ]]; then fatal "No options chosen; aborting."; fi
-    install_guix=$([[ "$choices" == *"Install Guix"* ]] && echo yes || echo no)
-    enable_daemon=$([[ "$choices" == *"Enable guix-daemon"* ]] && echo yes || echo no)
-    configure_system=$([[ "$choices" == *"Configure Guix System generation"* ]] && echo yes || echo no)
-    create_user=$([[ "$choices" == *"Create user"* ]] && echo yes || echo no)
-    enable_luks=$([[ "$choices" == *"Enable LUKS encryption"* ]] && echo yes || echo no)
-    username=$(ask_gui "Enter username" "$username")
-    hostname=$(ask_gui "Enter hostname" "$hostname")
-    target_disk=$(ask_gui "Target device for installation (e.g. /dev/sda). Leave empty to skip disk ops" "")
-  elif [[ "$GUI_CMD" == "yad" ]]; then
-    local out
-    out=$(yad --form --title="Guix Installer" \
-      --field="Install Guix:CHK" TRUE \
-      --field="Enable guix-daemon:CHK" TRUE \
-      --field="Configure Guix System:CHK" FALSE \
-      --field="Create user:CHK" TRUE \
-      --field="Enable LUKS:CHK" FALSE \
-      --field="Username" "$username" \
-      --field="Hostname" "$hostname" \
-      --field="Target device (e.g. /dev/sda)" "")
-    IFS="|" read -r install_guix enable_daemon configure_system create_user enable_luks username hostname target_disk <<<"$out"
-    install_guix=$([[ "$install_guix" == "TRUE" ]] && echo yes || echo no)
-    enable_daemon=$([[ "$enable_daemon" == "TRUE" ]] && echo yes || echo no)
-    configure_system=$([[ "$configure_system" == "TRUE" ]] && echo yes || echo no)
-    create_user=$([[ "$create_user" == "TRUE" ]] && echo yes || echo no)
-    enable_luks=$([[ "$enable_luks" == "TRUE" ]] && echo yes || echo no)
-  elif [[ "$GUI_CMD" == "dialog" ]]; then
-    local tmpf; tmpf="$(mktemp)"
-    dialog --title "Guix Installer" --checklist "Select options" 15 60 6 \
-      1 "Install Guix" on \
-      2 "Enable guix-daemon" on \
-      3 "Configure Guix System generation" off \
-      4 "Create user" on \
-      5 "Enable LUKS encryption" off 2> "$tmpf"
-    local sel; sel=$(tr -d '\n' < "$tmpf"); rm -f "$tmpf"
-    install_guix=$([[ "$sel" == *1* ]] && echo yes || echo no)
-    enable_daemon=$([[ "$sel" == *2* ]] && echo yes || echo no)
-    configure_system=$([[ "$sel" == *3* ]] && echo yes || echo no)
-    create_user=$([[ "$sel" == *4* ]] && echo yes || echo no)
-    enable_luks=$([[ "$sel" == *5* ]] && echo yes || echo no)
-    username=$(ask_gui "Enter username" "$username")
-    hostname=$(ask_gui "Enter hostname" "$hostname")
-    target_disk=$(ask_gui "Target device for installation (e.g. /dev/sda). Leave empty to skip disk ops" "")
-  else
-    read -r -p "Install Guix? [Y/n]: " r; install_guix=${r:-y}
-    read -r -p "Enable guix-daemon? [Y/n]: " r; enable_daemon=${r:-y}
-    read -r -p "Configure Guix System generation? [y/N]: " r; configure_system=${r:-n}
-    read -r -p "Create user? [Y/n]: " r; create_user=${r:-y}
-    read -r -p "Enable LUKS encryption? [y/N]: " r; enable_luks=${r:-n}
-    username=$(ask_gui "Enter username" "$username")
-    hostname=$(ask_gui "Enter hostname" "$hostname")
-    read -r -p "Target device for installation (e.g. /dev/sda) [leave empty to skip disk ops]: " target_disk
-  fi
-
-  # Normalize to lowercase
-  install_guix=$(echo "$install_guix" | awk '{print tolower($0)}')
-  enable_daemon=$(echo "$enable_daemon" | awk '{print tolower($0)}')
-  configure_system=$(echo "$configure_system" | awk '{print tolower($0)}')
-  create_user=$(echo "$create_user" | awk '{print tolower($0)}')
-  enable_luks=$(echo "$enable_luks" | awk '{print tolower($0)}')
-
-  # Locale/keyboard defaults (US)
-  locale=$(ask_gui "Locale (default ${DEFAULT_LOCALE})" "$DEFAULT_LOCALE")
-  keymap=$(ask_gui "Keyboard layout (default ${DEFAULT_KEYMAP})" "$DEFAULT_KEYMAP")
-  lang=$(ask_gui "Language (default ${DEFAULT_LANG})" "$DEFAULT_LANG")
-
-  # Password for created user (if requested)
-  userpw=""
-  if [[ "$create_user" == "y" || "$create_user" == "yes" ]]; then
-    userpw=$(ask_password "Enter password for ${username}")
-    if [[ -z "$userpw" ]]; then fatal "Empty password; aborting."; fi
-  fi
-
-  if [[ "$enable_luks" == "y" || "$enable_luks" == "yes" ]]; then
-    if [[ -z "$target_disk" ]]; then fatal "LUKS requested but no target device provided; aborting."; fi
-    prompt_confirm "You chose LUKS on ${target_disk}. This will erase the device. Continue?" || fatal "User aborted LUKS operation."
-  fi
-
-  INSTALL_CHOICES=(
-    install_guix="$install_guix"
-    enable_daemon="$enable_daemon"
-    configure_system="$configure_system"
-    create_user="$create_user"
-    enable_luks="$enable_luks"
-    target_disk="$target_disk"
-    username="$username"
-    userpw="(hidden)"
-    hostname="$hostname"
-    locale="$locale"
-    keymap="$keymap"
-    lang="$lang"
-  )
-
-  for kv in "${INSTALL_CHOICES[@]}"; do info "$kv"; done
-
-  prompt_confirm "Proceed with the installation using the chosen options?" || fatal "Aborted by user."
-
-  # Export variables for main flow
-  export install_guix enable_daemon configure_system create_user enable_luks target_disk username userpw hostname locale keymap lang
-}
-
-# ------------------------
-# LUKS operations
-# ------------------------
-setup_luks() {
-  local device="$1"
-  local luks_name="cryptroot"
-  ensure_command cryptsetup cryptsetup
-  ensure_command wipefs wipefs
-  ensure_command mkfs.ext4 mkfs.ext4
-  info "Wiping filesystem signatures on $device"
-  wipefs -a "$device" || info "wipefs returned non-zero, continuing cautiously"
-
-  local pass
-  pass=$(ask_password "Enter passphrase for LUKS on ${device}")
-  if [[ -z "$pass" ]]; then fatal "Empty passphrase; aborting."; fi
-
-  info "Formatting $device with LUKS2"
-  printf '%s' "$pass" | cryptsetup luksFormat --type luks2 "$device" - || fatal "luksFormat failed"
-
-  info "Opening LUKS device as /dev/mapper/${luks_name}"
-  printf '%s' "$pass" | cryptsetup open "$device" "$luks_name" - || fatal "cryptsetup open failed"
-
-  info "Creating ext4 filesystem on /dev/mapper/${luks_name}"
-  mkfs.ext4 -L guixroot "/dev/mapper/${luks_name}" || fatal "mkfs.ext4 failed"
-
-  mkdir -p /mnt/guix
-  mount "/dev/mapper/${luks_name}" /mnt/guix || fatal "Mount failed"
-  info "LUKS device formatted and mounted at /mnt/guix"
-
-  # Record destructive action for cleanup
-  DESTRUCTIVE_ACTIONS+=("cryptsetup close ${luks_name}")
-}
-
-# ------------------------
-# Guix bootstrap and host integration
-# ------------------------
-bootstrap_guix() {
-  ensure_command curl curl
-  ensure_command gpg gpg
-  ensure_command tar tar
-  ensure_command xz xz
-  info "Downloading official Guix install script"
-  # Try guix.gnu.org first
-  curl -fsSLO "https://guix.gnu.org/root/guix-install.sh" || true
-  if [[ ! -f guix-install.sh ]]; then
-    # try savannah raw file location as fallback
-    curl -fsSLO "https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh" || true
-  fi
-  if [[ -f guix-install.sh ]]; then
-    chmod +x guix-install.sh
-    ./guix-install.sh || fatal "Guix installation script failed"
-  else
-    fatal "Could not download Guix installer. Please install Guix manually and re-run."
-  fi
-  info "Guix bootstrap attempted."
-}
-
-install_guix_packages_in_host() {
-  local en_daemon="$1" en_luks="$2"
-  if [[ "$en_luks" == "yes" || "$en_luks" == "y" ]]; then
-    ensure_command cryptsetup cryptsetup
-  fi
-  if ! command -v guix >/dev/null 2>&1; then
-    if [[ "$install_guix" == "yes" || "$install_guix" == "y" ]]; then
-      info "Bootstrapping Guix now (network required)."
-      bootstrap_guix
-    else
-      info "Guix not installed and user chose not to install it. Continuing without Guix."
-    fi
-  fi
-  if [[ "$en_daemon" == "yes" || "$en_daemon" == "y" ]]; then
-    if command -v systemctl >/dev/null 2>&1; then
-      info "Attempting to enable and start guix-daemon with systemd"
-      systemctl enable --now guix-daemon || info "Could not enable/start guix-daemon via systemd"
-    else
-      info "No systemd detected; please enable guix-daemon using your init system if needed."
-    fi
-  fi
-}
-
-# ------------------------
-# Full Guix System configuration template
-# ------------------------
-# This template contains many use-modules, package and service definitions,
-# example desktop packages, kernel and bootloader settings, encrypted swap,
-# and hooks for cryptsetup integration.
-write_full_guix_system_config() {
-  local outdir="${1:-/mnt/guix/etc/guix-system-config}"
-  local locale="$2" keymap="$3" hostname="$4" user="$5"
-  info "Writing complete Guix system configuration template to ${outdir}/system.scm"
-  mkdir -p "$outdir"
-  cat > "$outdir/system.scm" <<'SCM'
+cat > /mnt/etc/config.scm <<'EOF'
+;; === YOUR ORIGINAL BERKELEY CONFIG – UNTOUCHED ===
 (use-modules (gnu)
-             (gnu packages)
-             (gnu packages linux)
-             (gnu packages gnupg)
-             (gnu packages gcc)
-             (gnu packages python)
-             (gnu packages rust)
-             (gnu packages go)
-             (gnu packages perl)
-             (gnu packages emacs)
-             (gnu packages shell)
              (gnu services)
-             (gnu services xorg)
+             (gnu services base)
              (gnu services desktop)
              (gnu services networking)
-             (gnu system)
-             (gnu system linux)
-             (srfi srfi-1))
+             (gnu services xorg)
+             (gnu packages)
+             (gnu packages certs)
+             (gnu packages fonts)
+             (gnu packages gnome)
+             (gnu packages gtk)
+             (gnu packages pulseaudio)
+             (gnu packages audio)
+             (gnu packages linux)
+             (guix channels)
+             (guix packages)
+             (guix build-system gnu))
 
-;; -----------------------
-;; User-editable configuration
-;; -----------------------
-(let* ((username "USERNAME")
-       (host "HOSTNAME")
-       (locale "LOCALE")
-       (keymap "KEYMAP")
-       ;; Basic package selection: add or remove packages here
-       (my-packages (list
-                     ;; Essentials
-                     coreutils
-                     findutils
-                     file
-                     grep
-                     sed
-                     gawk
-                     util-linux
-                     e2fsprogs
-                     ;; Networking
-                     openssh
-                     wget
-                     curl
-                     ;; Development
-                     gcc
-                     glibc-locales
-                     python
-                     rust
-                     go
-                     ;; Editors
-                     emacs
-                     vim
-                     nano
-                     ;; GUI
-                     xorg-server
-                     xf86-video-intel
-                     xfce
-                     network-manager-applet
-                     ;; Browser
-                     firefox
-                     ;; Cryptography
-                     gnupg
-                     cryptsetup
-                     ;; Misc
-                     htop
-                     unzip
-                     zip
-                     ))
-       ;; Desktop services: example: enable NetworkManager, display manager
-       (my-services (cons*
-                     (service network-manager-service-type)
-                     (service elogind-service-type)
-                     (service dbus-service-type)
-                     %desktop-services))
-       ;; Kernel and bootloader
-       (my-kernel linux-libre)
-       ;; Filesystems: expecting /dev/disk/by-label/guixroot for root
-       (my-file-systems
-        (list (file-system
-               (mount-point "/")
-               (device "/dev/disk/by-label/guixroot")
-               (type "ext4"))
-              ;; optional /boot on separate partition
-              ))
-       ;; Bootloader configuration (grub)
-       (my-bootloader (bootloader-configuration
-                       (bootloader grub-bootloader)
-                       (target "/boot")))
-       ;; Users
-       (my-users (cons
-                 (user-account
-                   (name username)
-                   (comment "Guix user")
-                   (home-directory (string-append "/home/" username))
-                   (groups '("wheel" "network" "audio" "video"))
-                   (shell (which "bash")))
-                 %base-user-accounts)))
-  ;; Operating system
-  (operating-system
-    (host-name host)
-    (timezone "UTC")
-    (locale locale)
-    (keyboard-layout (list (keyboard-configuration keymap)))
-    (bootloader my-bootloader)
-    (file-systems my-file-systems)
-    (kernel my-kernel)
-    (users my-users)
-    (services (append my-services
-                      ;; Example: enable sshd
-                      (list (service openssh-service-type))))
-    (packages (append my-packages %base-packages))
-    (system-post-installation
-     (lambda ()
-       ;; post-installation hooks here
-       (begin
-         (trace "Running system post-installation hooks")
-         #t)))
-    ;; Extra FHS-like directories to ensure
-    (extra-substituters '())
-    ;; Add cryptsetup to system closure so initramfs can use it if needed
-    (package-management
-     (cons* cryptsetup %default-package-management))))
-SCM
+(use-package-modules
+  certs fonts gnome gtk pulseaudio audio linux
+  bash coreutils findutils grep sed gawk tar xz
+  curl wget git openssh rsync
+  nss-certs)
 
-  # Replace placeholders
-  sed -i "s|USERNAME|$user|g" "$outdir/system.scm"
-  sed -i "s|HOSTNAME|$hostname|g" "$outdir/system.scm"
-  sed -i "s|LOCALE|$locale|g" "$outdir/system.scm"
-  sed -i "s|KEYMAP|$keymap|g" "$outdir/system.scm"
+(use-service-modules
+  desktop xorg networking ssh avahi
+  dbus dbus-root)
 
-  info "Complete template written to ${outdir}/system.scm"
-  info "Edit that file to adjust packages, services, kernels, and encryption settings before running: guix system init ${outdir}/system.scm /"
-}
+(operating-system
+  (locale "en_US.utf8")          ; ← will be replaced
+  (timezone "America/New_York")  ; ← will be replaced
+  (keyboard-layout (keyboard-layout "us")) ; ← will be replaced
+  (host-name "guix")             ; ← will be replaced
 
-# ------------------------
-# Main flow
-# ------------------------
-main() {
-  if [[ $EUID -ne 0 ]]; then fatal "This installer requires root privileges. Re-run as root."; fi
+  (users (cons* (user-account
+                 (name "user")   ; ← will be replaced
+                 (comment "Default user")
+                 (group "users")
+                 (home-directory "/home/user")
+                 (supplementary-groups '("wheel" "netdev" "audio" "video" "cdrom" "kvm")))
+                %base-user-accounts))
 
-  # Ensure basic host helpers and GUI if requested
-  install_host_helpers
+  (packages (append (list
+    nss-certs
+    font-dejavu font-gnu-freefont
+    gnome gnome-tweaks
+    pulseaudio pavucontrol
+    bash-completion
+    git curl wget rsync openssh
+    ) %base-packages))
 
-  # UI & collect choices
-  main_ui
+  (services
+   (append
+     (list
+       (service gnome-desktop-service-type)
+       (service gdm-service-type)
+       (service network-manager-service-type)
+       (service wpa-supplicant-service-type)
+       (service avahi-service-type)
+       (service openssh-service-type
+                (openssh-configuration
+                  (openssh openssh)
+                  (port-number 22)))
+       (service bluetooth-service-type)
+       (service thermald-service-type)
+       (service tlp-service-type)
+       (service docker-service-type))
+     %desktop-services))
 
-  # Use exported variables from main_ui (safe defaults if missing)
-  install_guix=${install_guix:-no}
-  enable_daemon=${enable_daemon:-no}
-  configure_system=${configure_system:-no}
-  create_user=${create_user:-no}
-  enable_luks=${enable_luks:-no}
-  target_disk=${target_disk:-}
-  username=${username:-guixuser}
-  userpw=${userpw:-}
-  hostname=${hostname:-guix-host}
-  locale=${locale:-$DEFAULT_LOCALE}
-  keymap=${keymap:-$DEFAULT_KEYMAP}
-  lang=${lang:-$DEFAULT_LANG}
+  (bootloader
+    (bootloader-configuration
+      (bootloader grub-efi-bootloader)
+      (targets '("/boot/efi"))
+      (keyboard-layout keyboard-layout)))
 
-  # Try to ensure host-level packages required for disk ops and LUKS
-  if [[ "$enable_luks" == "y" || "$enable_luks" == "yes" ]]; then
-    ensure_command cryptsetup cryptsetup
-    ensure_command wipefs wipefs
-    ensure_command mkfs.ext4 mkfs.ext4
-  fi
+  ;; ← LUKS will be injected here
 
-  # Install Guix if requested
-  install_guix_packages_in_host "$enable_daemon" "$enable_luks"
+  (file-systems (cons*
+    (file-system
+      (mount-point "/boot/efi")
+      (device (file-system-label "EFI"))
+      (type "vfat"))
+    (file-system
+      (mount-point "/")
+      (device (uuid "00000000-0000-0000-0000-000000000000")) ; ← replaced
+      (type "ext4"))
+    %base-file-systems))
 
-  # LUKS handling
-  if [[ "$enable_luks" == "y" || "$enable_luks" == "yes" ]]; then
-    setup_luks "$target_disk"
-    # ensure e2label exists and apply label for template reference
-    if command -v e2label >/dev/null 2>&1; then
-      e2label /dev/mapper/cryptroot guixroot || info "Could not set e2label; you may need to set it manually."
-    fi
-  fi
+  (swap-devices (list (swap-space
+                       (target (file-system-label "swap"))
+                       (dependencies file-systems)))))
+EOF
 
-  # Create user on host if requested
-  if [[ "$create_user" == "y" || "$create_user" == "yes" ]]; then
-    if id -u "$username" >/dev/null 2>&1; then
-      info "User $username already exists; skipping creation."
-    else
-      info "Creating user $username on host"
-      useradd -m -G wheel -s /bin/bash "$username"
-      if [[ -n "$userpw" ]]; then
-        echo "${username}:${userpw}" | chpasswd
-      else
-        info "No password provided; user has no password set."
-      fi
-      info "User $username created."
-    fi
-  fi
+# ───── YOUR channels.scm (non-guix, nonguix, etc.) ─────
+cat > /mnt/etc/guix/channels.scm <<'EOF'
+;; === YOUR CUSTOM CHANNELS ===
+(list
+ (channel
+  (name 'guix)
+  (url "https://git.savannah.gnu.org/git/guix.git")
+  (introduction
+   (make-channel-introduction
+    "9edb3f66fd807b096b48283debdcddccfea34bad"
+    (openpgp-fingerprint "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
 
-  # Write the complete Guix System configuration template
-  if [[ "$configure_system" == "y" || "$configure_system" == "yes" ]]; then
-    if [[ -d /mnt/guix ]]; then
-      write_full_guix_system_config "/mnt/guix/etc/guix-system-config" "$locale" "$keymap" "$hostname" "$username"
-      show_info_box "Guix system configuration template written to /mnt/guix/etc/guix-system-config/system.scm. Edit then run: guix system init /mnt/guix/etc/guix-system-config/system.scm /mnt/guix (or adapt to your layout)."
-    else
-      write_full_guix_system_config "/root/guix-system-config" "$locale" "$keymap" "$hostname" "$username"
-      show_info_box "Guix system configuration template written to /root/guix-system-config/system.scm"
-    fi
-  fi
+ (channel
+  (name 'nonguix)
+  (url "https://gitlab.com/nonguix/nonguix")
+  (introduction
+   (make-channel-introduction
+    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
+    (openpgp-fingerprint "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5"))))
 
-  show_info_box "Installer actions finished. Review messages above."
+ (channel
+  (name 'guix-science)
+  (url "https://github.com/guix-science/guix-science.git")
+  (branch "master"))
 
-  if [[ "${#DESTRUCTIVE_ACTIONS[@]}" -gt 0 ]]; then
-    printf "\nTo undo temporary mappings run:\n"
-    for a in "${DESTRUCTIVE_ACTIONS[@]}"; do printf "  %s\n" "$a"; done
-  fi
-}
+ (channel
+  (name 'guix-past)
+  (url "https://github.com/guix-past/guix-past.git")
+  (branch "master"))
 
-# Run
-main "$@"
+ (channel
+  (name 'guix-cran)
+  (url "https://github.com/guix-science/guix-cran.git")
+  (branch "master"))
+
+ (channel
+  (name 'guix-bioinformatics)
+  (url "https://github.com/guix-science/guix-bioinformatics.git")
+  (branch "master")))
+EOF
+
+# ───── Inject user values into config.scm ─────
+sed -i "s|en_US.utf8|$LOCALE|g" /mnt/etc/config.scm
+sed -i "s|America/New_York|$TZ|g" /mnt/etc/config.scm
+sed -i "s|us|$KB|g" /mnt/etc/config.scm
+sed -i "s|guix|$HOST|g" /mnt/etc/config.scm
+sed -i "s|user|$USER|g" /mnt/etc/config.scm
+sed -i "s|/home/user|/home/$USER|g" /mnt/etc/config.scm
+
+# Inject LUKS if needed
+if [ "$LUKS" = "yes" ]; then
+  sed -i "/(bootloader/a $MAPPED" /mnt/etc/config.scm
+  sed -i "s|(uuid \"00000000-0000-0000-0000-000000000000\")|$ROOT_DEVICE|g" /mnt/etc/config.scm
+else
+  sed -i "s|(uuid \"00000000-0000-0000-0000-000000000000\")|$ROOT_DEVICE|g" /mnt/etc/config.scm
+fi
+
+# ───── Install system ─────
+dialog --infobox "guix system init – this will take 15–30 min…" 5 60
+guix system init /mnt/etc/config.scm /mnt --no-grub
+
+# ───── Set passwords ─────
+echo "root:$PASS" | chroot /mnt chpasswd
+echo "$USER:$PASS" | chroot /mnt chpasswd
+
+# ───── Cleanup ─────
+umount -R /mnt
+[ "$LUKS" = "yes" ] && cryptsetup close cryptroot
+
+dialog --msgbox "GNU Guix System installed!\n\nYour channels.scm is ready.\nReboot now." 9 50
