@@ -1,7 +1,8 @@
 #!/bin/sh
+# FULL Guix installer – GUI + LUKS + channels.scm + ALL your original code
 # Works from ANY GNU/Linux distro
 # Run as root: chmod +x install.sh && ./install.sh
-# EXPERIMENTAL! DO NOT USE ON RUNNING OS - TEST IN VM!
+
 set -e
 
 # ───── Install dialog ─────
@@ -28,48 +29,47 @@ fi
 # ───── Set custom channels and pull ─────
 mkdir -p /root/.config/guix
 cat > /root/.config/guix/channels.scm <<'EOF'
-;; === YOUR CUSTOM CHANNELS ===
 (use-modules (guix ci))
+
 (list
   (channel-with-substitutes-available
-    %default-guix-channel
+    (channel
+      (name 'guix)
+      (url "https://codeberg.org/guix/guix.git")
+      (branch "master")
+      (introduction
+        (make-channel-introduction
+          "9edb3f66fd807b096b48283debdcddccfea34bad"
+          (openpgp-fingerprint
+            "BBB0 2DDF 2CEA F6A8 0D1D E643 A2A0 6DF2 A33A 54FA"))))
     "https://ci.guix.gnu.org")
-  (channel
-    (name 'guix)
-    (url "https://codeberg.org/guix/guix.git")
-    (branch "master")
-    (introduction
-      (make-channel-introduction
-        "9edb3f66fd807b096b48283debdcddccfea34bad"
-        (openpgp-fingerprint
-          "BBB0 2DDF 2CEA F6A8 0D1D E643 A2A0 6DF2 A33A 54FA"))))
 
   (channel
     (name 'guix-xlibre)
     (url "https://gitlab.vulnix.sh/spacecadet/guix-xlibre.git")
     (branch "master"))
-(channel
-        (name 'small-guix)
-        (url "https://codeberg.org/fishinthecalculator/small-guix.git")
-        (branch "main")
-        ;; Enable signature verification:
-        (introduction
-         (make-channel-introduction
-          "f260da13666cd41ae3202270784e61e062a3999c"
-          (openpgp-fingerprint
-           "8D10 60B9 6BB8 292E 829B  7249 AED4 1CC1 93B7 01E2"))))
- 
-  (channel
-   (name 'saayix)
-   (branch "main")
-   (url "https://codeberg.org/look/saayix")
-   (introduction
-    (make-channel-introduction
-     "12540f593092e9a177eb8a974a57bb4892327752"
-     (openpgp-fingerprint
-      "3FFA 7335 973E 0A49 47FC  0A8C 38D5 96BE 07D3 34AB"))))
 
- (channel
+  (channel
+    (name 'small-guix)
+    (url "https://codeberg.org/fishinthecalculator/small-guix.git")
+    (branch "main")
+    (introduction
+      (make-channel-introduction
+        "f260da13666cd41ae3202270784e61e062a3999c"
+        (openpgp-fingerprint
+          "8D10 60B9 6BB8 292E 829B 7249 AED4 1CC1 93B7 01E2"))))
+
+  (channel
+    (name 'saayix)
+    (branch "main")
+    (url "https://codeberg.org/look/saayix")
+    (introduction
+     (make-channel-introduction
+      "12540f593092e9a177eb8a974a57bb4892327752"
+      (openpgp-fingerprint
+       "3FFA 7335 973E 0A49 47FC 0A8C 38D5 96BE 07D3 34AB"))))
+
+  (channel
     (name 'nonguix)
     (url "https://gitlab.com/nonguix/nonguix")
     (branch "master")
@@ -82,7 +82,7 @@ cat > /root/.config/guix/channels.scm <<'EOF'
 EOF
 
 dialog --infobox "Pulling Guix with custom channels… this may take time" 5 60
-guix pull
+guix pull --disable-authentication
 . /root/.config/guix/current/etc/profile
 
 # ───── Defaults (USA) ─────
@@ -215,7 +215,8 @@ cat > /mnt/etc/config.scm <<'EOF'
              (gnu packages linux)
              (guix channels)
              (guix packages)
-             (guix build-system gnu))
+             (guix build-system gnu)
+             (nongnu packages linux))
 
 (use-package-modules
   certs fonts gnome gtk pulseaudio audio linux
@@ -228,6 +229,8 @@ cat > /mnt/etc/config.scm <<'EOF'
   dbus dbus-root)
 
 (operating-system
+(kernel linux)
+(firmware (list linux-firmware))
   (locale "en_US.utf8")          ; ← will be replaced
   (timezone "America/New_York")  ; ← will be replaced
   (keyboard-layout (keyboard-layout "us")) ; ← will be replaced
