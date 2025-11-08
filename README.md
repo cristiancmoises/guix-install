@@ -9,7 +9,7 @@
 
 ## 📖 Overview
 
-This project provides two automation installation scripts for **GNU Guix**, designed to simplify and speed up the setup process on new systems.
+This project provides an **GNU Guix** easy installer.
 
 # Running...
 
