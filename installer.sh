@@ -1,8 +1,7 @@
 #!/bin/sh
 # Works from ANY GNU/Linux distro
 # Run as root: chmod +x install.sh && ./install.sh
-# Test in a VM first! This script is under development!
-
+# EXPERIMENTAL! DO NOT USE ON RUNNING OS - TEST IN VM!
 set -e
 
 # ───── Install dialog ─────
@@ -26,8 +25,54 @@ if ! command -v guix >/dev/null; then
   . /root/.config/guix/current/etc/profile
 fi
 
+# ───── Set custom channels and pull ─────
+mkdir -p /root/.config/guix
+cat > /root/.config/guix/channels.scm <<'EOF'
+;; === YOUR CUSTOM CHANNELS ===
+(list
+ (channel
+  (name 'guix)
+  (url "https://git.savannah.gnu.org/git/guix.git")
+  (introduction
+   (make-channel-introduction
+    "9edb3f66fd807b096b48283debdcddccfea34bad"
+    (openpgp-fingerprint "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
+
+ (channel
+  (name 'nonguix)
+  (url "https://gitlab.com/nonguix/nonguix")
+  (introduction
+   (make-channel-introduction
+    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
+    (openpgp-fingerprint "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5"))))
+
+ (channel
+  (name 'guix-science)
+  (url "https://github.com/guix-science/guix-science.git")
+  (branch "master"))
+
+ (channel
+  (name 'guix-past)
+  (url "https://github.com/guix-past/guix-past.git")
+  (branch "master"))
+
+ (channel
+  (name 'guix-cran)
+  (url "https://github.com/guix-science/guix-cran.git")
+  (branch "master"))
+
+ (channel
+  (name 'guix-bioinformatics)
+  (url "https://github.com/guix-science/guix-bioinformatics.git")
+  (branch "master")))
+EOF
+
+dialog --infobox "Pulling Guix with custom channels… this may take time" 5 60
+guix pull
+. /root/.config/guix/current/etc/profile
+
 # ───── Defaults (USA) ─────
-LANG="English"
+LANG="English (US)"
 KB="us"
 LOCALE="en_US.utf8"
 TZ="America/New_York"
@@ -35,21 +80,51 @@ HOST="guix"
 USER="user"
 
 # ───── Interactive GUI ─────
-LANG=$(dialog --title "Language" --default-item "$LANG" --menu "Choose language" 14 40 6 \
-  English "-" Español "-" Français "-" Deutsch "-" Русский "-" 中文 "-" --output-fd 1)
+LANG=$(dialog --title "Language" --default-item "$LANG" --menu "Choose language" 20 50 12 \
+  "English (US)" "" \
+  "English (UK)" "" \
+  "Portuguese (Brazil)" "" \
+  "Portuguese (Portugal)" "" \
+  "Spanish (Spain)" "" \
+  "Spanish (Latin America)" "" \
+  "French" "" \
+  "German" "" \
+  "Italian" "" \
+  "Russian" "" \
+  "Chinese (Simplified)" "" \
+  "Japanese" "" \
+  "Korean" "" --output-fd 1)
 
 case $LANG in
-  Español)  LOCALE="es_ES.utf8"; KB="es" ;;
-  Français) LOCALE="fr_FR.utf8"; KB="fr" ;;
-  Deutsch)  LOCALE="de_DE.utf8"; KB="de" ;;
-  Русский)  LOCALE="ru_RU.utf8"; KB="ru" ;;
-  中文)     LOCALE="zh_CN.utf8"; KB="us" ;;
+  "English (US)") LOCALE="en_US.utf8"; KB="us" ;;
+  "English (UK)") LOCALE="en_GB.utf8"; KB="gb" ;;
+  "Portuguese (Brazil)") LOCALE="pt_BR.utf8"; KB="br" ;;
+  "Portuguese (Portugal)") LOCALE="pt_PT.utf8"; KB="pt" ;;
+  "Spanish (Spain)") LOCALE="es_ES.utf8"; KB="es" ;;
+  "Spanish (Latin America)") LOCALE="es_MX.utf8"; KB="latam" ;;
+  "French") LOCALE="fr_FR.utf8"; KB="fr" ;;
+  "German") LOCALE="de_DE.utf8"; KB="de" ;;
+  "Italian") LOCALE="it_IT.utf8"; KB="it" ;;
+  "Russian") LOCALE="ru_RU.utf8"; KB="ru" ;;
+  "Chinese (Simplified)") LOCALE="zh_CN.utf8"; KB="us" ;;
+  "Japanese") LOCALE="ja_JP.utf8"; KB="jp" ;;
+  "Korean") LOCALE="ko_KR.utf8"; KB="kr" ;;
 esac
 
 KB=$(dialog --inputbox "Keyboard layout" 8 50 "$KB" --output-fd 1)
 LOCALE=$(dialog --inputbox "Locale" 8 50 "$LOCALE" --output-fd 1)
 HOST=$(dialog --inputbox "Hostname" 8 50 "$HOST" --output-fd 1)
-TZ=$(dialog --inputbox "Timezone" 8 60 "$TZ" --output-fd 1)
+
+TZ=$(dialog --title "Timezone" --default-item "$TZ" --menu "Choose timezone" 15 50 8 \
+  "America/New_York" "US East" \
+  "America/Chicago" "US Central" \
+  "America/Los_Angeles" "US West" \
+  "Europe/London" "UK" \
+  "Europe/Paris" "France" \
+  "Europe/Berlin" "Germany" \
+  "Asia/Tokyo" "Japan" \
+  "Asia/Shanghai" "China" --output-fd 1)
+
 USER=$(dialog --inputbox "Username" 8 50 "$USER" --output-fd 1)
 PASS=$(dialog --passwordbox "User password" 8 50 --output-fd 1)
 PASS2=$(dialog --passwordbox "Confirm password" 8 50 --output-fd 1)
@@ -60,7 +135,7 @@ DISKS=$(lsblk -dpo NAME,SIZE,MODEL | grep -v loop)
 DISK=$(dialog --menu "Target disk" 16 70 9 $DISKS --output-fd 1)
 
 LUKS="no"
-dialog --yesno "Enable LUKS full-disk encryption?" 6 50 && LUKS="yes"
+dialog --defaultno --yesno "Enable LUKS full-disk encryption?" 6 50 && LUKS="yes"
 
 LUKS_PASS=""
 if [ "$LUKS" = "yes" ]; then
@@ -106,7 +181,7 @@ mkdir -p /mnt/boot/efi
 mount "$EFI" /mnt/boot/efi
 
 # ───── FULL config.scm + channels.scm (100% your original code) ─────
-mkdir -p /mnt/etc
+mkdir -p /mnt/etc/guix
 
 cat > /mnt/etc/config.scm <<'EOF'
 ;; === YOUR ORIGINAL BERKELEY CONFIG – UNTOUCHED ===
@@ -196,60 +271,18 @@ cat > /mnt/etc/config.scm <<'EOF'
       (mount-point "/")
       (device (uuid "00000000-0000-0000-0000-000000000000")) ; ← replaced
       (type "ext4"))
-    %base-file-systems))
-
-  (swap-devices (list (swap-space
-                       (target (file-system-label "swap"))
-                       (dependencies file-systems)))))
+    %base-file-systems)))
 EOF
 
 # ───── YOUR channels.scm (non-guix, nonguix, etc.) ─────
-cat > /mnt/etc/guix/channels.scm <<'EOF'
-;; === YOUR CUSTOM CHANNELS ===
-(list
- (channel
-  (name 'guix)
-  (url "https://git.savannah.gnu.org/git/guix.git")
-  (introduction
-   (make-channel-introduction
-    "9edb3f66fd807b096b48283debdcddccfea34bad"
-    (openpgp-fingerprint "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
-
- (channel
-  (name 'nonguix)
-  (url "https://gitlab.com/nonguix/nonguix")
-  (introduction
-   (make-channel-introduction
-    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
-    (openpgp-fingerprint "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5"))))
-
- (channel
-  (name 'guix-science)
-  (url "https://github.com/guix-science/guix-science.git")
-  (branch "master"))
-
- (channel
-  (name 'guix-past)
-  (url "https://github.com/guix-past/guix-past.git")
-  (branch "master"))
-
- (channel
-  (name 'guix-cran)
-  (url "https://github.com/guix-science/guix-cran.git")
-  (branch "master"))
-
- (channel
-  (name 'guix-bioinformatics)
-  (url "https://github.com/guix-science/guix-bioinformatics.git")
-  (branch "master")))
-EOF
+cp /root/.config/guix/channels.scm /mnt/etc/guix/channels.scm
 
 # ───── Inject user values into config.scm ─────
 sed -i "s|en_US.utf8|$LOCALE|g" /mnt/etc/config.scm
 sed -i "s|America/New_York|$TZ|g" /mnt/etc/config.scm
-sed -i "s|us|$KB|g" /mnt/etc/config.scm
+sed -i "s|\"us\"|\"$KB\"|g" /mnt/etc/config.scm
 sed -i "s|guix|$HOST|g" /mnt/etc/config.scm
-sed -i "s|user|$USER|g" /mnt/etc/config.scm
+sed -i "s|\"user\"|\"$USER\"|g" /mnt/etc/config.scm
 sed -i "s|/home/user|/home/$USER|g" /mnt/etc/config.scm
 
 # Inject LUKS if needed
@@ -262,11 +295,17 @@ fi
 
 # ───── Install system ─────
 dialog --infobox "guix system init – this will take 15–30 min…" 5 60
-guix system init /mnt/etc/config.scm /mnt --no-grub
+guix system init /mnt/etc/config.scm /mnt
 
 # ───── Set passwords ─────
-echo "root:$PASS" | chroot /mnt chpasswd
-echo "$USER:$PASS" | chroot /mnt chpasswd
+chroot /mnt /bin/passwd root <<EOP
+$PASS
+$PASS
+EOP
+chroot /mnt /bin/passwd $USER <<EOP
+$PASS
+$PASS
+EOP
 
 # ───── Cleanup ─────
 umount -R /mnt
