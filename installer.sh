@@ -29,23 +29,7 @@ fi
 mkdir -p /root/.config/guix
 cat > /root/.config/guix/channels.scm <<'EOF'
 ;; === YOUR CUSTOM CHANNELS ===
- (channel
-       (name 'guix)
-       (url "https://codeberg.org/guix/guix.git")
-       (branch "master")
-       (commit "4fd32c00abb59b0f275a93c3fef35d5193adbe7a")
-       (introduction
-        (make-channel-introduction
-         "9edb3f66fd807b096b48283debdcddccfea34bad"
-         (openpgp-fingerprint
-          "BBB0 2DDF 2CEA F6A8 0D1D E643 A2A0 6DF2 A33A 54FA"))))
-(list
-  (name 'nonguix)
-  (url "https://gitlab.com/nonguix/nonguix")
-  (introduction
-   (make-channel-introduction
-    "897c1a470da759236cc11798f4e0a5f7d4d59fbc"
-    (openpgp-fingerprint "2A39 3FFF 68F4 EF7A 3D29  12AF 6F51 20A0 22FB B2D5")))))
+
 EOF
 
 dialog --infobox "Pulling Guix with custom channels… this may take time" 5 60
