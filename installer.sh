@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+# WARNING DO NOT USE.
+# TESTING ONLY!
 # GNU GUIX UNIVERSAL INSTALLER
-# AT DEVELOPMENT - DO NOT USE THIS!
 set -euo pipefail
 
 # -------------------------
