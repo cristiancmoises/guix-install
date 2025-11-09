@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# WARNING: Partitioning and formatting will destroy data on the target device.
+# DO NOT USE!
+# WARNING:
+#  - Partitioning and formatting will destroy data on the target device. Double-check targets.
 #
 set -euo pipefail
 
@@ -11,7 +13,7 @@ TMPDIR="$(mktemp -d /tmp/guix-installer.XXXXXX)"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 INSTALLER_NAME="$(basename "$0")"
 
-# State / options
+# Options / state
 TARGET_DEVICE=""
 TARGET_MOUNT=""
 TARGET_IS_DEVICE=0
@@ -22,7 +24,7 @@ SKIP_DEPS=0
 DEBUG=0
 FORCE_NOGUI=0
 
-# Template defaults (overridable)
+# Template defaults
 TEMPLATE_LOCALE="en_US.UTF-8"
 TEMPLATE_TZ="UTC"
 TEMPLATE_KB="us"
@@ -31,10 +33,10 @@ TEMPLATE_USER="guix"
 TEMPLATE_MAPPED="()"
 TEMPLATE_ROOT_DEVICE="\"/dev/disk/by-label/root\""
 
-# Optional bootstrap tarball (user may edit)
+# Optional bootstrap tarball (user may override)
 BOOTSTRAP_GUIX_TARBALL_URL="https://ci.guix.gnu.org/nar/nar-info/guix-bootstrapped.tar.xz"
 
-# Built-in channels (used when --channels not provided)
+# Built-in channels (used if --channels not provided)
 read -r -d '' BUILTIN_CHANNELS <<'SCM' || true
 (use-modules (guix ci))
 (list
@@ -140,11 +142,15 @@ log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 info() { printf '\033[1;32m::\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m--\033[0m %s\n' "$*"; }
 err()  { printf '\033[1;31m!!\033[0m %s\n' "$*"; }
-dbg()  { if [ "$DEBUG" -eq 1 ]; then printf '\033[1;35mDBG\033[0m %s\n' "$*"; fi; }
+dbg()  { if [ "${DEBUG:-0}" -eq 1 ]; then printf '\033[1;35mDBG\033[0m %s\n' "$*"; fi; }
 
+# -------------------------
+# Simple text confirm
+# -------------------------
 confirm_text() {
-  if [ "$ASSUME_YES" -eq 1 ]; then return 0; fi
-  read -r -p "$1 [y/N]: " ans || exit 1
+  if [ "${ASSUME_YES:-0}" -eq 1 ]; then return 0; fi
+  local prompt="$1"
+  read -r -p "$prompt [y/N]: " ans || exit 1
   case "${ans,,}" in y|yes) return 0;; *) return 1;; esac
 }
 
@@ -153,7 +159,7 @@ confirm_text() {
 # -------------------------
 gui_cmd=""
 use_gui() {
-  if [ "$FORCE_NOGUI" -eq 1 ]; then return 1; fi
+  if [ "${FORCE_NOGUI:-0}" -eq 1 ]; then return 1; fi
   if [ -n "$gui_cmd" ]; then return 0; fi
   if command -v zenity >/dev/null 2>&1; then gui_cmd=zenity; return 0; fi
   if command -v yad >/dev/null 2>&1; then gui_cmd=yad; return 0; fi
@@ -197,7 +203,7 @@ gui_entry() {
 }
 
 gui_filechooserdialog() {
-  local prompt="$1" typ="${2:-file}" title="${3:-Choose file}"
+  local typ="${2:-file}" title="${3:-Choose file}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
       if [ "$typ" = "file" ]; then zenity --file-selection --title="$title" || true; else zenity --file-selection --directory --title="$title" || true; fi
@@ -213,7 +219,7 @@ gui_list_select() {
   local title="$1"; local text="$2"; local items="$3"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      echo -e "$items" | tr '\n' '|' | tr '|' '\n' | zenity --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-column=1 2>/dev/null || true
+      echo -e "$items" | zenity --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-column=1 2>/dev/null || true
     else
       echo -e "$items" | yad --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-preview 2>/dev/null || true
     fi
@@ -331,7 +337,7 @@ detect_env() {
 }
 
 install_minimum_deps() {
-  if [ "$SKIP_DEPS" -eq 1 ]; then warn "Skipping distro dependency installation"; return 0; fi
+  if [ "${SKIP_DEPS:-0}" -eq 1 ]; then warn "Skipping distro dependency installation"; return 0; fi
   log "Installing minimum dependencies: curl wget gnupg tar xz-utils gawk git parted util-linux"
   case "$PLATFORM" in
     linux)
@@ -389,32 +395,27 @@ bootstrap_guix_from_tarball() {
 }
 
 # -------------------------
-# Target preparation and mount detection
+# Target preparation (mount/partition) and mountpoint detection
 # -------------------------
 ensure_target_mount() {
   if [ -n "$TARGET_DEVICE" ]; then
+    if [ "${TARGET_IS_DEVICE:-0}" -ne 1 ]; then TARGET_IS_DEVICE=1; fi
     [ -b "$TARGET_DEVICE" ] || { err "Target device $TARGET_DEVICE not found"; exit 1; }
     info "Target device: $TARGET_DEVICE"
-    if use_gui && gui_yesno "Partition and format $TARGET_DEVICE (will erase all data)?"; then
-      true
-    else
-      if ! use_gui && ! confirm_text "Partition and format $TARGET_DEVICE (will erase all data)?"; then
-        :
-      fi
-    fi
-    if [ "$ASSUME_YES" -eq 0 ]; then
-      if use_gui; gui_yesno "Proceed to partition and format $TARGET_DEVICE?" || { info "User cancelled"; exit 1; }; else confirm_text "Proceed to partition and format $TARGET_DEVICE?" || { info "User cancelled"; exit 1; }; fi
+    if [ "${ASSUME_YES:-0}" -eq 0 ]; then
+      if use_gui && gui_yesno "Partition and format $TARGET_DEVICE (will erase all data)?"; then :; else
+        if ! use_gui; confirm_text "Partition and format $TARGET_DEVICE (will erase all data)?" || { info "User cancelled"; exit 1; }; fi
     fi
     partition_and_format_device "$TARGET_DEVICE"
     mount_target_after_partition "$TARGET_DEVICE"
   else
     if [ -z "$TARGET_MOUNT" ]; then
-      if use_gui; TARGET_MOUNT="$(gui_filechooserdialog "Select or create a target directory to install into" "dir" "Target mount")"; fi
+      if use_gui; TARGET_MOUNT="$(gui_filechooserdialog "dir" "Target mount")"; fi
       if [ -z "$TARGET_MOUNT" ]; then err "No --device or --target provided"; usage; exit 1; fi
     fi
     [ -d "$TARGET_MOUNT" ] || mkdir -p "$TARGET_MOUNT"
   fi
-  # try to detect mountpoint if user gave device but didn't mount
+
   if [ -z "$TARGET_MOUNT" ] && [ -n "$TARGET_DEVICE" ]; then
     TARGET_MOUNT="$(detect_mountpoint_for_device "$TARGET_DEVICE" || true)"
     [ -n "$TARGET_MOUNT" ] || { err "Could not determine mountpoint for device; please mount and re-run"; exit 1; }
@@ -425,9 +426,9 @@ ensure_target_mount() {
 partition_and_format_device() {
   local dev="$1"
   warn "This will destroy all data on $dev"
-  if [ "$ASSUME_YES" -eq 0 ]; then
-    if use_gui; gui_yesno "Do you really want to partition and format $dev?"; else confirm_text "Do you really want to partition and format $dev?"; fi
-  fi
+  if [ "${ASSUME_YES:-0}" -eq 0 ]; then
+    if use_gui; gui_yesno "Do you really want to partition and format $dev?" || { info "Aborted"; exit 1; }
+    else confirm_text "Do you really want to partition and format $dev?" || { info "Aborted"; exit 1; }; fi
   if command -v parted >/dev/null 2>&1; then
     sudo parted -s "$dev" mklabel gpt
     sudo parted -s -a optimal "$dev" mkpart primary fat32 1MiB 512MiB
@@ -439,7 +440,6 @@ partition_and_format_device() {
     [ -b "$rootpart" ] || { err "Root partition not found after partitioning"; exit 1; }
     if [ -b "$efipart" ]; then sudo mkfs.vfat -F32 -n EFI "$efipart"; info "Formatted EFI $efipart"; fi
     sudo mkfs.ext4 -F -L root "$rootpart"
-    info "Formatted root $rootpart"
     TARGET_MOUNT="${TARGET_MOUNT:-/mnt/guix}"
     mkdir -p "$TARGET_MOUNT"
     sudo mount "$rootpart" "$TARGET_MOUNT"
@@ -456,7 +456,7 @@ partition_and_format_device() {
     mkdir -p "$TARGET_MOUNT"
     sudo mount "$rootpart" "$TARGET_MOUNT"
   else
-    err "No partitioning tool (parted or sfdisk) available"
+    err "No partitioning tool available (parted or sfdisk required)"
     exit 1
   fi
   info "Partitioning and formatting done; mounted root at $TARGET_MOUNT"
@@ -474,7 +474,7 @@ mount_target_after_partition() {
 }
 
 # -------------------------
-# Channels and config handling
+# Channels & config handling (preserve user-supplied files)
 # -------------------------
 prepare_channels_and_config() {
   # channels
@@ -514,11 +514,10 @@ prepare_channels_and_config() {
 }
 
 # -------------------------
-# Run guix system init inside target
+# Prepare chroot / container and run guix system init
 # -------------------------
 prepare_and_run_init() {
-  info "Preparing to run guix system init inside target"
-
+  info "Preparing to run guix system init inside the target"
   ensure_guix_available || { err "guix is required; aborting"; exit 1; }
 
   sudo mkdir -p "$TARGET_MOUNT"/{proc,sys,dev,run,tmp}
@@ -552,14 +551,19 @@ SH
   sudo cp "$TMP_SCRIPT" "$TARGET_MOUNT/root/run-guix-init.sh"
   sudo chown root:root "$TARGET_MOUNT/root/run-guix-init.sh"
 
-  info "Executing guix system init inside target (may take long)"
+  info "Executing guix system init inside target (this may take a long time)"
   if command -v systemd-nspawn >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
     sudo systemd-nspawn -D "$TARGET_MOUNT" /root/run-guix-init.sh || { warn "systemd-nspawn failed; falling back to chroot"; sudo chroot "$TARGET_MOUNT" /root/run-guix-init.sh; }
   else
-    if [ "$(id -u)" -ne 0 ]; then warn "Not root; attempting sudo chroot (may fail)"; sudo chroot "$TARGET_MOUNT" /root/run-guix-init.sh; else chroot "$TARGET_MOUNT" /root/run-guix-init.sh; fi
+    if [ "$(id -u)" -ne 0 ]; then
+      warn "Not root; attempting sudo chroot (may fail)"
+      sudo chroot "$TARGET_MOUNT" /root/run-guix-init.sh
+    else
+      chroot "$TARGET_MOUNT" /root/run-guix-init.sh
+    fi
   fi
 
-  info "guix system init completed or attempted; check output for errors"
+  info "guix system init completed or attempted; inspect output for errors"
 }
 
 # -------------------------
@@ -568,52 +572,55 @@ SH
 finalize() {
   info "Cleaning up mounts"
   for mp in "$TARGET_MOUNT/tmp" "$TARGET_MOUNT/run" "$TARGET_MOUNT/proc" "$TARGET_MOUNT/sys" "$TARGET_MOUNT/dev"; do
-    if awk '{print $2}' /proc/mounts | grep -Fxq "$mp"; then sudo umount -l "$mp" || warn "Failed to unmount $mp"; fi
+    if awk '{print $2}' /proc/mounts | grep -Fxq "$mp"; then
+      sudo umount -l "$mp" || warn "Failed to unmount $mp"
+    fi
   done
   info "Installation finished"
-  if use_gui && gui_yesno "Reboot now into the installed system?"; then sudo reboot; else if ! use_gui && confirm_text "Reboot now into the installed system?"; then sudo reboot; else info "Remember to unmount the target before rebooting elsewhere"; fi
+  if use_gui; then
+    if gui_yesno "Reboot now into the installed system?"; then sudo reboot; else info "Remember to unmount before rebooting elsewhere"; fi
+  else
+    if confirm_text "Reboot now into the installed system?"; then sudo reboot; else info "Remember to unmount before rebooting elsewhere"; fi
+  fi
 }
 
 # -------------------------
-# Main flow with GUI prompts
+# Main guided flow (GUI or text)
 # -------------------------
 detect_env
 log "Guix System installer started at $TIMESTAMP"
 
-# Force nogui if requested
-if [ "$FORCE_NOGUI" -eq 1 ]; then gui_cmd=""; fi
+# If GUI forced off
+if [ "${FORCE_NOGUI:-0}" -eq 1 ]; then gui_cmd=""; fi
 
-# Inform about GUI availability
-if ! use_gui; then info "GUI dialog tools (zenity/yad) not found or disabled; using text prompts"; fi
+if ! use_gui; then
+  info "No graphical dialog tool found or GUI disabled; using text prompts"
+fi
 
-# Guided GUI flow or text prompts to collect inputs
+# Collect inputs: GUI or text
 if use_gui; then
-  gui_info "Welcome to the Guix System installer. This wizard will help you install Guix System onto a target device or mountpoint."
-  # Channels selection
-  if gui_yesno "Do you want to select a custom channels.scm file?"; then
-    sel="$(gui_filechooserdialog "Select channels.scm file (Cancel to skip)" "file" "Select channels.scm")"
+  gui_info "Welcome to the Guix System installer. This wizard will help you install Guix System onto a target."
+  if gui_yesno "Do you want to provide a custom channels.scm file?"; then
+    sel="$(gui_filechooserdialog "file" "Select channels.scm")"
     [ -n "$sel" ] && CHANNEL_SOURCE="$sel"
   fi
-  # Config selection
-  if gui_yesno "Do you want to select a full custom config.scm file? (Cancel to use template)"; then
-    sel="$(gui_filechooserdialog "Select config.scm file (Cancel to use template)" "file" "Select config.scm")"
+  if gui_yesno "Do you want to provide a full custom config.scm file? (Cancel to use template)"; then
+    sel="$(gui_filechooserdialog "file" "Select config.scm")"
     [ -n "$sel" ] && CONFIG_SOURCE="$sel"
   fi
-  # Device or mountpoint
-  if gui_yesno "Install to a raw device (partition & format)?"; then
-    # list devices via lsblk for selection
+  if gui_yesno "Install to a raw device (partition & format) instead of an existing mountpoint?"; then
     if command -v lsblk >/dev/null 2>&1; then
-      items="$(lsblk -dn -o NAME,SIZE,MODEL | sed 's/^/\/dev\//')"
-      sel="$(gui_list_select "Select device" "Choose the block device to partition and format" "$items")"
+      items="$(lsblk -dn -o NAME,SIZE,MODEL | awk '{print "/dev/"$1"  "$2"  "$3}')"
+      sel="$(gui_list_select "Select device" "Available block devices" "$items")"
       if [ -n "$sel" ]; then TARGET_DEVICE="$sel"; TARGET_IS_DEVICE=1; fi
     else
-      TARGET_DEVICE="$(gui_entry "Enter device node (e.g. /dev/sda)" "/dev/sda" "Device")"; TARGET_IS_DEVICE=1
+      TARGET_DEVICE="$(gui_entry "Enter device node (e.g. /dev/sda)" "/dev/sda" "Device")"
+      TARGET_IS_DEVICE=1
     fi
   else
-    sel="$(gui_filechooserdialog "Select or create a mountpoint directory (Cancel to enter manually)" "dir" "Target mount")"
+    sel="$(gui_filechooserdialog "dir" "Select or create a mountpoint directory")"
     if [ -n "$sel" ]; then TARGET_MOUNT="$sel"; else TARGET_MOUNT="$(gui_entry "Enter target mountpoint (e.g. /mnt/guix)" "/mnt/guix" "Mountpoint")"; fi
   fi
-  # Template variables
   TEMPLATE_HOST="$(gui_entry "Hostname for the new system" "$TEMPLATE_HOST" "Hostname")"
   TEMPLATE_USER="$(gui_entry "Primary username" "$TEMPLATE_USER" "Username")"
   TEMPLATE_LOCALE="$(gui_entry "Locale (e.g. en_US.UTF-8)" "$TEMPLATE_LOCALE" "Locale")"
@@ -621,10 +628,9 @@ if use_gui; then
   TEMPLATE_KB="$(gui_entry "Keyboard layout (e.g. br, us)" "$TEMPLATE_KB" "Keyboard")"
   TEMPLATE_ROOT_DEVICE="$(gui_entry "Root device expression (quoted, e.g. \"/dev/disk/by-label/root\")" "$TEMPLATE_ROOT_DEVICE" "Root device")"
   TEMPLATE_MAPPED="$(gui_entry "Mapped-devices Scheme expression (leave empty if none)" "$TEMPLATE_MAPPED" "Mapped devices")"
-  # Confirm destructive operation if device
   if [ -n "$TARGET_DEVICE" ]; then gui_yesno "Target device: $TARGET_DEVICE. This will erase all data. Continue?" || { gui_error "Aborted by user"; exit 1; }; fi
 else
-  # Text mode prompts
+  # Text prompts
   if [ -z "$TARGET_DEVICE" ] && [ -z "$TARGET_MOUNT" ]; then
     read -r -p "Install to device or mountpoint? (device/mount) [mount]: " choice
     choice="${choice:-mount}"
@@ -641,15 +647,15 @@ else
 fi
 
 # Ensure root when device ops requested
-if [ "$TARGET_IS_DEVICE" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
-  gui_error "Device operations require root. Re-run with sudo." "Need root"
+if [ "${TARGET_IS_DEVICE:-0}" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
+  gui_error "Device operations require root. Please re-run with sudo or as root." "Need root"
   exit 1
 fi
 
-# Run main steps
+# Run installation steps
 detect_env
-install_minimum_deps || warn "Dependency step returned non-zero"
-ensure_guix_available || warn "guix may not be available; required for system init"
+install_minimum_deps || warn "Dependency installation returned non-zero"
+ensure_guix_available || warn "guix may not be available; installation requires guix"
 
 ensure_target_mount
 prepare_channels_and_config
