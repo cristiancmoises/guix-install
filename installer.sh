@@ -1,14 +1,11 @@
 #!/bin/sh
-# UNIVERSAL Guix installer – works on:
-# • Any GNU/Linux distro (fresh install Guix System)
-# • Guix System (reconfigure)
-# • FreeBSD / OpenBSD / DragonFly BSD (install Guix package manager only)
-# Run as root: chmod +x install.sh && ./install.sh
-# SCRIPT AT DEVELOPMENT... USE AT YOUR OWN RISK!
+# UNIVERSAL Guix installer – verbose mode
 set -e
+echo "Starting script on $(uname -s)"
 
 # ───── Detect OS & package manager ─────
 OS=$(uname -s)
+echo "OS: $OS"
 case $OS in
   Linux)   PM="unknown" ;;
   FreeBSD|OpenBSD|DragonFly) PM="bsd" ;;
@@ -16,17 +13,19 @@ case $OS in
 esac
 
 if [ "$OS" = "Linux" ]; then
-  if   command -v apt    >/dev/null; then PM="apt"
-  elif command -v dnf    >/dev/null; then PM="dnf"
-  elif command -v pacman >/dev/null; then PM="pacman"
-  elif command -v zypper >/dev/null; then PM="zypper"
-  elif command -v apk    >/dev/null; then PM="apk"
-  elif command -v xbps-install >/dev/null; then PM="xbps"
+  if   command -v apt    >/dev/null; then PM="apt"; echo "PM: apt"
+  elif command -v dnf    >/dev/null; then PM="dnf"; echo "PM: dnf"
+  elif command -v pacman >/dev/null; then PM="pacman"; echo "PM: pacman"
+  elif command -v zypper >/dev/null; then PM="zypper"; echo "PM: zypper"
+  elif command -v apk    >/dev/null; then PM="apk"; echo "PM: apk"
+  elif command -v xbps-install >/dev/null; then PM="xbps"; echo "PM: xbps"
+  else echo "No Linux PM found - manual install needed"
   fi
 fi
 
 # ───── Install package ─────
 install_pkg() {
+  echo "Installing: $@"
   case $PM in
     apt)    apt update && apt install -y "$@" ;;
     dnf)    dnf install -y "$@" ;;
@@ -35,15 +34,19 @@ install_pkg() {
     apk)    apk add "$@" ;;
     xbps)   xbps-install -Sy "$@" ;;
     bsd)    if [ "$OS" = "FreeBSD" ] || [ "$OS" = "DragonFly" ]; then pkg install -y "$@"; elif [ "$OS" = "OpenBSD" ]; then pkg_add -I "$@"; fi ;;
-    *) echo "No PM"; exit 1 ;;
+    *) echo "No PM - skipping install"; return 1 ;;
   esac
 }
 
 # ───── Install dialog ─────
-if ! command -v dialog >/dev/null; then install_pkg dialog; fi
+if ! command -v dialog >/dev/null; then 
+  echo "Installing dialog"
+  install_pkg dialog || echo "Dialog install failed - use text mode"
+fi
 
 # ───── Install newgidmap (Linux only) ─────
 if [ "$OS" = "Linux" ] && ! command -v newgidmap >/dev/null; then
+  echo "Installing newgidmap"
   case $PM in
     apt) install_pkg uidmap ;;
     dnf) install_pkg shadow-utils ;;
@@ -51,12 +54,13 @@ if [ "$OS" = "Linux" ] && ! command -v newgidmap >/dev/null; then
     zypper) install_pkg shadow ;;
     apk) install_pkg shadow ;;
     xbps) install_pkg shadow ;;
+    *) echo "newgidmap install skipped" ;;
   esac
 fi
 
 # ───── Install Guix if missing ─────
 if ! command -v guix >/dev/null; then
-  dialog --msgbox "Installing Guix binary…" 6 40
+  echo "Installing Guix"
   cd /tmp
   wget https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh || fetch https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
   chmod +x guix-install.sh
@@ -65,6 +69,7 @@ if ! command -v guix >/dev/null; then
 fi
 
 # ───── channels.scm ─────
+echo "Setting channels.scm"
 mkdir -p /root/.config/guix
 cat > /root/.config/guix/channels.scm <<'EOF'
 (use-modules (guix ci))
@@ -116,11 +121,13 @@ cat > /root/.config/guix/channels.scm <<'EOF'
 EOF
 
 # ───── Pull ─────
-dialog --infobox "Pulling Guix with custom channels…" 5 60
+echo "Pulling Guix"
+dialog --infobox "Pulling Guix with custom channels…" 5 60 2>/dev/null || echo "Pulling..."
 guix pull --substitute-urls="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org"
 . /root/.config/guix/current/etc/profile || . /var/guix/profiles/per-user/root/current-guix/etc/profile
 
 # ───── Defaults ─────
+echo "Setting defaults"
 LANG="English"
 KB="us"
 LOCALE="en_US.utf8"
@@ -129,62 +136,73 @@ HOST="guix"
 USER="user"
 
 # ───── Interactive ─────
-LANG=$(dialog --default-item "$LANG" --menu "Language" 12 40 5 \
-  "English" "" "Portuguese (Brazil)" "" "Spanish" "" "French" "" "German" "" --output-fd 1)
-case $LANG in
-  "Portuguese (Brazil)") LOCALE="pt_BR.utf8"; KB="br" ;;
-  "Spanish") LOCALE="es_ES.utf8"; KB="es" ;;
-  "French") LOCALE="fr_FR.utf8"; KB="fr" ;;
-  "German") LOCALE="de_DE.utf8"; KB="de" ;;
-esac
+echo "Interactive setup"
+if command -v dialog >/dev/null; then
+  LANG=$(dialog --default-item "$LANG" --menu "Language" 12 40 5 \
+    "English" "" "Portuguese (Brazil)" "" "Spanish" "" "French" "" "German" "" --output-fd 1)
+  case $LANG in
+    "Portuguese (Brazil)") LOCALE="pt_BR.utf8"; KB="br" ;;
+    "Spanish") LOCALE="es_ES.utf8"; KB="es" ;;
+    "French") LOCALE="fr_FR.utf8"; KB="fr" ;;
+    "German") LOCALE="de_DE.utf8"; KB="de" ;;
+  esac
 
-KB=$(dialog --inputbox "Keyboard layout" 8 50 "$KB" --output-fd 1)
-LOCALE=$(dialog --inputbox "Locale" 8 50 "$LOCALE" --output-fd 1)
-HOST=$(dialog --inputbox "Hostname" 8 50 "$HOST" --output-fd 1)
-TZ=$(dialog --inputbox "Timezone" 8 60 "$TZ" --output-fd 1)
-USER=$(dialog --inputbox "Username" 8 50 "$USER" --output-fd 1)
-PASS=$(dialog --passwordbox "Password" 8 50 --output-fd 1)
-PASS2=$(dialog --passwordbox "Confirm" 8 50 --output-fd 1)
-[ "$PASS" = "$PASS2" ] || { dialog --msgbox "Mismatch!" 6 40; exit 1; }
+  KB=$(dialog --inputbox "Keyboard layout" 8 50 "$KB" --output-fd 1)
+  LOCALE=$(dialog --inputbox "Locale" 8 50 "$LOCALE" --output-fd 1)
+  HOST=$(dialog --inputbox "Hostname" 8 50 "$HOST" --output-fd 1)
+  TZ=$(dialog --inputbox "Timezone" 8 60 "$TZ" --output-fd 1)
+  USER=$(dialog --inputbox "Username" 8 50 "$USER" --output-fd 1)
+  PASS=$(dialog --passwordbox "Password" 8 50 --output-fd 1)
+  PASS2=$(dialog --passwordbox "Confirm" 8 50 --output-fd 1)
+  [ "$PASS" = "$PASS2" ] || { dialog --msgbox "Mismatch!" 6 40; exit 1; }
+else
+  echo "Enter locale: "; read LOCALE
+  echo "Enter hostname: "; read HOST
+  echo "Enter timezone: "; read TZ
+  echo "Enter username: "; read USER
+  echo "Enter password: "; read -s PASS
+  echo "Confirm: "; read -s PASS2
+  [ "$PASS" = "$PASS2" ] || exit 1
+fi
 
 # ───── BSD: only package manager ─────
 if echo "$OS" | grep -q BSD; then
-  dialog --msgbox "Guix package manager installed on $OS.\nUse 'guix package -i pkg' to install packages." 8 50
+  echo "Guix package manager installed on $OS."
   exit 0
 fi
 
 # ───── Guix System reconfigure ─────
 if [ -f /etc/config.scm ]; then
-  dialog --yesno "Reconfigure Guix System?" 6 50 && {
-    sed -i "s/locale .*/locale \"$LOCALE\")/" /etc/config.scm
-    sed -i "s/timezone .*/timezone \"$TZ\")/" /etc/config.scm
-    sed -i "s/keyboard-layout .*/keyboard-layout (keyboard-layout \"$KB\"))/" /etc/config.scm
-    sed -i "s/host-name .*/host-name \"$HOST\")/" /etc/config.scm
-    sed -i "s/name .*/name \"$USER\")/" /etc/config.scm
-    sed -i "s/home-directory .*/home-directory \"/home/$USER\")/" /etc/config.scm
-    guix system reconfigure /etc/config.scm
-    printf "%s\n%s\n" "$PASS" "$PASS" | passwd "$USER"
-    dialog --msgbox "Reconfigured! Reboot?" 6 40
-  }
+  echo "Reconfiguring Guix System"
+  sed -i "s/locale .*/locale \"$LOCALE\")/" /etc/config.scm
+  sed -i "s/timezone .*/timezone \"$TZ\")/" /etc/config.scm
+  sed -i "s/keyboard-layout .*/keyboard-layout (keyboard-layout \"$KB\"))/" /etc/config.scm
+  sed -i "s/host-name .*/host-name \"$HOST\")/" /etc/config.scm
+  sed -i "s/name .*/name \"$USER\")/" /etc/config.scm
+  sed -i "s/home-directory .*/home-directory \"/home/$USER\")/" /etc/config.scm
+  guix system reconfigure /etc/config.scm
+  printf "%s\n%s\n" "$PASS" "$PASS" | passwd "$USER"
+  echo "Reconfigured!"
   exit 0
 fi
 
 # ───── Linux fresh install ─────
+echo "Fresh install"
 DISKS=$(lsblk -dpo NAME,SIZE,MODEL | grep -v loop)
-DISK=$(dialog --menu "Target disk" 16 70 9 $DISKS --output-fd 1)
+DISK=$(dialog --menu "Target disk" 16 70 9 $DISKS --output-fd 1 2>/dev/null || echo "/dev/sda")
 
 LUKS="no"
-dialog --defaultno --yesno "Enable LUKS?" 6 50 && LUKS="yes"
+dialog --defaultno --yesno "Enable LUKS?" 6 50 2>/dev/null && LUKS="yes"
 
 LUKS_PASS=""
 if [ "$LUKS" = "yes" ]; then
-  LUKS_PASS=$(dialog --passwordbox "LUKS passphrase" 8 50 --output-fd 1)
-  LUKS_PASS2=$(dialog --passwordbox "Confirm" 8 50 --output-fd 1)
-  [ "$LUKS_PASS" = "$LUKS_PASS2" ] || { dialog --msgbox "Mismatch!" 6 50; exit 1; }
+  LUKS_PASS=$(dialog --passwordbox "LUKS passphrase" 8 50 --output-fd 1 2>/dev/null || read -s LUKS_PASS)
+  LUKS_PASS2=$(dialog --passwordbox "Confirm" 8 50 --output-fd 1 2>/dev/null || read -s LUKS_PASS2)
+  [ "$LUKS_PASS" = "$LUKS_PASS2" ] || exit 1
 fi
 
 # ───── Partition ─────
-dialog --infobox "Partitioning $DISK…" 4 50
+echo "Partitioning $DISK"
 sgdisk -Z "$DISK"
 sgdisk -n 1:0:+550M -t 1:ef00 -c 1:EFI "$DISK"
 sgdisk -n 2:0:0 -t 2:8300 -c 2:ROOT "$DISK"
@@ -218,6 +236,7 @@ mkdir -p /mnt/boot/efi
 mount "$EFI" /mnt/boot/efi
 
 # ───── FULL config.scm with ALL packages/modules ─────
+echo "Generating config.scm"
 cat > /mnt/etc/config.scm <<EOF
 (use-modules (gnu)
              (gnu services)
@@ -287,7 +306,7 @@ cat > /mnt/etc/config.scm <<EOF
                 (bootloader grub-efi-bootloader)
                 (targets '("/boot/efi"))
                 (keyboard-layout keyboard-layout)))
-  $MAPPED
+$MAPPED
   (file-systems (cons*
                  (file-system
                    (mount-point "/boot/efi")
@@ -301,14 +320,17 @@ cat > /mnt/etc/config.scm <<EOF
 EOF
 
 # ───── channels.scm ─────
+echo "Copying channels.scm"
 mkdir -p /mnt/etc/guix
 cp /root/.config/guix/channels.scm /mnt/etc/guix/
 
 # ───── Install ─────
-dialog --infobox "guix system init…" 5 60
+echo "Installing system"
+dialog --infobox "guix system init…" 5 60 2>/dev/null || echo "Installing..."
 guix system init /mnt/etc/config.scm /mnt --substitute-urls="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org"
 
 # ───── Passwords ─────
+echo "Setting passwords"
 chroot /mnt /bin/passwd root <<EOP
 $PASS
 $PASS
@@ -319,7 +341,9 @@ $PASS
 EOP
 
 # ───── Cleanup ─────
+echo "Cleanup"
 umount -R /mnt
 [ "$LUKS" = "yes" ] && cryptsetup close cryptroot
 
-dialog --msgbox "Installed! Reboot." 6 40
+dialog --msgbox "Installed! Reboot." 6 40 2>/dev/null || echo "Installed! Reboot."
+echo "Script completed"
