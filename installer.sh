@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Universal Guix System installer for live environments
-# (graphical dialogs with zenity/yad optional, robust text fallback)
 #
-# WARNING:
-#  - Partitioning and formatting will destroy data on the target device. Double-check targets.
-# AT DEVELOPMENT... USAGE ONLY FOR TESTS
+# installer.sh - Universal Guix System installer for live environments
 #
 set -euo pipefail
+
+# Silence harmless Mesa/X11 errors
+export MESA_DEBUG=silent 2>/dev/null || true
+export GDK_BACKEND= 2>/dev/null || true
 
 # -------------------------
 # Defaults and built-in content
@@ -618,6 +618,11 @@ prepare_and_run_init() {
   cat > "$TMP_SCRIPT" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Silence harmless Mesa/X11 errors inside chroot
+export MESA_DEBUG=silent 2>/dev/null || true
+export GDK_BACKEND= 2>/dev/null || true
+
 CONFIG="/etc/guix/config.scm"
 CHANNELS="/etc/guix/channels.scm"
 if [ -f /root/.config/guix/config.scm ]; then CONFIG="/root/.config/guix/config.scm"; fi
@@ -788,4 +793,3 @@ prepare_and_run_init
 finalize
 
 exit 0
-
