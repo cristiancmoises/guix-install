@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# WARNING DO NOT USE.
-# TESTING ONLY!
-# GNU GUIX UNIVERSAL INSTALLER
+# Universal Guix System installer for live environments
+# WARNING!! DO NOT USE!
+#
 set -euo pipefail
 
 # -------------------------
@@ -21,7 +21,7 @@ ASSUME_YES=0
 SKIP_DEPS=0
 DEBUG=0
 
-# Template variables (can be overridden via CLI)
+# Template variables (override via CLI)
 TEMPLATE_LOCALE="en_US.UTF-8"
 TEMPLATE_TZ="UTC"
 TEMPLATE_KB="us"
@@ -170,6 +170,51 @@ download() {
   fi
 }
 
+# Detect mountpoint for device without findmnt: check /proc/mounts and lsblk
+detect_mountpoint_for_device() {
+  local dev="$1"
+  # Normalize device (resolve symlink)
+  if [ -e "$dev" ]; then
+    dev="$(readlink -f "$dev")" || true
+  fi
+
+  # First try parsing /proc/mounts
+  if [ -f /proc/mounts ]; then
+    while read -r devnode mp rest; do
+      if [ "$devnode" = "$dev" ]; then
+        printf '%s' "$mp"
+        return 0
+      fi
+    done < /proc/mounts
+  fi
+
+  # Next try lsblk (if available)
+  if command -v lsblk >/dev/null 2>&1; then
+    # lsblk -P -o NAME,MOUNTPOINT prints pairs like NAME="sda1" MOUNTPOINT="/mnt"
+    while IFS= read -r line; do
+      eval "declare -A kv"
+      for kvpair in $line; do
+        key=${kvpair%%=*}
+        val=${kvpair#*=}
+        val=${val#\"}; val=${val%\"}
+        kv[$key]="$val"
+      done
+      # compose full device path
+      if [ -n "${kv[NAME]-}" ]; then
+        # try /dev/NAME and /dev/mapper/NAME variants
+        for candidate in "/dev/${kv[NAME]}" "/dev/mapper/${kv[NAME]}"; do
+          if [ "$candidate" = "$dev" ] && [ -n "${kv[MOUNTPOINT]-}" ]; then
+            printf '%s' "${kv[MOUNTPOINT]}"
+            return 0
+          fi
+        done
+      fi
+    done < <(lsblk -P -o NAME,MOUNTPOINT 2>/dev/null || true)
+  fi
+
+  return 1
+}
+
 # -------------------------
 # Argument parsing
 # -------------------------
@@ -189,7 +234,7 @@ Options:
   --host HOSTNAME         Hostname for config.scm (default: ${TEMPLATE_HOST})
   --username USERNAME     Primary username for config.scm (default: ${TEMPLATE_USER})
   --mapped MAPPED_EXPR    Mapped devices expression to insert in config.scm (default: empty)
-  --root-device DEVICE    Root device expression to insert in config.scm (e.g. /dev/disk/by-label/root)
+  --root-device DEVICE    Root device expression to insert in config.scm (e.g. '\"/dev/disk/by-label/root\"')
   --yes                   Assume yes to prompts (non-interactive)
   --skip-deps             Do not attempt to install distro bootstrap packages
   --debug                 Enable debug output
@@ -242,26 +287,27 @@ install_minimum_deps() {
     return 0
   fi
 
-  log "Installing minimal bootstrap dependencies (curl/wget, gnupg, tar, xz, gawk, git)"
+  log "Installing minimal bootstrap dependencies (curl/wget, gnupg, tar, xz, gawk, git, parted)"
 
   case "$PLATFORM" in
     linux)
       if command -v apt-get >/dev/null 2>&1; then
         sudo apt-get update -y
-        sudo apt-get install -y curl wget gnupg tar xz-utils gawk git parted util-linux findmnt || warn "apt install non-fatal"
+        # do not require 'findmnt' explicitly; it's part of util-linux which is usually present on Ubuntu live
+        sudo apt-get install -y curl wget gnupg tar xz-utils gawk git parted util-linux || warn "apt install returned non-zero"
       elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y curl wget gnupg2 tar xz gawk git parted util-linux findmnt || warn "dnf install non-fatal"
+        sudo dnf install -y curl wget gnupg2 tar xz gawk git parted util-linux || warn "dnf install returned non-zero"
       elif command -v pacman >/dev/null 2>&1; then
-        sudo pacman -Sy --noconfirm curl wget gnupg tar xz gawk git parted util-linux findmnt || warn "pacman non-fatal"
+        sudo pacman -Sy --noconfirm curl wget gnupg tar xz gawk git parted util-linux || warn "pacman returned non-zero"
       elif command -v zypper >/dev/null 2>&1; then
-        sudo zypper install -y curl wget gpg2 tar xz gawk git parted util-linux findmnt || warn "zypper non-fatal"
+        sudo zypper install -y curl wget gpg2 tar xz gawk git parted util-linux || warn "zypper returned non-zero"
       else
         warn "Unknown package manager; ensure required tools are installed manually"
       fi
       ;;
     bsd)
       if command -v pkg >/dev/null 2>&1; then
-        sudo pkg install -y curl wget gnupg tar xz gawk git parted findmnt || warn "pkg non-fatal"
+        sudo pkg install -y curl wget gnupg tar xz gawk git parted || warn "pkg returned non-zero"
       else
         warn "BSD package manager not detected; ensure required tools are installed"
       fi
@@ -345,9 +391,17 @@ ensure_target_mount() {
         read -r -p "Enter mountpoint for existing target filesystem (e.g. /mnt/guix): " TARGET_MOUNT
       fi
       if [ ! -d "$TARGET_MOUNT" ]; then err "Mountpoint $TARGET_MOUNT does not exist"; exit 1; fi
-      if ! mount | grep -qF "$TARGET_MOUNT"; then
-        warn "$TARGET_MOUNT does not appear mounted; please mount and re-run"
-        exit 1
+      # Detect if mountpoint is actually mounted by checking /proc/mounts
+      if ! awk '{print $2}' /proc/mounts | grep -Fxq "$TARGET_MOUNT"; then
+        # Try detect by device name instead (device may be mounted under different path)
+        detected_mp="$(detect_mountpoint_for_device "$TARGET_DEVICE" || true)"
+        if [ -n "$detected_mp" ]; then
+          info "Detected that $TARGET_DEVICE is mounted at $detected_mp"
+          TARGET_MOUNT="$detected_mp"
+        else
+          warn "$TARGET_MOUNT does not appear mounted; please mount and re-run"
+          exit 1
+        fi
       fi
     fi
   else
@@ -362,8 +416,10 @@ ensure_target_mount() {
   fi
 
   if [ -z "$TARGET_MOUNT" ]; then
-    TARGET_MOUNT="$(findmnt -n -o TARGET "$TARGET_DEVICE" 2>/dev/null || true)"
-    if [ -z "$TARGET_MOUNT" ]; then
+    detected_mp="$(detect_mountpoint_for_device "$TARGET_DEVICE" || true)"
+    if [ -n "$detected_mp" ]; then
+      TARGET_MOUNT="$detected_mp"
+    else
       warn "Could not determine mountpoint for $TARGET_DEVICE; please mount and re-run"
       exit 1
     fi
@@ -384,26 +440,36 @@ partition_and_format_device() {
     sudo parted -s -a optimal "$dev" mkpart primary fat32 1MiB 512MiB
     sudo parted -s -a optimal "$dev" mkpart primary ext4 512MiB 100%
     sudo partprobe "$dev" || true
-    # assume first partition is EFI, second is root
+    # determine partitions
     local efipart="${dev}1"
     local rootpart="${dev}2"
     if [ ! -b "$rootpart" ] && [ -b "${dev}p2" ]; then rootpart="${dev}p2"; fi
     if [ ! -b "$efipart" ] && [ -b "${dev}p1" ]; then efipart="${dev}p1"; fi
-    sudo mkfs.vfat -F32 -n EFI "$efipart"
+    if [ ! -b "$rootpart" ]; then err "Root partition not found after partitioning"; exit 1; fi
+    if [ -b "$efipart" ]; then
+      sudo mkfs.vfat -F32 -n EFI "$efipart"
+      info "Formatted EFI partition $efipart as vfat"
+    else
+      warn "EFI partition not found; continuing without separate EFI"
+    fi
     sudo mkfs.ext4 -F -L root "$rootpart"
+    info "Formatted root partition $rootpart as ext4 (label=root)"
     TARGET_MOUNT="${TARGET_MOUNT:-/mnt/guix}"
     mkdir -p "$TARGET_MOUNT"
     sudo mount "$rootpart" "$TARGET_MOUNT"
-    mkdir -p "$TARGET_MOUNT/boot/efi"
-    sudo mount "$efipart" "$TARGET_MOUNT/boot/efi"
-    info "Created partitions and mounted root ($rootpart) at $TARGET_MOUNT and EFI ($efipart) at $TARGET_MOUNT/boot/efi"
+    if [ -b "$efipart" ]; then
+      sudo mkdir -p "$TARGET_MOUNT/boot/efi"
+      sudo mount "$efipart" "$TARGET_MOUNT/boot/efi"
+    fi
+    info "Mounted root at $TARGET_MOUNT"
   elif command -v sfdisk >/dev/null 2>&1; then
     echo "label: gpt" | sudo sfdisk "$dev"
-    echo ",512M,U" | sudo sfdisk -a "$dev"
-    echo ",,L" | sudo sfdisk -a "$dev"
+    # create partitions: EFI 512MiB, rest root
+    printf ",512M,U\n,,L\n" | sudo sfdisk "$dev"
     sudo partprobe "$dev" || true
     local rootpart="${dev}2"
     if [ ! -b "$rootpart" ] && [ -b "${dev}p2" ]; then rootpart="${dev}p2"; fi
+    if [ ! -b "$rootpart" ]; then err "Root partition not found after sfdisk"; exit 1; fi
     sudo mkfs.ext4 -F -L root "$rootpart"
     TARGET_MOUNT="${TARGET_MOUNT:-/mnt/guix}"
     mkdir -p "$TARGET_MOUNT"
@@ -449,7 +515,7 @@ prepare_channels_and_config() {
     info "Using builtin channels.scm"
   fi
 
-  # config: if user provided a full config.scm, use it directly; otherwise, render template
+  # config
   if [ -n "$CONFIG_SOURCE" ]; then
     if [ -f "$CONFIG_SOURCE" ]; then
       CONFIG_FILE="$CONFIG_SOURCE"
@@ -464,29 +530,26 @@ prepare_channels_and_config() {
     fi
   else
     CONFIG_FILE="$TMPDIR/config.scm"
-    # Replace template placeholders safely. Ensure that ROOT_DEVICE is properly quoted in template when user passed a raw device
-    # If TEMPLATE_ROOT_DEVICE looks like /dev/... and not quoted, wrap it in (file-system-label \"...\") won't be used; user provided expected expression.
     rendered="$BUILTIN_CONFIG_TEMPLATE"
+    # Replace placeholders (simple string replacement)
     rendered="${rendered//\$LOCALE/${TEMPLATE_LOCALE}}"
     rendered="${rendered//\$TZ/${TEMPLATE_TZ}}"
     rendered="${rendered//\$KB/${TEMPLATE_KB}}"
     rendered="${rendered//\$HOST/${TEMPLATE_HOST}}"
     rendered="${rendered//\$USER/${TEMPLATE_USER}}"
-    # MAPPED: insert raw expression (user must provide valid Scheme expression; default empty list)
     rendered="${rendered//\$MAPPED/${TEMPLATE_MAPPED}}"
-    # ROOT_DEVICE: if TEMPLATE_ROOT_DEVICE is unquoted path like /dev/..., try to embed as (file-system-label "NAME") or raw; user can instead pass "\"/dev/disk/by-label/root\"" or similar.
     rendered="${rendered//\$ROOT_DEVICE/${TEMPLATE_ROOT_DEVICE}}"
     printf "%s\n" "$rendered" > "$CONFIG_FILE"
     info "Rendered config.scm to $CONFIG_FILE"
   fi
 
-  # copy channels/config into target's /etc/guix and /root/.config/guix
+  # copy files into target
   sudo mkdir -p "$TARGET_MOUNT/etc/guix" "$TARGET_MOUNT/root/.config/guix"
   sudo cp -f "$CHANNEL_FILE" "$TARGET_MOUNT/etc/guix/channels.scm"
   sudo cp -f "$CONFIG_FILE" "$TARGET_MOUNT/etc/guix/config.scm"
   sudo cp -f "$CHANNEL_FILE" "$TARGET_MOUNT/root/.config/guix/channels.scm"
   sudo cp -f "$CONFIG_FILE" "$TARGET_MOUNT/root/.config/guix/config.scm"
-  info "Placed channels.scm and config.scm into target at /etc/guix and /root/.config/guix"
+  info "Copied channels.scm and config.scm into target"
 }
 
 # -------------------------
@@ -533,7 +596,7 @@ SH
   sudo cp "$TMP_SCRIPT" "$TARGET_MOUNT/root/run-guix-init.sh"
   sudo chown root:root "$TARGET_MOUNT/root/run-guix-init.sh"
 
-  info "Starting guix system init inside target. This operation may take a long time."
+  info "Starting guix system init inside target. This may take a long time."
 
   if command -v systemd-nspawn >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
     info "Using systemd-nspawn to run initialization"
@@ -550,7 +613,7 @@ SH
     fi
   fi
 
-  info "guix system init finished (or attempted). Inspect output above for success or errors."
+  info "guix system init finished (or attempted). Inspect above output for status."
 }
 
 # -------------------------
@@ -559,7 +622,7 @@ SH
 finalize() {
   info "Cleaning up mounts"
   for mp in "$TARGET_MOUNT/tmp" "$TARGET_MOUNT/run" "$TARGET_MOUNT/proc" "$TARGET_MOUNT/sys" "$TARGET_MOUNT/dev"; do
-    if mountpoint -q "$mp"; then
+    if awk '{print $2}' /proc/mounts | grep -Fxq "$mp"; then
       sudo umount -l "$mp" || warn "Failed to unmount $mp"
     fi
   done
@@ -568,7 +631,7 @@ finalize() {
   if confirm "Reboot now into the installed system?"; then
     sudo reboot
   else
-    info "Finish: unmount target and reboot later to boot into Guix System"
+    info "Finish: unmount the target partitions before shutting down or booting elsewhere"
   fi
 }
 
@@ -576,7 +639,7 @@ finalize() {
 # Main flow
 # -------------------------
 detect_env
-log "Guix System universal installer (template-enabled) started at $TIMESTAMP"
+log "Guix System universal installer (no-findmnt) started at $TIMESTAMP"
 
 if [ "$TARGET_IS_DEVICE" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
   err "Device operations require root. Re-run with sudo"
