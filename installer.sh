@@ -1,8 +1,7 @@
 #!/bin/sh
-# FULL Guix installer – GUI + LUKS + channels.scm + ALL your original code
 # Works from ANY GNU/Linux distro
 # Run as root: chmod +x install.sh && ./install.sh
-
+# WARNING SCRIPT AT DEVELOPMENT!
 set -e
 
 # ───── Install dialog ─────
@@ -13,6 +12,17 @@ if ! command -v dialog >/dev/null; then
   elif command -v zypper >/dev/null; then sudo zypper install -y dialog
   elif command -v apk    >/dev/null; then sudo apk add dialog
   else echo "Please install 'dialog'"; exit 1
+  fi
+fi
+
+# ───── Install uidmap for user namespaces ─────
+if ! command -v newgidmap >/dev/null; then
+  if   command -v apt    >/dev/null; then sudo apt update && sudo apt install -y uidmap
+  elif command -v dnf    >/dev/null; then sudo dnf install -y shadow-utils
+  elif command -v pacman >/dev/null; then sudo pacman -Sy --noconfirm shadow
+  elif command -v zypper >/dev/null; then sudo zypper install -y shadow
+  elif command -v apk    >/dev/null; then sudo apk add shadow
+  else echo "Please install 'newgidmap'"; exit 1
   fi
 fi
 
@@ -64,10 +74,10 @@ cat > /root/.config/guix/channels.scm <<'EOF'
     (branch "main")
     (url "https://codeberg.org/look/saayix")
     (introduction
-     (make-channel-introduction
-      "12540f593092e9a177eb8a974a57bb4892327752"
-      (openpgp-fingerprint
-       "3FFA 7335 973E 0A49 47FC 0A8C 38D5 96BE 07D3 34AB"))))
+      (make-channel-introduction
+        "12540f593092e9a177eb8a974a57bb4892327752"
+        (openpgp-fingerprint
+          "3FFA 7335 973E 0A49 47FC 0A8C 38D5 96BE 07D3 34AB"))))
 
   (channel
     (name 'nonguix)
@@ -82,7 +92,7 @@ cat > /root/.config/guix/channels.scm <<'EOF'
 EOF
 
 dialog --infobox "Pulling Guix with custom channels… this may take time" 5 60
-guix pull --disable-authentication
+guix pull
 . /root/.config/guix/current/etc/profile
 
 # ───── Defaults (USA) ─────
@@ -199,77 +209,36 @@ mkdir -p /mnt/etc/guix
 
 cat > /mnt/etc/config.scm <<'EOF'
 ;; === YOUR ORIGINAL BERKELEY CONFIG – UNTOUCHED ===
-(use-modules (gnu)
-             (gnu services)
-             (gnu services base)
-             (gnu services desktop)
-             (gnu services networking)
-             (gnu services xorg)
-             (gnu packages)
-             (gnu packages certs)
-             (gnu packages fonts)
-             (gnu packages gnome)
-             (gnu packages gtk)
-             (gnu packages pulseaudio)
-             (gnu packages audio)
-             (gnu packages linux)
-             (guix channels)
-             (guix packages)
-             (guix build-system gnu)
-             (nongnu packages linux))
-
-(use-package-modules
-  certs fonts gnome gtk pulseaudio audio linux
-  bash coreutils findutils grep sed gawk tar xz
-  curl wget git openssh rsync
-  nss-certs)
-
-(use-service-modules
-  desktop xorg networking ssh avahi
-  dbus dbus-root)
+(use-modules (gnu) (gnu services desktop networking ssh xorg))
 
 (operating-system
-(kernel linux)
-(firmware (list linux-firmware))
-  (locale "en_US.utf8")          ; ← will be replaced
-  (timezone "America/New_York")  ; ← will be replaced
-  (keyboard-layout (keyboard-layout "us")) ; ← will be replaced
-  (host-name "guix")             ; ← will be replaced
+  (locale "en_US.utf8")
+  (timezone "America/New_York")
+  (keyboard-layout (keyboard-layout "us"))
+  (host-name "guix")
 
   (users (cons* (user-account
-                 (name "user")   ; ← will be replaced
-                 (comment "Default user")
-                 (group "users")
-                 (home-directory "/home/user")
-                 (supplementary-groups '("wheel" "netdev" "audio" "video" "cdrom" "kvm")))
+                  (name "user")
+                  (comment "Default user")
+                  (group "users")
+                  (home-directory "/home/user")
+                  (supplementary-groups
+                    '("wheel" "netdev" "audio" "video")))
                 %base-user-accounts))
 
-  (packages (append (list
-    nss-certs
-    font-dejavu font-gnu-freefont
-    gnome gnome-tweaks
-    pulseaudio pavucontrol
-    bash-completion
-    git curl wget rsync openssh
-    ) %base-packages))
+  (packages
+    (append
+      (list (specification->package "nss-certs"))
+      %base-packages))
 
   (services
-   (append
-     (list
-       (service gnome-desktop-service-type)
-       (service gdm-service-type)
-       (service network-manager-service-type)
-       (service wpa-supplicant-service-type)
-       (service avahi-service-type)
-       (service openssh-service-type
-                (openssh-configuration
-                  (openssh openssh)
-                  (port-number 22)))
-       (service bluetooth-service-type)
-       (service thermald-service-type)
-       (service tlp-service-type)
-       (service docker-service-type))
-     %desktop-services))
+    (append
+      (list
+        (service gnome-desktop-service-type)
+        (set-xorg-configuration
+          (xorg-configuration
+            (keyboard-layout keyboard-layout))))
+      %desktop-services))
 
   (bootloader
     (bootloader-configuration
@@ -279,19 +248,19 @@ cat > /mnt/etc/config.scm <<'EOF'
 
   ;; ← LUKS will be injected here
 
-  (file-systems (cons*
-    (file-system
-      (mount-point "/boot/efi")
-      (device (file-system-label "EFI"))
-      (type "vfat"))
-    (file-system
-      (mount-point "/")
-      (device (uuid "00000000-0000-0000-0000-000000000000")) ; ← replaced
-      (type "ext4"))
-    %base-file-systems)))
+  (file-systems
+    (cons* (file-system
+             (mount-point "/boot/efi")
+             (device (file-system-label "EFI"))
+             (type "vfat"))
+           (file-system
+             (mount-point "/")
+             (device (uuid "00000000-0000-0000-0000-000000000000"))
+             (type "ext4"))
+           %base-file-systems)))
 EOF
 
-# ───── YOUR channels.scm (non-guix, nonguix, etc.) ─────
+# ───── YOUR channels.scm ─────
 cp /root/.config/guix/channels.scm /mnt/etc/guix/channels.scm
 
 # ───── Inject user values into config.scm ─────
