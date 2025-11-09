@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
-#
-# installer.sh - Universal Guix System installer for live environments
-#                 with graphical dialogs (zenity/yad) and text fallback.
-#
-# This file is based on the installer at:
-# https://codeberg.org/berkeley/guix-install/src/branch/main/installer.sh.
-#
-# Change made: removed the Root Device option from the interactive prompts.
-# When the user selects a disk to install to, the script partitions/formats it,
-# labels the root partition "root", mounts it, and sets the Root Device
-# expression injected into the generated config.scm to (file-system-label "root").
+# DO NOT INSTALL THIS.
 #
 set -euo pipefail
 
@@ -671,4 +661,3 @@ prepare_and_run_init
 finalize
 
 exit 0
-
