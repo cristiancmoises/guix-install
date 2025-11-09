@@ -1,77 +1,132 @@
 #!/bin/sh
-# UNIVERSAL Guix installer – works on GNU/Linux (fresh/reconfigure), BSD (package manager only)
-# Graphical interface with dialog for selection
-# Supports LUKS encryption, default USA settings, user choices
-# Preserves all use-modules, packages from older versions
-# Channels with substitutes for fast install
-# Run as root: chmod +x installer.sh && ./installer.sh
-# Verbose mode for debugging
 
-set -e
-echo "Starting Guix installer on $(uname -s)"
+set -euo pipefail
 
-# ───── Detect OS & PM ─────
-OS=$(uname -s)
-echo "OS: $OS"
-case $OS in
-  Linux) PM="unknown" ;;
-  FreeBSD|OpenBSD|DragonFly) PM="bsd" ;;
-  *) echo "Unsupported OS"; exit 1 ;;
-esac
+# ───── Constants ─────
+TMPDIR="$(mktemp -d /tmp/guix-installer.XXXXXX)"
+INSTALLER_NAME="$(basename "$0")"
+TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
-if [ "$OS" = "Linux" ]; then
-  if command -v apt >/dev/null; then PM="apt"; echo "PM: apt"
-  elif command -v dnf >/dev/null; then PM="dnf"; echo "PM: dnf"
-  elif command -v pacman >/dev/null; then PM="pacman"; echo "PM: pacman"
-  elif command -v zypper >/dev/null; then PM="zypper"; echo "PM: zypper"
-  elif command -v apk >/dev/null; then PM="apk"; echo "PM: apk"
-  elif command -v xbps-install >/dev/null; then PM="xbps"; echo "PM: xbps"
-  else echo "No PM found"; exit 1
+USER_ONLY=0
+NO_DAEMON=0
+SKIP_DEPS=0
+ASSUME_YES=0
+DEBUG=0
+
+# ───── Helpers ─────
+cleanup() { rm -rf "$TMPDIR"; }
+trap cleanup EXIT
+
+log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+info() { printf '\033[1;32m::\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m--\033[0m %s\n' "$*"; }
+err() { printf '\033[1;31m!!\033[0m %s\n' "$*"; exit 1; }
+dbg() { [ "$DEBUG" -eq 1 ] && printf '\033[1;35mDBG\033[0m %s\n' "$*"; }
+
+confirm() {
+  if [ "$ASSUME_YES" -eq 1 ]; then return 0; fi
+  local prompt="${1:-Continue?}" default="${2:-y}"
+  if [ "$default" = "y" ]; then
+    read -r -p "$prompt [Y/n]: " ans
+    case "${ans:-y}" in [Yy]|"") return 0;; *) return 1;; esac
+  else
+    read -r -p "$prompt [y/N]: " ans
+    case "${ans:-n}" in [Yy]) return 0;; *) return 1;; esac
   fi
-fi
+}
 
-# ───── Install pkg function ─────
-install_pkg() {
-  echo "Installing $@"
-  case $PM in
-    apt) apt update && apt install -y "$@" ;;
-    dnf) dnf install -y "$@" ;;
-    pacman) pacman -Sy --noconfirm "$@" ;;
-    zypper) zypper install -y "$@" ;;
-    apk) apk add "$@" ;;
-    xbps) xbps-install -Sy "$@" ;;
-    bsd) if [ "$OS" = "FreeBSD" ] || [ "$OS" = "DragonFly" ]; then pkg install -y "$@" ; elif [ "$OS" = "OpenBSD" ]; then pkg_add -I "$@" ; fi ;;
-    *) echo "No PM"; return 1 ;;
+run_cmd() {
+  dbg "+ $*"
+  eval "$@" || err "Command failed: $*"
+}
+
+download_file() {
+  local url="$1" dest="$2"
+  dbg "Download: $url -> $dest"
+  if command -v curl >/dev/null; then
+    curl -fsSL "$url" -o "$dest" && return 0
+  elif command -v wget >/dev/null; then
+    wget -q -O "$dest" "$url" && return 0
+  fi
+  err "No curl/wget"
+}
+
+# ───── Arguments ─────
+usage() {
+  cat <<EOF
+Usage: $INSTALLER_NAME [options]
+Options:
+  --user-only    User-only install (no daemon)
+  --no-daemon    Skip daemon (implies --user-only)
+  --skip-deps    Skip dependencies
+  --yes          Assume yes
+  --debug        Debug mode
+  -h, --help     Help
+EOF
+  exit 0
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --user-only) USER_ONLY=1; shift ;;
+    --no-daemon) NO_DAEMON=1; USER_ONLY=1; shift ;;
+    --skip-deps) SKIP_DEPS=1; shift ;;
+    --yes|-y) ASSUME_YES=1; shift ;;
+    --debug) DEBUG=1; shift ;;
+    -h|--help) usage ;;
+    *) warn "Unknown: $1"; shift ;;
+  esac
+done
+
+# ───── Platform ─────
+detect_platform() {
+  OS="$(uname -s)"
+  case "$OS" in
+    Linux) PLATFORM="linux" ;;
+    *BSD*) PLATFORM="bsd" ;;
+    *) err "Unsupported OS" ;;
+  esac
+
+  DISTRO="unknown"
+  if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    DISTRO="${ID:-$NAME}"
+  fi
+
+  dbg "Platform=$PLATFORM Distro=$DISTRO"
+}
+
+# ───── Dependencies ─────
+install_deps() {
+  if [ "$SKIP_DEPS" -eq 1 ]; then warn "Skipping deps"; return; fi
+
+  PKGS="curl wget ca-certificates gnupg git xz-utils dialog"
+  case "$PLATFORM" in
+    linux)
+      case "$DISTRO" in
+        ubuntu|debian) run_cmd "apt update && apt install -y $PKGS" ;;
+        fedora) run_cmd "dnf install -y $PKGS" ;;
+        arch) run_cmd "pacman -Sy --noconfirm $PKGS" ;;
+        opensuse*) run_cmd "zypper install -y $PKGS" ;;
+        alpine) run_cmd "apk add $PKGS" ;;
+        void) run_cmd "xbps-install -Sy $PKGS" ;;
+        *) warn "Unknown distro; install manually: $PKGS" ;;
+      esac
+      ;;
+    bsd)
+      case "$OS" in
+        FreeBSD|DragonFly) run_cmd "pkg install -y $PKGS" ;;
+        OpenBSD) run_cmd "pkg_add $PKGS" ;;
+      esac
+      ;;
   esac
 }
 
-# ───── Install dialog ─────
-if ! command -v dialog >/dev/null; then install_pkg dialog; fi
-
-# ───── Install newgidmap (Linux) ─────
-if [ "$OS" = "Linux" ] && ! command -v newgidmap >/dev/null; then
-  case $PM in
-    apt) install_pkg uidmap ;;
-    dnf) install_pkg shadow-utils ;;
-    pacman) install_pkg shadow ;;
-    zypper) install_pkg shadow ;;
-    apk) install_pkg shadow ;;
-    xbps) install_pkg shadow ;;
-  esac
-fi
-
-# ───── Install Guix ─────
-if ! command -v guix >/dev/null; then
-  cd /tmp
-  wget https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh || fetch https://git.savannah.gnu.org/cgit/guix.git/plain/etc/guix-install.sh
-  chmod +x guix-install.sh
-  ./guix-install.sh
-  . /root/.config/guix/current/etc/profile
-fi
-
 # ───── Channels ─────
-mkdir -p /root/.config/guix
-cat > /root/.config/guix/channels.scm <<'EOF'
+prepare_channels() {
+  CHANNEL_FILE="$TMPDIR/channels.scm"
+  info "Embedding channels.scm"
+  cat > "$CHANNEL_FILE" <<'EOF'
 (use-modules (guix ci))
 (list
   (channel-with-substitutes-available
@@ -95,20 +150,20 @@ cat > /root/.config/guix/channels.scm <<'EOF'
     (url "https://codeberg.org/fishinthecalculator/small-guix.git")
     (branch "main")
     (introduction
-      (make-channel-introduction
-        "f260da13666cd41ae3202270784e61e062a3999c"
-        (openpgp-fingerprint
-          "8D10 60B9 6BB8 292E 829B 7249 AED4 1CC1 93B7 01E2"))))
+     (make-channel-introduction
+      "f260da13666cd41ae3202270784e61e062a3999c"
+      (openpgp-fingerprint
+       "8D10 60B9 6BB8 292E 829B 7249 AED4 1CC1 93B7 01E2"))))
   (channel
-    (name 'saayix)
-    (branch "main")
-    (url "https://codeberg.org/look/saayix")
-    (introduction
-      (make-channel-introduction
-        "12540f593092e9a177eb8a974a57bb4892327752"
-        (openpgp-fingerprint
-          "3FFA 7335 973E 0A49 47FC 0A8C 38D5 96BE 07D3 34AB"))))
-  (channel
+   (name 'saayix)
+   (branch "main")
+   (url "https://codeberg.org/look/saayix")
+   (introduction
+    (make-channel-introduction
+     "12540f593092e9a177eb8a974a57bb4892327752"
+     (openpgp-fingerprint
+      "3FFA 7335 973E 0A49 47FC 0A8C 38D5 96BE 07D3 34AB"))))
+ (channel
     (name 'nonguix)
     (url "https://gitlab.com/nonguix/nonguix")
     (branch "master")
@@ -119,104 +174,26 @@ cat > /root/.config/guix/channels.scm <<'EOF'
         (openpgp-fingerprint
           "2A39 3FFF 68F4 EF7A 3D29 12AF 6F51 20A0 22FB B2D5")))))
 EOF
+}
 
-# ───── Pull ─────
-guix pull --substitute-urls="https://ci.guix.gnu.org https://bordeaux.guix.gnu.org"
-. /root/.config/guix/current/etc/profile
+# ───── User setup ─────
+backup_existing() {
+  local target="$1"
+  if [ -e "$target" ]; then
+    mv "$target" "${target}.bak.${TIMESTAMP}"
+    info "Backed up $target"
+  fi
+}
 
-# ───── Defaults ─────
-LANG="English"
-KB="us"
-LOCALE="en_US.utf8"
-TZ="America/New_York"
-HOST="guix"
-USER="user"
+user_setup() {
+  info "User setup"
+  mkdir -p "$HOME/.config/guix"
+  backup_existing "$HOME/.config/guix/channels.scm"
+  cp "$CHANNEL_FILE" "$HOME/.config/guix/channels.scm"
 
-# ───── Interactive ─────
-LANG=$(dialog --menu "Language" 12 40 5 "English" "" "Portuguese (Brazil)" "" "Spanish" "" "French" "" "German" "" --stdout) || exit
-case $LANG in
-  "Portuguese (Brazil)") LOCALE="pt_BR.utf8"; KB="br" ;;
-  "Spanish") LOCALE="es_ES.utf8"; KB="es" ;;
-  "French") LOCALE="fr_FR.utf8"; KB="fr" ;;
-  "German") LOCALE="de_DE.utf8"; KB="de" ;;
-esac
-
-KB=$(dialog --inputbox "Keyboard layout" 8 50 "$KB" --stdout) || exit
-LOCALE=$(dialog --inputbox "Locale" 8 50 "$LOCALE" --stdout) || exit
-HOST=$(dialog --inputbox "Hostname" 8 50 "$HOST" --stdout) || exit
-TZ=$(dialog --inputbox "Timezone" 8 60 "$TZ" --stdout) || exit
-USER=$(dialog --inputbox "Username" 8 50 "$USER" --stdout) || exit
-PASS=$(dialog --passwordbox "Password" 8 50 --stdout) || exit
-PASS2=$(dialog --passwordbox "Confirm" 8 50 --stdout) || exit
-[ "$PASS" = "$PASS2" ] || { dialog --msgbox "Mismatch!" 6 40; exit 1; }
-
-# ───── BSD: package manager only ─────
-if echo "$OS" | grep -q BSD; then
-  dialog --msgbox "Guix package manager installed on $OS." 8 50
-  exit 0
-fi
-
-# ───── Reconfigure if Guix System ─────
-if [ -f /etc/config.scm ]; then
-  dialog --yesno "Reconfigure Guix System?" 6 50 && {
-    sed -i "s/locale .*/locale \"$LOCALE\")/" /etc/config.scm
-    sed -i "s/timezone .*/timezone \"$TZ\")/" /etc/config.scm
-    sed -i "s/keyboard-layout .*/keyboard-layout (keyboard-layout \"$KB\"))/" /etc/config.scm
-    sed -i "s/host-name .*/host-name \"$HOST\")/" /etc/config.scm
-    sed -i "s/name .*/name \"$USER\")/" /etc/config.scm
-    sed -i "s/home-directory .*/home-directory \"/home/$USER\")/" /etc/config.scm
-    guix system reconfigure /etc/config.scm
-    printf "%s\n%s\n" "$PASS" "$PASS" | passwd "$USER"
-    dialog --msgbox "Reconfigured!" 6 40
-  }
-  exit 0
-fi
-
-# ───── Fresh install ─────
-DISKS=$(lsblk -dpo NAME,SIZE | awk '{print $1 " " $2}')
-DISK=$(dialog --menu "Disk" 15 50 10 $DISKS --stdout) || exit
-
-LUKS="no"
-dialog --yesno "LUKS encryption?" 5 30 && LUKS="yes"
-
-LUKS_PASS=""
-if [ "$LUKS" = "yes" ]; then
-  LUKS_PASS=$(dialog --passwordbox "LUKS passphrase" 8 50 --stdout) || exit
-  LUKS_PASS2=$(dialog --passwordbox "Confirm" 8 50 --stdout) || exit
-  [ "$LUKS_PASS" = "$LUKS_PASS2" ] || exit 1
-fi
-
-# ───── Partition ─────
-sgdisk -Z $DISK
-sgdisk -n 1:0:+550MiB -t 1:ef00 $DISK
-sgdisk -n 2:0:0 $DISK
-
-EFI_PART=${DISK}1
-ROOT_PART=${DISK}2
-
-mkfs.vfat -F32 -n "EFI" $EFI_PART
-
-if [ "$LUKS" = "yes" ]; then
-  echo -n "$LUKS_PASS" | cryptsetup luksFormat $ROOT_PART -
-  echo -n "$LUKS_PASS" | cryptsetup open $ROOT_PART encrypted -
-  ROOT_DEV=/dev/mapper/encrypted
-  LUKS_UUID=$(blkid -s UUID -o value $ROOT_PART)
-  MAPPED="(list (mapped-device (source (uuid \"$LUKS_UUID\")) (target \"encrypted\") (type luks-device-mapping)))"
-  ROOT_DEVICE="\"/dev/mapper/encrypted\""
-else
-  ROOT_DEV=$ROOT_PART
-  MAPPED="'()"
-  ROOT_DEVICE="(uuid \"$(blkid -s UUID -o value $ROOT_DEV)\")"
-fi
-
-mkfs.ext4 -L "root" $ROOT_DEV
-
-mount $ROOT_DEV /mnt
-mkdir -p /mnt/boot/efi
-mount $EFI_PART /mnt/boot/efi
-
-# ───── Config with all modules/packages ─────
-cat > /mnt/etc/config.scm <<EOF
+  cfg="$HOME/.config/guix/config.scm"
+  if [ ! -f "$cfg" ]; then
+    cat > "$cfg" <<EOF
 (use-modules (gnu)
              (gnu services)
              (gnu services base)
@@ -233,11 +210,9 @@ cat > /mnt/etc/config.scm <<EOF
              (gnu packages linux)
              (guix channels)
              (guix packages)
-             (gnu packages disk)
-             (gnu packages gnuzilla)
+             (guix build-system gnu)
              (nongnu packages linux)
-             (nongnu system linux-initrd)
-             (guix build-system gnu))
+             (nongnu system linux-initrd))
 
 (use-package-modules
   certs fonts gnome gtk pulseaudio audio linux
@@ -250,55 +225,126 @@ cat > /mnt/etc/config.scm <<EOF
   dbus dbus-root)
 
 (operating-system
- (kernel linux kernel) 
- (firmware (list linux-firmware))
- (initrd microcode-initrd)
- (locale "$LOCALE")
+  (kernel linux)
+  (firmware (list linux-firmware))
+  (initrd microcode-initrd)
+  (locale "$LOCALE")
   (timezone "$TZ")
   (keyboard-layout (keyboard-layout "$KB"))
   (host-name "$HOST")
   (users (cons* (user-account
                  (name "$USER")
                  (group "users")
-                 (supplementary-groups '("wheel" "netdev" "audio" "video")))
-                %base-users))
-  (packages (append (list nss-certs font-dejavu
-                          icecat font-gnu-freefont lf
+                 (supplementary-groups '("wheel" "netdev" "audio" "video" "cdrom" "kvm")))
+                %base-user-accounts))
+  (packages (append (list nss-certs font-dejavu font-gnu-freefont
                           gnome gnome-tweaks pulseaudio pavucontrol
                           bash-completion git curl wget rsync openssh)
                     %base-packages))
-  (services (append (list (service gnome-desktop-service-type)
-                          (service gdm-service-type)
-                          (service network-manager-service-type)
-                          (service wpa-supplicant-service-type)
-                          (service avahi-service-type)
-                          (service openssh-service-type)
-                          (service bluetooth-service-type)
-                          (service thermald-service-type)
-                          (service tlp-service-type))
-                    %desktop-services))
-  (bootloader (bootloader-configuration (bootloader grub-efi-bootloader) (targets '("/boot/efi"))))
+  (services
+   (append
+     (list
+       (service gnome-desktop-service-type)
+       (service gdm-service-type)
+       (service network-manager-service-type)
+       (service wpa-supplicant-service-type)
+       (service avahi-service-type)
+       (service openssh-service-type
+                (openssh-configuration
+                  (openssh openssh)
+                  (port-number 22)))
+       (service bluetooth-service-type)
+       (service thermald-service-type)
+       (service tlp-service-type)
+       (service docker-service-type))
+     %desktop-services))
+  (bootloader (bootloader-configuration
+                (bootloader grub-efi-bootloader)
+                (targets '("/boot/efi"))
+                (keyboard-layout keyboard-layout)))
   (mapped-devices $MAPPED)
-  (file-systems (cons* (file-system (mount-point "/boot/efi") (device (file-system-label "EFI")) (type "vfat"))
-                       (file-system (mount-point "/") (device $ROOT_DEVICE) (type "ext4")) %base-file-systems)))
+  (file-systems (cons*
+                 (file-system
+                   (mount-point "/boot/efi")
+                   (device (file-system-label "EFI"))
+                   (type "vfat"))
+                 (file-system
+                   (mount-point "/")
+                   (device $ROOT_DEVICE)
+                   (type "ext4"))
+                 %base-file-systems)))
 EOF
+    info "Wrote $cfg"
+  fi
 
-# ───── Channels ─────
-mkdir -p /mnt/etc/guix
-cp /root/.config/guix/channels.scm /mnt/etc/guix/
+  add_profile_snippet
+}
 
-# ───── Init ─────
-guix system init /mnt/etc/config.scm /mnt
+add_profile_snippet() {
+  snippet='
+# Guix profile
+GUIX_PROFILE="$HOME/.guix-profile"
+[ -f "$GUIX_PROFILE/etc/profile" ] && . "$GUIX_PROFILE/etc/profile"
+'
+  if ! grep -q "Guix profile" "$HOME/.profile" 2>/dev/null; then
+    echo "$snippet" >> "$HOME/.profile"
+    info "Added to ~/.profile"
+  fi
+}
 
-# ───── Passwords ─────
-chroot /mnt /bin/passwd $USER <<EOP
-$PASS
-$PASS
-EOP
+# ───── Daemon ─────
+daemon_setup() {
+  if [ "$NO_DAEMON" -eq 1 ] || [ "$(id -u)" -ne 0 ]; then return; fi
 
-# ───── Cleanup ─────
-umount -R /mnt
-[ "$LUKS" = "yes" ] && cryptsetup close encrypted
+  if command -v guix-daemon >/dev/null; then
+    if command -v systemctl >/dev/null; then
+      run_cmd "systemctl enable --now guix-daemon"
+    elif [ -d /etc/init.d ]; then
+      run_cmd "/etc/init.d/guix-daemon start"
+    fi
+  else
+    warn "guix-daemon not found"
+  fi
+}
 
-dialog --msgbox "Installed! Reboot." 6 40
-echo "Completed"
+# ───── Pull channels ─────
+pull_channels() {
+  if command -v guix >/dev/null; then
+    guix pull --channels="$HOME/.config/guix/channels.scm"
+  else
+    warn "guix not found; pull later"
+  fi
+}
+
+# ───── Post note ─────
+post_note() {
+  cat <<EOF
+Done!
+Channels: $HOME/.config/guix/channels.scm
+Config: $HOME/.config/guix/config.scm
+Source ~/.profile
+To pull: guix pull --channels=~/.config/guix/channels.scm
+Install example: guix install hello
+EOF
+}
+
+# ───── Main ─────
+main() {
+  detect_platform
+  install_deps
+  prepare_channels
+  if [ "$OS" != "Linux" ]; then post_note; exit 0; fi
+  if [ -f /etc/config.scm ]; then
+    if confirm "Reconfigure system?"; then
+      guix system reconfigure /etc/config.scm
+      post_note
+    fi
+    exit 0
+  fi
+  user_setup
+  daemon_setup
+  pull_channels
+  post_note
+}
+
+main
