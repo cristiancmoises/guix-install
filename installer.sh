@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 #
+# Universal Guix System installer for live environments
 # WARNING:
 #  - Partitioning and formatting will destroy data on the target device. Double-check targets.
-#
+# lsblk -o NAME,LABEL,UUID,MOUNTPOINT
+
 set -euo pipefail
 
 # -------------------------
@@ -785,3 +787,4 @@ prepare_and_run_init
 finalize
 
 exit 0
+
