@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 #
-# installer.sh - Universal Guix System installer for live environments
+# Universal Guix System installer for live environments
+#                 (graphical dialogs with zenity/yad optional, robust text fallback)
+#
+#
+# WARNING:
+#  - Partitioning and formatting will destroy data on the target device. Double-check targets.
 #
 set -euo pipefail
 
@@ -163,6 +168,7 @@ confirm_text() {
 gui_cmd=""
 use_gui() {
   if [ "${FORCE_NOGUI:-0}" -eq 1 ]; then return 1; fi
+  if [ -z "${DISPLAY-}" ]; then return 1; fi
   if [ -n "$gui_cmd" ]; then return 0; fi
   if command -v zenity >/dev/null 2>&1; then gui_cmd=zenity; return 0; fi
   if command -v yad >/dev/null 2>&1; then gui_cmd=yad; return 0; fi
@@ -173,9 +179,9 @@ gui_info() {
   local msg="$1"; local title="${2:-Installer}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --info --no-wrap --title="$title" --text="$msg"
+      zenity --info --no-wrap --title="$title" --text="$msg" 2>/dev/null
     else
-      yad --title="$title" --text="$msg" --button=OK:0
+      yad --title="$title" --text="$msg" --button=OK:0 2>/dev/null
     fi
   else
     info "$msg"
@@ -186,9 +192,9 @@ gui_error() {
   local msg="$1"; local title="${2:-Error}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --error --title="$title" --text="$msg"
+      zenity --error --title="$title" --text="$msg" 2>/dev/null
     else
-      yad --title="$title" --text="$msg" --button=OK:1
+      yad --title="$title" --text="$msg" --button=OK:1 2>/dev/null
     fi
   else
     err "$msg"
@@ -199,10 +205,10 @@ gui_yesno() {
   local prompt="$1"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --question --title="Confirm" --text="$prompt"
+      zenity --question --title="Confirm" --text="$prompt" 2>/dev/null
       return $?
     else
-      yad --question --title="Confirm" --text="$prompt"
+      yad --question --title="Confirm" --text="$prompt" 2>/dev/null
       return $?
     fi
   fi
@@ -213,9 +219,9 @@ gui_entry() {
   local prompt="${1:-Input}" default="${2:-}" title="${3:-Input}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --entry --title="$title" --text="$prompt" --entry-text="$default" || true
+      zenity --entry --title="$title" --text="$prompt" --entry-text="$default" 2>/dev/null || true
     else
-      yad --entry --title="$title" --text="$prompt" --entry="$default" || true
+      yad --entry --title="$title" --text="$prompt" --entry="$default" 2>/dev/null || true
     fi
   else
     read -r -p "$prompt [$default]: " val
@@ -227,9 +233,9 @@ gui_filechooserdialog() {
   local typ="${2:-file}" title="${3:-Choose file}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      if [ "$typ" = "file" ]; then zenity --file-selection --title="$title" || true; else zenity --file-selection --directory --title="$title" || true; fi
+      if [ "$typ" = "file" ]; then zenity --file-selection --title="$title" 2>/dev/null || true; else zenity --file-selection --directory --title="$title" 2>/dev/null || true; fi
     else
-      if [ "$typ" = "file" ]; then yad --file --title="$title" || true; else yad --directory --title="$title" || true; fi
+      if [ "$typ" = "file" ]; then yad --file --title="$title" 2>/dev/null || true; else yad --directory --title="$title" 2>/dev/null || true; fi
     fi
   else
     echo ""
@@ -242,7 +248,7 @@ gui_list_select() {
     if [ "$gui_cmd" = "zenity" ]; then
       echo -e "$items" | zenity --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-column=1 2>/dev/null || true
     else
-      echo -e "$items" | yad --list --title="$title" --text="$text" --column=Option --height=300 --width=500 2>/dev/null || true
+      echo -e "$items" | yad --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-column=1 2>/dev/null || true
     fi
   else
     local i=0; IFS=$'\n'
