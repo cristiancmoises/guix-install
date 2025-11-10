@@ -15,25 +15,17 @@ wget https://short.securityops.co/channels -O /etc/channels.scm
 # 3️⃣ Make channels.scm writable
 chmod +w /mnt/etc/channels.scm
 
-# 4️⃣ Fix (gnu)) -> (gnu) in config.scm before other edits
+# 4️⃣ Fix (gnu)) -> (gnu) in config.scm
 echo "[+] Fixing (gnu)) -> (gnu) in config.scm..."
 sed -i 's/(gnu))/\(gnu\)/g' "$CONFIG_FILE"
 
-# 5️⃣ Insert (use-modules (gnu)) if not present
-grep -q "(use-modules (gnu))" "$CONFIG_FILE" || \
-    sed -i "1i(use-modules (gnu))" "$CONFIG_FILE"
+# 5️⃣ Insert lines above (gnu)
+echo "[+] Inserting nongnu packages/system above (gnu)..."
+sed -i "/(gnu)/i\\
+(nongnu packages linux)\\
+(nongnu system linux-initrd))" "$CONFIG_FILE"
 
-# 6️⃣ Insert under (nongnu packages linux)
-sed -i "/(nongnu packages linux)/a\\
-  (linux)\\
-  (linux-headers)" "$CONFIG_FILE"
-
-# 7️⃣ Insert under (nongnu system linux-initrd)
-sed -i "/(nongnu system linux-initrd)/a\\
-  (linux-initrd)\\
-  (microcode-initrd)" "$CONFIG_FILE"
-
-# 8️⃣ Insert kernel, firmware, initrd inside operating-system
+# 6️⃣ Insert kernel, firmware, initrd inside operating-system
 sed -i "/(operating-system/{
 :a
 N
@@ -41,7 +33,7 @@ N
 s/\((operating-system[^\)]*)\)/\1\n  (kernel linux)\n  (firmware (list linux-firmware))\n  (initrd microcode-initrd)/
 }" "$CONFIG_FILE"
 
-# 9️⃣ Run guix time-machine system init
+# 7️⃣ Run guix time-machine system init
 echo "[+] Running guix time-machine..."
 guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
 
