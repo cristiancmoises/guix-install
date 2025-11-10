@@ -56,9 +56,9 @@ sed -i 's/(gnu))/ (gnu)/g; s/(gnu))$/ (gnu)/g' "$CONFIG_FILE" || true
 
 echo "[+] Inserting nongnu modules under (use-modules (gnu ...) if missing..."
 if grep -q "(use-modules (gnu" "$CONFIG_FILE" && ! grep -q "nongnu packages linux" "$CONFIG_FILE"; then
-  sed -i "/(use-modules (gnu)\\
+  sed -i "/(use-modules (gnu/a\\
   (nongnu packages linux)\\
-  (nongnu system linux-initrd))" "$CONFIG_FILE"
+  (nongnu system linux-initrd)" "$CONFIG_FILE"
 fi
 
 echo "[+] Ensuring kernel, firmware and initrd are present under (operating-system)..."
@@ -81,4 +81,4 @@ guix time-machine -C "$TARGET_CHANNELS" -- system init "$CONFIG_FILE" "$TARGET" 
 echo "[+] Cleaning up temporary files..."
 rm -f "$TMP_CHANNELS"
 
-echo "[✅] SUCESS! Welcome to the GNU GUIX Universe! :) "
+echo "[✅] SUCESS!!! Welcome to the GNU GUIX Universe :) "
