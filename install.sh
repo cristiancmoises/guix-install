@@ -20,17 +20,20 @@ echo "[+] Fixing (gnu)) -> (gnu) in config.scm..."
 sed -i 's/(gnu))/\(gnu\)/g' "$CONFIG_FILE"
 
 # 5️⃣ Insert (use-modules (gnu)) if not present
-grep -q "(use-modules (gnu)" "$CONFIG_FILE" || \
-    sed -i "1i(use-modules (gnu)" "$CONFIG_FILE"
+grep -q "(use-modules (gnu))" "$CONFIG_FILE" || \
+    sed -i "1i(use-modules (gnu))" "$CONFIG_FILE"
 
 # 6️⃣ Insert under (nongnu packages linux)
-sed -i "/(nongnu packages linux)/a\    ;; added line" "$CONFIG_FILE"
+sed -i "/(nongnu packages linux)/a\\
+  (linux)\\
+  (linux-headers)" "$CONFIG_FILE"
 
 # 7️⃣ Insert under (nongnu system linux-initrd)
-sed -i "/(nongnu system linux-initrd))/a\    ;; added line" "$CONFIG_FILE"
+sed -i "/(nongnu system linux-initrd)/a\\
+  (linux-initrd)\\
+  (microcode-initrd)" "$CONFIG_FILE"
 
 # 8️⃣ Insert kernel, firmware, initrd inside operating-system
-# Properly escape parentheses
 sed -i "/(operating-system/{
 :a
 N
