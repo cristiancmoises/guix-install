@@ -1,5 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 set -e
+
+CONFIG_FILE="/mnt/etc/config.scm"
 
 # 1️⃣ Start the herd service
 echo "[+] Starting herd for cow-store..."
@@ -13,29 +15,30 @@ wget https://short.securityops.co/channels -O /etc/channels.scm
 # 3️⃣ Make channels.scm writable
 chmod +w /mnt/etc/channels.scm
 
-# 4️⃣ Insert modules/packages/system entries into config.scm
-CONFIG_FILE="/mnt/etc/config.scm"
-echo "[+] Modifying config.scm..."
+# 4️⃣ Fix (gnu)) -> (gnu) in config.scm before other edits
+echo "[+] Fixing (gnu)) -> (gnu) in config.scm..."
+sed -i 's/(gnu))/\(gnu\)/g' "$CONFIG_FILE"
 
-# Insert (use-modules (gnu)) if not present
+# 5️⃣ Insert (use-modules (gnu)) if not present
 grep -q "(use-modules (gnu))" "$CONFIG_FILE" || \
-    sed -i "1i(use-modules (gnu)" "$CONFIG_FILE"
+    sed -i "1i(use-modules (gnu))" "$CONFIG_FILE"
 
-# Insert under (nongnu packages linux)
+# 6️⃣ Insert under (nongnu packages linux)
 sed -i "/(nongnu packages linux)/a\    ;; added line" "$CONFIG_FILE"
 
-# Insert under (nongnu system linux-initrd)
-sed -i "/(nongnu system linux-initrd))/a\    ;; added line" "$CONFIG_FILE"
+# 7️⃣ Insert under (nongnu system linux-initrd)
+sed -i "/(nongnu system linux-initrd)/a\    ;; added line" "$CONFIG_FILE"
 
-# Insert kernel, firmware, initrd inside operating-system
-sed -i "/(operating-system/ {
-    :a
-    N
-    /)/!ba
-    s/\((operating-system[^\)]*\)\)/\1\n  (kernel linux)\n  (firmware (list linux-firmware))\n  (initrd microcode-initrd)/" "$CONFIG_FILE"
-}
+# 8️⃣ Insert kernel, firmware, initrd inside operating-system
+# Properly escape parentheses
+sed -i "/(operating-system/{
+:a
+N
+/)/!ba
+s/\((operating-system[^\)]*)\)/\1\n  (kernel linux)\n  (firmware (list linux-firmware))\n  (initrd microcode-initrd)/
+}" "$CONFIG_FILE"
 
-# 5️⃣ Run guix time-machine system init
+# 9️⃣ Run guix time-machine system init
 echo "[+] Running guix time-machine..."
 guix time-machine -C /mnt/etc/channels.scm -- system init /mnt/etc/config.scm /mnt
 
