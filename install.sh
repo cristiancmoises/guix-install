@@ -98,7 +98,7 @@ if grep -q "(operating-system" "$CONFIG_FILE" && ! grep -q "(kernel linux)" "$CO
   sed -i "/(operating-system/ a\\
   (kernel linux)\\
   (firmware (list linux-firmware))\\
-  (initrd microcode-initrd))" "$CONFIG_FILE" || true
+  (initrd microcode-initrd)" "$CONFIG_FILE" || true
   echo "    Inserted kernel/firmware/initrd"
 else
   echo "    Kernel entry already present or (operating-system) not found; skipped"
