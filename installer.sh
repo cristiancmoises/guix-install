@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
-# Universal Guix System installer for live environments
+#
+# installer.sh - Universal Guix System installer for live environments
 #                 (graphical dialogs with zenity/yad optional, robust text fallback)
+#
+# Features:
+#  - Let the user choose device or mountpoint (graphical or text dialogs).
+#  - Preserve and use user-provided channels.scm and config.scm when supplied.
+#  - If no config.scm provided, render a configurable minimal template using collected values.
+#  - Avoid dependence on findmnt; use /proc/mounts and lsblk for mount detection.
+#  - Attempt to ensure guix is available (distribution package or bootstrap tarball).
 #
 # WARNING:
 #  - Partitioning and formatting will destroy data on the target device. Double-check targets.
 #
 set -euo pipefail
-
-# Silence harmless Mesa/X11 errors
-export MESA_DEBUG=silent 2>/dev/null || true
-export GDK_BACKEND= 2>/dev/null || true
 
 # -------------------------
 # Defaults and built-in content
@@ -37,7 +41,7 @@ TEMPLATE_KB="us"
 TEMPLATE_HOST="guix-host"
 TEMPLATE_USER="guix"
 TEMPLATE_MAPPED="()"
-TEMPLATE_ROOT_DEVICE='(file-system-label "root")'
+TEMPLATE_ROOT_DEVICE="\"/dev/disk/by-label/root\""
 
 # Optional bootstrap tarball (user may override)
 BOOTSTRAP_GUIX_TARBALL_URL="https://ci.guix.gnu.org/nar/nar-info/guix-bootstrapped.tar.xz"
@@ -105,7 +109,7 @@ read -r -d '' BUILTIN_CONFIG_TEMPLATE <<'SCM' || true
   dbus dbus-root)
 
 (operating-system
- (kernel linux)
+ (kernel linux kernel)
  (firmware (list linux-firmware))
  (initrd microcode-initrd)
  (locale "$LOCALE")
@@ -166,8 +170,6 @@ confirm_text() {
 gui_cmd=""
 use_gui() {
   if [ "${FORCE_NOGUI:-0}" -eq 1 ]; then return 1; fi
-  if [ -z "${DISPLAY-}" ]; then return 1; fi
-  if command -v xset >/dev/null 2>&1 && ! xset -q >/dev/null 2>&1; then return 1; fi
   if [ -n "$gui_cmd" ]; then return 0; fi
   if command -v zenity >/dev/null 2>&1; then gui_cmd=zenity; return 0; fi
   if command -v yad >/dev/null 2>&1; then gui_cmd=yad; return 0; fi
@@ -178,9 +180,9 @@ gui_info() {
   local msg="$1"; local title="${2:-Installer}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --info --no-wrap --title="$title" --text="$msg" 2>/dev/null
+      zenity --info --no-wrap --title="$title" --text="$msg"
     else
-      yad --title="$title" --text="$msg" --button=OK:0 2>/dev/null
+      yad --title="$title" --text="$msg" --button=OK:0
     fi
   else
     info "$msg"
@@ -191,9 +193,9 @@ gui_error() {
   local msg="$1"; local title="${2:-Error}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --error --title="$title" --text="$msg" 2>/dev/null
+      zenity --error --title="$title" --text="$msg"
     else
-      yad --title="$title" --text="$msg" --button=OK:1 2>/dev/null
+      yad --title="$title" --text="$msg" --button=OK:1
     fi
   else
     err "$msg"
@@ -204,10 +206,10 @@ gui_yesno() {
   local prompt="$1"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --question --title="Confirm" --text="$prompt" 2>/dev/null
+      zenity --question --title="Confirm" --text="$prompt"
       return $?
     else
-      yad --question --title="Confirm" --text="$prompt" 2>/dev/null
+      yad --question --title="Confirm" --text="$prompt"
       return $?
     fi
   fi
@@ -218,9 +220,9 @@ gui_entry() {
   local prompt="${1:-Input}" default="${2:-}" title="${3:-Input}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      zenity --entry --title="$title" --text="$prompt" --entry-text="$default" 2>/dev/null || true
+      zenity --entry --title="$title" --text="$prompt" --entry-text="$default" || true
     else
-      yad --entry --title="$title" --text="$prompt" --entry="$default" 2>/dev/null || true
+      yad --entry --title="$title" --text="$prompt" --entry="$default" || true
     fi
   else
     read -r -p "$prompt [$default]: " val
@@ -232,9 +234,9 @@ gui_filechooserdialog() {
   local typ="${2:-file}" title="${3:-Choose file}"
   if use_gui; then
     if [ "$gui_cmd" = "zenity" ]; then
-      if [ "$typ" = "file" ]; then zenity --file-selection --title="$title" 2>/dev/null || true; else zenity --file-selection --directory --title="$title" 2>/dev/null || true; fi
+      if [ "$typ" = "file" ]; then zenity --file-selection --title="$title" || true; else zenity --file-selection --directory --title="$title" || true; fi
     else
-      if [ "$typ" = "file" ]; then yad --file --title="$title" 2>/dev/null || true; else yad --directory --title="$title" 2>/dev/null || true; fi
+      if [ "$typ" = "file" ]; then yad --file --title="$title" || true; else yad --directory --title="$title" || true; fi
     fi
   else
     echo ""
@@ -247,7 +249,7 @@ gui_list_select() {
     if [ "$gui_cmd" = "zenity" ]; then
       echo -e "$items" | zenity --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-column=1 2>/dev/null || true
     else
-      echo -e "$items" | yad --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-column=1 2>/dev/null || true
+      echo -e "$items" | yad --list --title="$title" --text="$text" --column=Option --height=300 --width=500 --print-preview 2>/dev/null || true
     fi
   else
     local i=0; IFS=$'\n'
@@ -322,6 +324,7 @@ Options:
   --host HOSTNAME         Hostname for template (default: $TEMPLATE_HOST)
   --username USERNAME     Primary username for template (default: $TEMPLATE_USER)
   --mapped MAPPED_EXPR    Mapped devices Scheme expression to insert in template
+  --root-device DEVICE    Root device expression to insert in template (e.g. '"/dev/disk/by-label/root"')
   --nogui                 Force non-graphical mode
   --yes                   Assume yes to prompts
   --skip-deps             Skip installing distro dependencies
@@ -344,6 +347,7 @@ while [ "$#" -gt 0 ]; do
     --host) TEMPLATE_HOST="$2"; shift 2 ;;
     --username) TEMPLATE_USER="$2"; shift 2 ;;
     --mapped) TEMPLATE_MAPPED="$2"; shift 2 ;;
+    --root-device) TEMPLATE_ROOT_DEVICE="$2"; shift 2 ;;
     --nogui) FORCE_NOGUI=1; shift ;;
     --yes) ASSUME_YES=1; shift ;;
     --skip-deps) SKIP_DEPS=1; shift ;;
@@ -623,11 +627,6 @@ prepare_and_run_init() {
   cat > "$TMP_SCRIPT" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-
-# Silence harmless Mesa/X11 errors inside chroot
-export MESA_DEBUG=silent 2>/dev/null || true
-export GDK_BACKEND= 2>/dev/null || true
-
 CONFIG="/etc/guix/config.scm"
 CHANNELS="/etc/guix/channels.scm"
 if [ -f /root/.config/guix/config.scm ]; then CONFIG="/root/.config/guix/config.scm"; fi
@@ -639,7 +638,7 @@ else
   echo "guix not found inside environment; aborting" >&2; exit 1
 fi
 echo "Running guix system init with config: $CONFIG"
-guix system init "$CONFIG" / || { echo "guix system init failed"; exit 1; }
+guix system init "$CONFIG" /boot || { echo "guix system init failed"; exit 1; }
 SH
   chmod +x "$TMP_SCRIPT"
   sudo cp "$TMP_SCRIPT" "$TARGET_MOUNT/root/run-guix-init.sh"
@@ -720,7 +719,7 @@ if use_gui; then
       items="$(lsblk -dn -o NAME,SIZE,MODEL | awk '{print "/dev/"$1"  "$2"  "$3}')"
       sel="$(gui_list_select "Select device" "Available block devices" "$items")"
       if [ -n "$sel" ]; then
-        TARGET_DEVICE="${sel%% *}"
+        TARGET_DEVICE="$sel"
         TARGET_IS_DEVICE=1
       fi
     else
@@ -741,6 +740,7 @@ if use_gui; then
   TEMPLATE_LOCALE="$(gui_entry "Locale (e.g. en_US.UTF-8)" "$TEMPLATE_LOCALE" "Locale")"
   TEMPLATE_TZ="$(gui_entry "Timezone (e.g. America/Sao_Paulo)" "$TEMPLATE_TZ" "Timezone")"
   TEMPLATE_KB="$(gui_entry "Keyboard layout (e.g. br, us)" "$TEMPLATE_KB" "Keyboard")"
+  TEMPLATE_ROOT_DEVICE="$(gui_entry "Root device expression (quoted, e.g. \"/dev/disk/by-label/root\")" "$TEMPLATE_ROOT_DEVICE" "Root device")"
   TEMPLATE_MAPPED="$(gui_entry "Mapped-devices Scheme expression (leave empty if none)" "$TEMPLATE_MAPPED" "Mapped devices")"
 
   if [ -n "$TARGET_DEVICE" ]; then
@@ -755,10 +755,6 @@ else
     read -r -p "Install to device or mountpoint? (device/mount) [mount]: " choice
     choice="${choice:-mount}"
     if [ "${choice,,}" = "device" ]; then
-      if command -v lsblk >/dev/null 2>&1; then
-        echo "Available devices:"
-        lsblk -dn -o NAME,SIZE,MODEL | awk '{print "/dev/"$1"  "$2"  "$3}'
-      fi
       read -r -p "Device node (e.g. /dev/sda): " TARGET_DEVICE
       TARGET_IS_DEVICE=1
     else
@@ -771,6 +767,7 @@ else
   read -r -p "Locale [$TEMPLATE_LOCALE]: " in; TEMPLATE_LOCALE="${in:-$TEMPLATE_LOCALE}"
   read -r -p "Timezone [$TEMPLATE_TZ]: " in; TEMPLATE_TZ="${in:-$TEMPLATE_TZ}"
   read -r -p "Keyboard [$TEMPLATE_KB]: " in; TEMPLATE_KB="${in:-$TEMPLATE_KB}"
+  read -r -p "Root device expression (quoted) [$TEMPLATE_ROOT_DEVICE]: " in; TEMPLATE_ROOT_DEVICE="${in:-$TEMPLATE_ROOT_DEVICE}"
   read -r -p "Mapped-devices expression (Scheme) [$TEMPLATE_MAPPED]: " in; TEMPLATE_MAPPED="${in:-$TEMPLATE_MAPPED}"
 
   if [ -n "$TARGET_DEVICE" ]; then
