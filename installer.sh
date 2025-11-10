@@ -1,15 +1,5 @@
 #!/usr/bin/env bash
 #
-# installer.sh - Universal Guix System installer for live environments
-#                 (graphical dialogs with zenity/yad optional, robust text fallback)
-#
-# Features:
-#  - Let the user choose device or mountpoint (graphical or text dialogs).
-#  - Preserve and use user-provided channels.scm and config.scm when supplied.
-#  - If no config.scm provided, render a configurable minimal template using collected values.
-#  - Avoid dependence on findmnt; use /proc/mounts and lsblk for mount detection.
-#  - Attempt to ensure guix is available (distribution package or bootstrap tarball).
-#
 # WARNING:
 #  - Partitioning and formatting will destroy data on the target device. Double-check targets.
 #
