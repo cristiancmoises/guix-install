@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-#
 # Universal Guix System installer for live environments
 #                 (graphical dialogs with zenity/yad optional, robust text fallback)
-#
 #
 # WARNING:
 #  - Partitioning and formatting will destroy data on the target device. Double-check targets.
@@ -169,6 +167,7 @@ gui_cmd=""
 use_gui() {
   if [ "${FORCE_NOGUI:-0}" -eq 1 ]; then return 1; fi
   if [ -z "${DISPLAY-}" ]; then return 1; fi
+  if command -v xset >/dev/null 2>&1 && ! xset -q >/dev/null 2>&1; then return 1; fi
   if [ -n "$gui_cmd" ]; then return 0; fi
   if command -v zenity >/dev/null 2>&1; then gui_cmd=zenity; return 0; fi
   if command -v yad >/dev/null 2>&1; then gui_cmd=yad; return 0; fi
