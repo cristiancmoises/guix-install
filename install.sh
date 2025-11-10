@@ -51,35 +51,28 @@ fi
 echo "[+] Backing up and preparing config.scm edits..."
 cp -a "$CONFIG_FILE" "${CONFIG_FILE}.$(date -u +%Y%m%dT%H%M%SZ).bak"
 
-# Fix common typo: replace occurrences of (gnu))  -> (gnu)
 echo "[+] Fixing stray \")\" after (gnu) occurrences in config.scm..."
-# replace literal "(gnu))" -> "(gnu)"
 sed -i 's/(gnu))/ (gnu)/g; s/(gnu))$/ (gnu)/g' "$CONFIG_FILE" || true
 
-# Insert nongnu modules under (use-modules (gnu)
-echo "[+] Inserting nongnu packages/system under (use-modules (gnu)) if missing..."
-# Only insert if the marker line exists and nongnu not already present
-if grep -q "(use-modules (gnu)" "$CONFIG_FILE" && ! grep -q "nongnu packages linux" "$CONFIG_FILE"; then
-  sed -i "/(use-modules (gnu)/a\\
+echo "[+] Inserting nongnu modules under (use-modules (gnu ...) if missing..."
+if grep -q "(use-modules (gnu" "$CONFIG_FILE" && ! grep -q "nongnu packages linux" "$CONFIG_FILE"; then
+  sed -i "/(use-modules (gnu)\\
   (nongnu packages linux)\\
-  (nongnu system linux-initrd))" "$CONFIG_FILE" || true
+  (nongnu system linux-initrd))" "$CONFIG_FILE"
 fi
 
-# Insert kernel/firmware/initrd under (operating-system) if not present
 echo "[+] Ensuring kernel, firmware and initrd are present under (operating-system)..."
 if grep -q "(operating-system" "$CONFIG_FILE" && ! grep -q "(kernel linux)" "$CONFIG_FILE"; then
   sed -i "/(operating-system/ a\\
   (kernel linux)\\
   (firmware (list linux-firmware))\\
-  (initrd microcode-initrd)" "$CONFIG_FILE" || true
+  (initrd microcode-initrd)" "$CONFIG_FILE"
 fi
 
 echo "[+] Final config.scm (first 40 lines):"
 sed -n '1,40p' "$CONFIG_FILE" || true
 
 echo "[+] Running guix time-machine to initialize system..."
-# Use time-machine from the live environment pointing at the channels file inside the target.
-# This avoids needing chroot and uses the channels file you provided.
 guix time-machine -C "$TARGET_CHANNELS" -- system init "$CONFIG_FILE" "$TARGET" || {
   echo "ERROR: guix time-machine / system init failed"
   exit 2
@@ -88,4 +81,4 @@ guix time-machine -C "$TARGET_CHANNELS" -- system init "$CONFIG_FILE" "$TARGET" 
 echo "[+] Cleaning up temporary files..."
 rm -f "$TMP_CHANNELS"
 
-echo "[✅] Installation complete. You can now reboot into your new Guix System."
+echo "[✅] SUCESS! Welcome to the GNU GUIX Universe! :) "
