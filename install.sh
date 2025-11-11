@@ -48,9 +48,6 @@ if [ -f /etc/resolv.conf ]; then
   cp -a /etc/resolv.conf "$TARGET/etc/resolv.conf"
 fi
 
-echo "[+] Backing up config.scm before edits..."
-cp -a "$CONFIG_FILE" "${CONFIG_FILE}.$(date -u +%Y%m%dT%H%M%SZ).bak"
-
 echo "[+] Fixing stray \")\" after (gnu) occurrences in config.scm..."
 # Replace common accidental "(gnu))" with "(gnu)"
 sed -i 's/(gnu))/ (gnu)/g; s/(gnu))$/ (gnu)/g' "$CONFIG_FILE" || true
