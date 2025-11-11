@@ -8,17 +8,8 @@ HOST_CHANNELS_URL="https://short.securityops.co/channels"
 TMP_CHANNELS="/tmp/channels.scm"
 TARGET_CHANNELS="$TARGET/channels.scm"
 
-echo "[+] Checking prerequisites..."
-for cmd in wget sed guix grep cp chown chmod mkdir rm date; do
-  command -v "$cmd" >/dev/null 2>&1 || { echo "ERROR: $cmd not found"; exit 1; }
-done
-
-echo "[+] Verifying target config file exists..."
-if [ ! -f "$CONFIG_FILE" ]; then
-  echo "ERROR: $CONFIG_FILE not found. Make sure config.scm was generated and mounted at $TARGET/etc."
-  exit 1
-fi
-
+echo "[+] Starting Cow-Store..."
+herd start cow-store /mnt
 echo "[+] Downloading channels.scm..."
 wget -q "$HOST_CHANNELS_URL" -O "$TMP_CHANNELS" || { echo "ERROR: failed to download channels.scm"; exit 1; }
 
