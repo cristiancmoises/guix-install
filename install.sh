@@ -78,7 +78,7 @@ echo "[+] Final config.scm (first 80 lines):"
 sed -n '1,80p' "$CONFIG_FILE" || true
 
 echo "[+] Running guix time-machine to initialize system..."
-guix time-machine -C "$TARGET_CHANNELS" -- system init "$CONFIG_FILE" /mnt || {
+guix time-machine -C "$TARGET_CHANNELS" -- system init "$CONFIG_FILE" /mnt --fallback || {
   echo "ERROR: guix time-machine / system init failed"
   exit 2
 }
