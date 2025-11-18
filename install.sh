@@ -16,7 +16,7 @@ wget -q "$HOST_CHANNELS_URL" -O "$TMP_CHANNELS" || { echo "ERROR: failed to down
 
 echo "[+] Copying channels.scm into target system..."
 cp -a "$TMP_CHANNELS" "$TARGET_CHANNELS"
-cp -a "$TMP_CHANNELS" "/root/.config/guix/channels.scm"
+cp -a "$TMP_CHANNELS" "/etc/channels.scm"
 
 echo "[+] Ensuring channels file is writable for guix time-machine..."
 chmod +w "$TARGET_CHANNELS" || true
