@@ -2,6 +2,8 @@
 <p align="center">
   <b>⚙️ Simplified Guix Installation - Full Linux Kernel</b>
 </p>
+<img src="https://img.shields.io/liberapay/patrons/securityops.svg?logo=liberapay">
+<img src="https://img.shields.io/liberapay/gives/securityops.svg?logo=liberapay">
 
 ---
 # !!! ATTENTION! THIS PROJECT IS UNDER DEVELOPMENT !!! USE AT YOUR OWN RISK!
