@@ -1,25 +1,28 @@
 (use-modules (guix ci))
 (list
-  (channel-with-substitutes-available
-    %default-guix-channel
-    "https://ci.guix.gnu.org")
+  
+ (channel-with-substitutes-available
   (channel
-    (name 'guix)
-    (url "https://codeberg.org/guix/guix.git")
-    (branch "master")
-    (introduction
-      (make-channel-introduction
-        "9edb3f66fd807b096b48283debdcddccfea34bad"
-        (openpgp-fingerprint
-          "BBB0 2DDF 2CEA F6A8 0D1D E643 A2A0 6DF2 A33A 54FA"))))
+   (name 'guix)
+;  (url "https://gitlab.com/debdistutils/guix/mirror.git")
+   (url "https://git.securityops.co/securityops/guix")
+   (branch "master")
+   (introduction
+    (make-channel-introduction
+     "9edb3f66fd807b096b48283debdcddccfea34bad"     
+     (openpgp-fingerprint                           
+      "BBB0 2DDF 2CEA F6A8 0D1D  E643 A2A0 6DF2 A33A 54FA"))))
+       "https://ci.guix.gnu.org")
 
   (channel
     (name 'guix-xlibre)
-    (url "https://gitlab.vulnix.sh/spacecadet/guix-xlibre.git")
+   ;(url "https://gitlab.vulnix.sh/spacecadet/guix-xlibre.git")
+    (url "https://git.securityops.co/securityops/guix-xlibre")
     (branch "master"))
 (channel
         (name 'small-guix)
-        (url "https://codeberg.org/fishinthecalculator/small-guix.git")
+       ;(url "https://codeberg.org/fishinthecalculator/small-guix.git")
+        (url "https://git.securityops.co/securityops/small-guix")
         (branch "main")
         ;; Enable signature verification:
         (introduction
@@ -27,20 +30,20 @@
           "f260da13666cd41ae3202270784e61e062a3999c"
           (openpgp-fingerprint
            "8D10 60B9 6BB8 292E 829B  7249 AED4 1CC1 93B7 01E2"))))
- 
   (channel
    (name 'saayix)
    (branch "main")
-   (url "https://codeberg.org/look/saayix")
+  ;(url "https://codeberg.org/look/saayix")
+   (url "https://git.securityops.co/saayinx")
    (introduction
-    (make-channel-introduction
+   (make-channel-introduction
      "12540f593092e9a177eb8a974a57bb4892327752"
      (openpgp-fingerprint
       "3FFA 7335 973E 0A49 47FC  0A8C 38D5 96BE 07D3 34AB"))))
-
  (channel
     (name 'nonguix)
-    (url "https://gitlab.com/nonguix/nonguix")
+;   (url "https://gitlab.com/nonguix/nonguix")
+    (url "https://git.securityops.co/securityops/nonguix")
     (branch "master")
     (commit "f9a27a679bd02fcebae69833b14ef54dff82ccf1")
     (introduction
