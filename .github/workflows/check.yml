@@ -1,0 +1,17 @@
+name: Check installer
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Unit and subprocess tests (no installation)
+        run: python3 -m unittest discover -s tests -v
+      - name: Shell syntax and lint
+        run: |
+          bash -n installer.sh install.sh bootstrap.sh
+          shellcheck installer.sh install.sh bootstrap.sh
+      - name: Check whitespace
+        run: git diff --check

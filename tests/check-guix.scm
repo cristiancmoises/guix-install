@@ -1,0 +1,32 @@
+;; Evaluate configuration records only. Never lower derivations or build systems.
+(use-modules (gnu) (gnu system shadow) (guix channels) (srfi srfi-1))
+(for-each
+ (lambda (file)
+   (let ((os (load file)))
+     (unless (operating-system? os) (error "not an operating-system" file))
+     (let ((roots (filter (lambda (user) (string=? (user-account-name user) "root"))
+                          (operating-system-users os))))
+       (unless (and (= 1 (length roots))
+                    (string=? "!" (user-account-password (car roots))))
+         (error "root must be locked exactly once" file)))
+     (format #t "PASS ~a~%" (basename file))))
+ (take (cdr (command-line)) 3))
+(for-each
+ (lambda (file)
+   (unless (every channel? (load file)) (error "invalid channels" file))
+   (format #t "PASS ~a~%" (basename file)))
+ (drop (cdr (command-line)) 3))
+;; Exercise Guix's real account merge with fixture data; never activate accounts.
+(use-modules ((gnu build accounts) #:prefix db:)
+             ((gnu system accounts) #:prefix spec:))
+(define fixture-hash "$6$fixture$verifier")
+(define preserved (db:shadow-entry (name "alice") (password fixture-hash) (last-change 20000)))
+(define merged
+  ((@@ (gnu build accounts) passwd->shadow)
+   (list (spec:user-account (name "alice") (group "users") (password "!")))
+   (list (db:password-entry (name "alice") (uid 1000) (gid 100) (directory "/home/alice")))
+   (list preserved)))
+(unless (and (= 1 (length merged))
+             (string=? fixture-hash ((@@ (gnu build accounts) shadow-entry-password) (car merged))))
+  (error "Guix must preserve the seeded verifier"))
+(display "PASS shadow verifier preserved by real Guix account merge\n")

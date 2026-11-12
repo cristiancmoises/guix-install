@@ -1,0 +1,2 @@
+# Preserve byte-for-byte upstream source, including its original whitespace.
+vendor/guix-install.sh -whitespace

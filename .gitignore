@@ -1,0 +1,6 @@
+.serena/
+__pycache__/
+*.pyc
+.superpowers/
+.worktrees/
+.evidence/
