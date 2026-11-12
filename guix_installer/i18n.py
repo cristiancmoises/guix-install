@@ -1,6 +1,11 @@
 """Small explicit English / Portuguese interface catalogue."""
 
 TEXT = {
+    "query_running": (
+        "Checking… the window remains available.",
+        "Verificando… a janela continua disponível.",
+    ),
+    "no_disks": ("No disks found.", "Nenhum disco encontrado."),
     "interrupted": (
         "Interrupted. The target may already be modified; inspect the log and disks before retrying.",
         "Interrompido. O destino pode já ter sido alterado; revise o log e os discos antes de tentar novamente.",

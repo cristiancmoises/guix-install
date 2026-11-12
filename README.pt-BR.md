@@ -6,6 +6,13 @@
 
 ![GUI real em português, com tema preto, dourado e laranja](docs/screenshots/gui-pt-BR.png)
 
+## Novidades da versão 0.3.0
+
+A GUI e o terminal agora incluem o símbolo oficial do GNU Guix, atribuído a Luis Felipe López Acevedo sob CC BY-SA 4.0. A GUI usa imagem transparente e ícone da janela; a CLI usa uma adaptação ASCII da mesma silhueta e o nome em terminais estreitos. Não é necessário instalar biblioteca de imagens nem baixar o logo durante a execução. Veja a [origem e licença da arte](assets/README.md).
+
+Esta atualização corrige o estado desconhecido de disco somente leitura, confere novamente partições e identidade das montagens antes de acesso/limpeza, limita o tempo das consultas e substitui a enumeração completa de objetos mortos da store por uma conexão ao daemon. Consultas da GUI rodam em segundo plano e descartam resultados antigos quando os campos mudam. O lançador verifica até quatro downloads simultâneos e tenta o próximo espelho em timeouts de transporte; qualquer falha de integridade continua impedindo a execução.
+
+
 ## Comece com um comando
 
 Execute como usuário comum em um terminal GNU/Linux:
@@ -14,7 +21,7 @@ Execute como usuário comum em um terminal GNU/Linux:
 bash -o pipefail -c 'curl --proto "=https" --tlsv1.2 -fsSL https://raw.githubusercontent.com/cristiancmoises/guix-install/main/bootstrap.sh | bash'
 ```
 
-O lançador abre a GUI quando há uma sessão gráfica e o Python Tk está disponível; caso contrário, abre o assistente do terminal. Ele baixa fontes fixadas por commit e verifica cada arquivo de execução com SHA-256 embutido. As fontes ficam em um diretório temporário privado, permitindo que o terminal de instalação continue depois que a GUI for fechada. Remova o diretório informado somente depois de fechar todos os terminais de instalação.
+O lançador abre a GUI quando há uma sessão gráfica e o Python Tk está disponível; caso contrário, abre o assistente do terminal. Ele baixa fontes fixadas por commit com até quatro requisições simultâneas e verifica cada arquivo de execução com SHA-256 embutido. As fontes ficam em um diretório temporário privado, permitindo que o terminal de instalação continue depois que a GUI for fechada. Remova o diretório informado somente depois de fechar todos os terminais de instalação.
 
 Para escolher explicitamente o terminal em português:
 

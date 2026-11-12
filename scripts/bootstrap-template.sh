@@ -7,10 +7,12 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 exec python3 - "$@" <<'PY'
 import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 from pathlib import Path
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 
@@ -24,7 +26,7 @@ SOURCES = [
 
 
 def verified_download(url, expected):
-    request = urllib.request.Request(url, headers={'User-Agent': 'guix-install-bootstrap/0.2.0'})
+    request = urllib.request.Request(url, headers={'User-Agent': 'guix-install-bootstrap/0.3.0'})
     with urllib.request.urlopen(request, timeout=30) as response:
         if not response.geturl().startswith('https://'):
             raise ValueError('Refusing non-HTTPS source redirect')
@@ -32,6 +34,45 @@ def verified_download(url, expected):
     if len(data) > LIMIT or hashlib.sha256(data).hexdigest() != expected:
         raise ValueError('Source integrity check failed; nothing will be executed')
     return data
+
+
+def download_one(directory, name, expected, stopped):
+    data = None
+    for source in SOURCES:
+        if stopped.is_set():
+            raise ValueError('Download cancelled')
+        try:
+            data = verified_download(f'{source}/{name}', expected)
+            break
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            continue
+    if data is None:
+        raise ValueError(f'Unable to download {name} from the project mirrors')
+    if stopped.is_set():
+        raise ValueError('Download cancelled')
+    path = directory / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    path.chmod(0o700 if name.endswith('.sh') else 0o600)
+
+
+def download_sources(directory, workers=4):
+    # Success is a full barrier; failure cancels work that has not started.
+    stopped = threading.Event()
+    pool = ThreadPoolExecutor(max_workers=min(4, workers))
+    futures = []
+    try:
+        futures = [pool.submit(download_one, directory, name, digest, stopped) for name, digest in FILES.items()]
+        for future in as_completed(futures):
+            future.result()
+    except BaseException:
+        stopped.set()
+        for future in futures:
+            future.cancel()
+        raise
+    finally:
+        # Active HTTPS requests retain their bounded socket timeout.
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 def main():
@@ -44,20 +85,8 @@ def main():
         raise ValueError('Run the launcher as your ordinary user; sudo is requested later')
     directory = Path(tempfile.mkdtemp(prefix='guix-install-'))
     print(f'Guix Installer: verified sources will be kept in {directory}', file=sys.stderr, flush=True)
-    for name, expected in FILES.items():
-        data = None
-        for source in SOURCES:
-            try:
-                data = verified_download(f'{source}/{name}', expected)
-                break
-            except urllib.error.URLError:
-                continue
-        if data is None:
-            raise ValueError(f'Unable to download {name} from the project mirrors')
-        path = directory / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data)
-        path.chmod(0o700 if name.endswith('.sh') else 0o600)
+    download_sources(directory)
+    print(f'Verified {len(FILES)} runtime files.', file=sys.stderr, flush=True)
     # The launcher's program comes from a heredoc/pipe; give the wizard a real TTY.
     try:
         tty = os.open('/dev/tty', os.O_RDONLY)

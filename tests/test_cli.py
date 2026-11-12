@@ -24,7 +24,7 @@ class CliTests(unittest.TestCase):
         result = self.cli("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("wizard", result.stdout)
-        self.assertIn("0.2.0", self.cli("--version").stdout)
+        self.assertIn("0.3.0", self.cli("--version").stdout)
 
     def test_plan_is_unprivileged_and_explicit(self):
         result = self.cli("plan", "--mode", "system", "--disk", "/dev/example")
@@ -85,6 +85,14 @@ class CliTests(unittest.TestCase):
             elevate(Options(), "en", "light", hold=True)
         self.assertIn("--hold", execute.call_args.args[1])
         self.assertIn("light", execute.call_args.args[1])
+
+    def test_json_plan_has_no_logo_or_ansi(self):
+        import json
+
+        result = self.cli("plan", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(json.loads(result.stdout)["executed"])
+        self.assertNotIn("\033[", result.stdout)
 
     def test_no_yes_or_force_bypass(self):
         self.assertNotEqual(self.cli("install", "--yes").returncode, 0)

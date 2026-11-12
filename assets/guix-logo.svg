@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="200"
+   height="200"
+   id="svg2"
+   version="1.1"
+   inkscape:version="1.3.2 (091e20ef0f, 2023-11-25)"
+   sodipodi:docname="Guix-head-flat.svg"
+   inkscape:export-filename="guix.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title
+     id="title3310">GNU Guix Flat, Head-Only Logotype for Screens</title>
+  <defs
+     id="defs4" />
+  <sodipodi:namedview
+     id="base"
+     pagecolor="#242424"
+     bordercolor="#ffbf2d"
+     borderopacity="1"
+     inkscape:pageopacity="0"
+     inkscape:pageshadow="2"
+     inkscape:zoom="1.5005237"
+     inkscape:cx="101.63118"
+     inkscape:cy="96.299712"
+     inkscape:document-units="px"
+     inkscape:current-layer="layer1"
+     showgrid="false"
+     inkscape:window-width="1920"
+     inkscape:window-height="1011"
+     inkscape:window-x="0"
+     inkscape:window-y="32"
+     inkscape:window-maximized="1"
+     inkscape:showpageshadow="false"
+     showborder="true"
+     borderlayer="true"
+     inkscape:object-nodes="true"
+     inkscape:snap-global="false"
+     inkscape:pagecheckerboard="true"
+     inkscape:deskcolor="#242424">
+    <inkscape:grid
+       type="axonomgrid"
+       id="grid3004"
+       units="mm"
+       empspacing="5"
+       visible="false"
+       enabled="true"
+       snapvisiblegridlinesonly="true"
+       spacingy="3.7mm"
+       originx="-441.1181"
+       originy="-571.53284"
+       gridanglex="30"
+       gridanglez="30" />
+  </sodipodi:namedview>
+  <metadata
+     id="metadata7">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:format>image/svg+xml</dc:format>
+        <dc:type
+           rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
+        <dc:title>GNU Guix Flat, Head-Only Logotype for Screens</dc:title>
+        <dc:date>2016-12-16–2025-08-19</dc:date>
+        <dc:creator>
+          <cc:Agent>
+            <dc:title>Luis Felipe López Acevedo</dc:title>
+          </cc:Agent>
+        </dc:creator>
+        <cc:license
+           rdf:resource="http://creativecommons.org/licenses/by-sa/4.0/" />
+        <dc:description>Variant of the original logo displaying the stylized gnu head only (no text) in a flat style (no gradients).</dc:description>
+      </cc:Work>
+      <cc:License
+         rdf:about="http://creativecommons.org/licenses/by-sa/4.0/">
+        <cc:permits
+           rdf:resource="http://creativecommons.org/ns#Reproduction" />
+        <cc:permits
+           rdf:resource="http://creativecommons.org/ns#Distribution" />
+        <cc:requires
+           rdf:resource="http://creativecommons.org/ns#Notice" />
+        <cc:requires
+           rdf:resource="http://creativecommons.org/ns#Attribution" />
+        <cc:permits
+           rdf:resource="http://creativecommons.org/ns#DerivativeWorks" />
+        <cc:requires
+           rdf:resource="http://creativecommons.org/ns#ShareAlike" />
+      </cc:License>
+    </rdf:RDF>
+  </metadata>
+  <g
+     inkscape:label="layer"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-426,-1291.769)">
+    <path
+       id="path3207"
+       style="font-style:normal;font-weight:bold;font-size:144px;line-height:125%;font-family:Sans;-inkscape-font-specification:'Sans Bold';letter-spacing:0px;word-spacing:0px;fill:#ffbf2d;fill-opacity:1;stroke:none;stroke-width:0.999999"
+       d="M 432.48017,1331.4162 426,1333.8382 c 2.40919,5.952 4.96168,11.0593 7.65424,15.3106 2.62173,4.2516 5.57108,7.7752 8.83049,10.5385 3.25944,2.6926 6.89237,4.6707 10.93123,5.9462 4.03887,1.2756 8.60733,1.8881 13.70906,1.8881 3.8898,0 7.1167,-0.1697 9.72027,-0.5338 12.01192,4.7983 23.24463,59.1181 34.92914,85.1341 h 28.45113 c 11.68451,-26.016 22.91723,-80.3358 34.92915,-85.1341 2.60356,0.3641 5.83046,0.5338 9.72026,0.5338 5.10174,0 9.67017,-0.6125 13.70907,-1.8881 4.03884,-1.2755 7.67176,-3.2536 10.93122,-5.9462 3.25943,-2.7633 6.20875,-6.2869 8.83049,-10.5385 2.69255,-4.2513 5.24505,-9.3586 7.65425,-15.3106 l -6.48018,-2.422 c -2.0549,3.7555 -4.13963,6.8142 -6.26533,9.2233 -2.05486,2.3384 -4.32138,4.208 -6.80136,5.6251 -2.40917,1.3464 -5.14343,2.3174 -8.19028,2.8842 -2.97601,0.496 -6.39169,0.7467 -10.28885,0.7466 -2.87477,0 -5.45974,-0.1455 -7.72804,-0.4255 h -0.0347 c -0.28757,-0.02 -0.88129,-0.1179 -1.49525,-0.2147 -0.64668,-0.1013 -1.30798,-0.1978 -2.35032,-0.3907 -19.10607,-3.5351 -25.44362,9.7286 -26.81263,13.3879 -0.21429,0.5727 -0.31902,0.9245 -0.31902,0.9245 l -23.21666,64.7323 -0.0173,0.03 -0.0173,-0.03 -23.21666,-64.7323 c 0,0 -0.10478,-0.3517 -0.31902,-0.9245 -1.369,-3.6593 -7.70655,-16.923 -26.81263,-13.3879 -1.04234,0.1929 -1.70365,0.2895 -2.35032,0.3907 -0.61398,0.097 -1.2077,0.1947 -1.49525,0.2147 h -0.0347 c -2.26827,0.28 -4.85326,0.4255 -7.72804,0.4255 -3.89716,10e-5 -7.31283,-0.2505 -10.28885,-0.7466 -3.04685,-0.5668 -5.78112,-1.5378 -8.19028,-2.8842 -2.48,-1.4171 -4.74648,-3.2867 -6.80136,-5.6251 -2.12571,-2.4091 -4.21043,-5.4678 -6.26533,-9.2233 z" />
+  </g>
+</svg>

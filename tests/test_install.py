@@ -147,6 +147,12 @@ class InstallationBoundaryTests(unittest.TestCase):
                 calls.append(args)
                 if args[:2] == ["guix", "time-machine"]:
                     raise core.InstallError("simulated build failure")
+                if args[0] == "blockdev":
+                    return "14"
+                if args[0] == "findmnt":
+                    return (
+                        "11 8:65 /" if args[-1].endswith("/boot/efi") else "10 8:66 /"
+                    )
                 if args[0] == "blkid":
                     return (
                         "ABCD-1234"
@@ -158,6 +164,8 @@ class InstallationBoundaryTests(unittest.TestCase):
             original_read = Path.read_text
 
             def read(path, *args, **kwargs):
+                if path.name == "start":
+                    return "2048"
                 if str(path) == "/sys/dev/block/8:65/partition":
                     return "1"
                 if str(path) == "/sys/dev/block/8:66/partition":

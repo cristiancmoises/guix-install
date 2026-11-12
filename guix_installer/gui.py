@@ -1,9 +1,11 @@
 """Unprivileged native desktop form. All installation policy lives in core."""
 
 import os
+import queue
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import asdict
 
 from . import __version__, core
@@ -60,6 +62,9 @@ class InstallerWindow:
         }
         self.reviewed = False
         self.child = None
+        self.query_running = False
+        self.query_results = queue.Queue()
+        self.generation = 0
         self.system_fields = []
         root.title("GNU Guix Installer")
         root.geometry("1020x820")
@@ -136,11 +141,18 @@ class InstallerWindow:
         for widget in root.winfo_children():
             widget.destroy()
         self.system_fields = []
+        self.generation += 1
+        self.reviewed = False
         side = tk.Frame(root, bg=self.SIDEBAR, width=230)
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
-        self.label(side, "GNU\nGUIX", 30, self.ORANGE).pack(
-            anchor="w", padx=28, pady=(36, 8)
+        self.logo = tk.PhotoImage(file=str(core.ROOT / "assets/guix-logo.png"))
+        root.iconphoto(True, self.logo)
+        tk.Label(side, image=self.logo, bg=self.SIDEBAR, takefocus=False).pack(
+            pady=(16, 0)
+        )
+        self.label(side, "GNU Guix", 23, self.ORANGE).pack(
+            anchor="w", padx=28, pady=(0, 8)
         )
         self.label(side, "INSTALLER  /  " + __version__, 10, self.GOLD).pack(
             anchor="w", padx=28
@@ -333,6 +345,7 @@ class InstallerWindow:
         )
 
     def invalidate(self, *unused):
+        self.generation += 1
         self.reviewed = False
         self.install_button.configure(state="disabled")
 
@@ -363,32 +376,69 @@ class InstallerWindow:
 
         messagebox.showerror(tr("error", self.language), str(exc), parent=self.root)
 
-    def refresh_disks(self):
+    def background_query(self, work, apply):
+        if self.query_running:
+            return
+        self.query_running = True
+        self.invalidate()
+        self.display(tr("query_running", self.language))
+        generation = self.generation
+
+        def worker():
+            try:
+                result, error = work(), None
+            except Exception as exc:  # noqa: BLE001 - deliver worker failures to Tk rather than lose completion
+                result, error = None, exc
+            self.query_results.put((generation, result, error, apply))
+
+        threading.Thread(target=worker, daemon=True).start()
+        self.root.after(25, self.poll_query)
+
+    def poll_query(self):
         try:
-            disks = [node for node in core.inventory() if node["type"] == "disk"]
+            generation, result, error, apply = self.query_results.get_nowait()
+        except queue.Empty:
+            self.root.after(25, self.poll_query)
+            return
+        self.query_running = False
+        if generation != self.generation:
+            return
+        if error:
+            self.error(error)
+        else:
+            try:
+                apply(result)
+            except (KeyError, TypeError, ValueError) as exc:
+                self.error(exc)
+
+    def refresh_disks(self):
+        def show(entries):
+            disks = [node for node in entries if node["type"] == "disk"]
             self.disk_box.configure(values=[node["name"] for node in disks])
             self.display(
                 "\n".join(
                     f"{node['name']}  ·  {int(node['size']) / 1024**3:.1f} GiB  ·  ro={node['ro']}"
                     for node in disks
                 )
-                or "No disks / Nenhum disco"
+                or tr("no_disks", self.language)
             )
-        except (core.InstallError, OSError, ValueError) as exc:
-            self.error(exc)
+
+        self.background_query(core.inventory, show)
 
     def check(self):
-        try:
-            self.display(
+        mode = self.values["mode"].get()
+        self.background_query(
+            lambda: core.doctor(mode),
+            lambda findings: self.display(
                 "\n".join(
-                    f"{'OK' if ok else 'MISSING'}  {name}"
-                    for name, ok in core.doctor(self.values["mode"].get())
+                    f"{'OK' if ok else 'MISSING'}  {name}" for name, ok in findings
                 )
-            )
-        except (core.InstallError, OSError) as exc:
-            self.error(exc)
+            ),
+        )
 
     def review(self):
+        if self.query_running:
+            self.invalidate()
         try:
             options = self.options()
             plan = translated_plan(options, self.language, core.make_plan(options))
@@ -406,6 +456,7 @@ class InstallerWindow:
                 terminal_command(self.options(), self.language, self.theme),
                 cwd=core.ROOT,
             )
+            self.invalidate()
             self.display(tr("terminal_note", self.language))
         except (core.InstallError, OSError) as exc:
             self.error(exc)

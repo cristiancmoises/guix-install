@@ -97,7 +97,7 @@ def validate_options(options):
         raise InstallError("Choose an explicit whole disk under /dev.")
 
 
-def run(args, *, capture=False, input_text=None, env=None):
+def run(args, *, capture=False, input_text=None, env=None, timeout=None):
     """No shell evaluation. Preserve native failure and stream long operations."""
     LOGGER.info("Starting command: %s", args)
     try:
@@ -110,7 +110,10 @@ def run(args, *, capture=False, input_text=None, env=None):
             stderr=subprocess.PIPE if capture else None,
             env=env,
             umask=0o022,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired as exc:
+        raise InstallError(f"{args[0]} timed out after {timeout} seconds.") from exc
     except OSError as exc:
         raise InstallError(f"Cannot run {args[0]}: {exc}") from exc
     LOGGER.info("Command %s exited %s", args[0], result.returncode)
@@ -132,6 +135,7 @@ def inventory():
                 "NAME,TYPE,SIZE,RO,RM,MOUNTPOINTS,MAJ:MIN,SERIAL,WWN",
             ],
             capture=True,
+            timeout=10,
         )
     )["blockdevices"]
 
@@ -152,7 +156,11 @@ def find_disk(path):
 
 def validate_disk(entry, protected, swaps, holders):
     try:
-        if entry["type"] != "disk" or entry["ro"] or int(entry["size"]) < MIN_DISK:
+        if (
+            entry["type"] != "disk"
+            or entry["ro"] not in (False, 0)
+            or int(entry["size"]) < MIN_DISK
+        ):
             raise InstallError("Select a writable whole disk of at least 32 GiB.")
         for node in flatten([entry]):
             if not node["maj:min"] or not isinstance(node["mountpoints"], list):
@@ -298,6 +306,85 @@ def disk_identity(entry, sequence):
 def require_same_identity(expected, current):
     if expected != current:
         raise InstallError("Disk identity changed. Refusing the next write.")
+
+
+@dataclass(frozen=True)
+class Partition:
+    number: int
+    device: str
+    major_minor: str
+    size: int
+    start_sector: int
+
+
+def partition_layout(entry):
+    """Bind each freshly created partition to kernel identity and size."""
+    children = entry.get("children", [])
+    if len(children) != 2:
+        raise InstallError("Expected exactly two target partitions.")
+    result = []
+    for child in children:
+        if child.get("type") != "part":
+            raise InstallError("Unexpected non-partition child on target disk.")
+        number = int(
+            (Path("/sys/dev/block") / child["maj:min"] / "partition")
+            .read_text()
+            .strip()
+        )
+        result.append(
+            Partition(
+                number,
+                child["name"],
+                child["maj:min"],
+                int(child["size"]),
+                int(
+                    (Path("/sys/dev/block") / child["maj:min"] / "start")
+                    .read_text()
+                    .strip()
+                ),
+            )
+        )
+    if {part.number for part in result} != {1, 2} or any(
+        part.size <= 0 for part in result
+    ):
+        raise InstallError("Unexpected partition numbering or size.")
+    return tuple(sorted(result, key=lambda part: part.number))
+
+
+def require_partition_layout(expected, actual):
+    if expected != actual:
+        raise InstallError(
+            "Target partition identity or size changed; refusing the next operation."
+        )
+
+
+def require_mount(path, major_minor, identity=None):
+    fields = run(
+        [
+            "findmnt",
+            "--noheadings",
+            "--raw",
+            "--output",
+            "ID,MAJ:MIN,FSROOT",
+            "--mountpoint",
+            str(path),
+        ],
+        capture=True,
+        timeout=10,
+    ).split()
+    if len(fields) != 3 or not fields[0].isdigit() or fields[1] != major_minor:
+        raise InstallError(
+            f"Mount identity changed at {path}; refusing access or cleanup."
+        )
+    current = (fields[0], fields[2])
+    if identity is not None and current != identity:
+        raise InstallError(f"Mount was replaced at {path}; refusing access or cleanup.")
+    return current
+
+
+def unmount_owned(path, major_minor, identity):
+    require_mount(path, major_minor, identity)
+    run(["umount", "--", str(path)])
 
 
 def secure_boot_disabled():
@@ -503,16 +590,25 @@ def install_system(options, confirmation, password_hash, expected_identity):
     # Validate generated fields/password before the first disk write.
     render_config(options, "11111111-1111-1111-1111-111111111111", "ABCD-1234")
     validate_password_hash(password_hash)
-    run(["guix", "gc", "--list-dead"], capture=True)  # read-only daemon connectivity
+    run(
+        ["guix", "repl", "-q", "--", str(ROOT / "guix_installer/check-daemon.scm")],
+        capture=True,
+        timeout=15,
+    )
     expected = inspect_target(options.disk)
     require_same_identity(expected_identity, expected)
     options.disk = expected[0]
     with staging_directory() as target:
         mounts = []
+        layout = None
         try:
 
             def guarded(args):
                 require_same_identity(expected, inspect_target(options.disk))
+                if layout is not None:
+                    require_partition_layout(
+                        layout, partition_layout(find_disk(options.disk))
+                    )
                 run(args)
 
             guarded(
@@ -541,34 +637,49 @@ def install_system(options, confirmation, password_hash, expected_identity):
             )
             run(["partprobe", options.disk])
             run(["udevadm", "settle", "--timeout=30"])
-            entry = find_disk(options.disk)
-            children = entry.get("children", [])
-            if len(children) != 2 or any(child["type"] != "part" for child in children):
-                raise InstallError(
-                    "Expected exactly two new partitions. Inspect disk manually."
-                )
-            # Kernel-reported partition numbers avoid guessing NVMe/MMC suffixes.
-            partitions = {}
-            for child in children:
-                number = (
-                    (Path("/sys/dev/block") / child["maj:min"] / "partition")
-                    .read_text()
-                    .strip()
-                )
-                partitions[number] = child["name"]
-            if set(partitions) != {"1", "2"}:
-                raise InstallError("Unexpected partition numbering.")
-            esp, root = partitions["1"], partitions["2"]
+            layout = partition_layout(find_disk(options.disk))
+            esp, root = layout[0].device, layout[1].device
             guarded(["mkfs.fat", "-F", "32", esp])
             guarded(["mkfs.ext4", "-F", root])
-            require_same_identity(expected, inspect_target(options.disk))
-            run(["mount", "--", root, str(target)])
-            mounts.append(target)
+            guarded(["mount", "--", root, str(target)])
+            mounts.append(
+                (
+                    target,
+                    layout[1].major_minor,
+                    require_mount(target, layout[1].major_minor),
+                )
+            )
             (target / "boot/efi").mkdir(parents=True)
             (target / "boot").chmod(0o755)
             (target / "boot/efi").chmod(0o755)
+
+            def mounted_target_is_current():
+                current = find_disk(options.disk)
+                require_same_identity(
+                    expected,
+                    disk_identity(
+                        current,
+                        run(
+                            ["blockdev", "--getdiskseq", options.disk],
+                            capture=True,
+                            timeout=10,
+                        ),
+                    ),
+                )
+                require_partition_layout(layout, partition_layout(current))
+                for path, major_minor, mount_identity in mounts:
+                    require_mount(path, major_minor, mount_identity)
+
+            mounted_target_is_current()
             run(["mount", "--", esp, str(target / "boot/efi")])
-            mounts.append(target / "boot/efi")
+            mounts.append(
+                (
+                    target / "boot/efi",
+                    layout[0].major_minor,
+                    require_mount(target / "boot/efi", layout[0].major_minor),
+                )
+            )
+            mounted_target_is_current()
             root_uuid = run(["blkid", "-s", "UUID", "-o", "value", root], capture=True)
             esp_uuid = run(["blkid", "-s", "UUID", "-o", "value", esp], capture=True)
             etc = target / "etc"
@@ -581,6 +692,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
             shutil.copyfile(
                 ROOT / ("channels.scm" if options.nonguix else "channel.scm"), channels
             )
+            mounted_target_is_current()
             run(
                 [
                     "guix",
@@ -599,15 +711,16 @@ def install_system(options, confirmation, password_hash, expected_identity):
                 raise InstallError(
                     "Guix init returned without a bootloader configuration."
                 )
+            mounted_target_is_current()
             seed_shadow(target, options.username, password_hash)
             run(["sync", "-f", str(target)])
             run(["sync", "-f", str(target / "boot/efi")])
         finally:
             # Never recurse into arbitrary mounts. Leave failures visible for recovery.
             errors = []
-            for mount in reversed(mounts):
+            for mount, major_minor, mount_identity in reversed(mounts):
                 try:
-                    run(["umount", "--", str(mount)])
+                    unmount_owned(mount, major_minor, mount_identity)
                 except InstallError as exc:
                     errors.append(str(exc))
             if errors:

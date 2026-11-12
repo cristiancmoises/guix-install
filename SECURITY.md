@@ -35,3 +35,11 @@ Este é um programa de instalação privilegiado. Revise antes de conceder sudo.
 Report a suspected vulnerability privately to the maintainer using a forge's private vulnerability reporting when available. Do not attach passwords, tokens, private logs or personal disk inventories to public issues. Public bug reports should use synthetic devices and redacted diagnostics.
 
 Relate suspeitas de vulnerabilidade em canal privado do mantenedor quando disponível. Não publique senhas, tokens, logs privados ou inventários pessoais de discos. Use dispositivos fictícios e diagnósticos anonimizados em issues públicas.
+
+## 0.3.0 boundary updates
+
+Unknown read-only device state is refused. Partition snapshots include kernel major/minor, number, device path, byte size and start sector and are revalidated before formatting/mounting. Mount access and cleanup require a matching mount ID, filesystem root and major/minor; a replaced mount is preserved for manual recovery. These checks still do not isolate operations from a malicious root process.
+
+Read-only GUI workers never access Tk or install anything. Results are applied only on the event thread and only while the originating form generation remains current. Disk safety conclusions are not cached across installation writes.
+
+The launcher limits parallel fetches to four. Each file retains its own hash/size checks; execution waits for every future to succeed. Failure/cancellation cancels queued work; active requests retain a bounded socket timeout. Transport timeout fallback does not permit checksum failures. Artwork is local and attributed; there are no new runtime network services or image dependencies.

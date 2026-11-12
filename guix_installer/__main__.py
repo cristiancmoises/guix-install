@@ -11,6 +11,7 @@ import tempfile
 from dataclasses import asdict
 
 from . import __version__, core
+from .branding import terminal_logo
 from .i18n import tr, translated_plan
 
 
@@ -73,6 +74,7 @@ def show_plan(options, language, json_output=False, theme="dark"):
             )
         )
     else:
+        print("\n" + gold + terminal_logo() + reset)
         print("\n  " + gold + "GNU GUIX INSTALLER  /  " + __version__ + reset)
         print("  " + tr("subtitle", language))
         print("\n  " + orange + tr("plan", language) + reset + "\n")
@@ -82,7 +84,7 @@ def show_plan(options, language, json_output=False, theme="dark"):
 
 
 def choose_options(options, language):
-    print("\nGNU GUIX INSTALLER\n" + tr("subtitle", language))
+    print("\n" + terminal_logo() + "\nGNU GUIX INSTALLER\n" + tr("subtitle", language))
     print("1. " + tr("manager", language) + "\n2. " + tr("system", language))
     choice = input("[1/2] (1): ").strip() or "1"
     if choice not in {"1", "2"}:

@@ -1,0 +1,14 @@
+{
+  "url": "https://codeberg.org/guix/artwork/raw/commit/5e4ac533962d705a5250913932f115384375c0b6/logo/head-only/Guix-head-flat.svg",
+  "commit": "5e4ac533962d705a5250913932f115384375c0b6",
+  "sha256": "6fc980c7dc4ef92187ac50882cf29812d4137ea0045ae1fec5f70e1ce862b456",
+  "author": "Luis Felipe L\u00f3pez Acevedo",
+  "copyright": "Copyright \u00a9 2015 Luis Felipe L\u00f3pez Acevedo",
+  "license": "CC-BY-SA-4.0",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "official_graphics": "https://guix.gnu.org/en/graphics/",
+  "derived_files": {
+    "guix-logo.png": "a19809708f24a7e5e5b6f04153f560e6e873498ae5af9c8dd74d5f9ec1007d28",
+    "guix-logo.txt": "018de62f8baa130629c43bb8d00216c7c31e4ae71821b9dfe4269f7d5739064a"
+  }
+}

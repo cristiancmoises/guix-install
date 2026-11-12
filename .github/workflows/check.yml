@@ -9,6 +9,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Unit and subprocess tests (no installation)
         run: python3 -m unittest discover -s tests -v
+      - name: Install native GUI test runtime
+        run: sudo apt-get update && sudo apt-get install -y python3-tk xvfb
+      - name: Native GUI responsiveness and branding
+        run: xvfb-run -a python3 tests/gui_runtime.py
       - name: Shell syntax and lint
         run: |
           bash -n installer.sh install.sh bootstrap.sh

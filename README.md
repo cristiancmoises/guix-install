@@ -6,6 +6,13 @@
 
 ![Native GUI with the default black, gold and orange theme](docs/screenshots/gui-en.png)
 
+## What changed in 0.3.0
+
+The GUI and terminal now include the official GNU Guix mark, attributed to Luis Felipe López Acevedo under CC BY-SA 4.0. The GUI uses a bundled transparent image and window icon; the CLI uses an ASCII adaptation of the same silhouette and a wordmark on narrow terminals. No runtime image package or logo download is needed. See [artwork provenance and license](assets/README.md).
+
+This update fixes unknown read-only disk state, rechecks partition layout and mount identity before access/cleanup, bounds inventory queries, and replaces full dead-store enumeration with a daemon handshake. Read-only GUI queries run in the background and discard stale results after settings change. The bootstrap verifies up to four concurrent downloads and tries its next mirror on transport timeouts; any integrity failure still stops execution.
+
+
 ## Start with one command
 
 Run as your ordinary user in a terminal on GNU/Linux:
@@ -14,7 +21,7 @@ Run as your ordinary user in a terminal on GNU/Linux:
 bash -o pipefail -c 'curl --proto "=https" --tlsv1.2 -fsSL https://raw.githubusercontent.com/cristiancmoises/guix-install/main/bootstrap.sh | bash'
 ```
 
-The launcher opens the GUI when Python Tk and a display are available, otherwise the terminal wizard. It downloads a commit-pinned source set and verifies every runtime file against embedded SHA-256 checksums. It keeps those sources in a private temporary directory so an installation terminal can continue after the GUI closes. Remove that printed directory only after all installation terminals have closed.
+The launcher opens the GUI when Python Tk and a display are available, otherwise the terminal wizard. It downloads a commit-pinned source set with up to four concurrent requests and verifies every runtime file against embedded SHA-256 checksums. It keeps those sources in a private temporary directory so an installation terminal can continue after the GUI closes. Remove that printed directory only after all installation terminals have closed.
 
 To explicitly select the terminal wizard:
 
