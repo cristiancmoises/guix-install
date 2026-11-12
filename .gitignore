@@ -4,3 +4,23 @@ __pycache__/
 .superpowers/
 .worktrees/
 .evidence/
+
+# Local agent instructions, working documents, reports and backups.
+.codex-local/
+.codex/
+.agents/
+.dsh/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+**/AGENTS.md
+**/CLAUDE.md
+**/GEMINI.md
+**/*PROMPT*
+**/*prompt*
+docs/superpowers/
+docs/agentic/
+docs/VALIDATION*.md
+docs/benchmarks/
+scripts/capture-screenshots.py
+scripts/benchmark-bootstrap.py
