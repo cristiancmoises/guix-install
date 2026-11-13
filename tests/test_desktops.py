@@ -108,6 +108,17 @@ class DesktopWindowManagerTests(unittest.TestCase):
             channels.normalize((), "linux-libre", "gnome"),
         )
 
+    def test_target_channels_file_carries_browser_dependency(self):
+        options = core.Options(
+            mode="system",
+            disk="/dev/example",
+            browsers=("torbrowser",),
+            default_browser="torbrowser",
+        )
+        self.assertIn("(name 'securityops)", core.render_channels_file(options))
+        without = core.Options(mode="system", disk="/dev/example")
+        self.assertNotIn("(name 'securityops)", core.render_channels_file(without))
+
 
 if __name__ == "__main__":
     unittest.main()

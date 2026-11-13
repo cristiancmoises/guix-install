@@ -249,6 +249,8 @@ def choose_options(options, language):
         options.kernel_version = input(
             tr("kernel_version", language) + " [" + tr("latest", language) + "]: "
         ).strip()
+        if options.kernel == "securityops":
+            options.kernel_config = input(tr("kernel_config", language) + ": ").strip()
         selected = []
         print("\n" + tr("channels_help", language))
         for name in core.channels_catalog.OPTIONAL_NAMES:

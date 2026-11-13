@@ -824,6 +824,16 @@ def render_config(options, root_uuid, esp_uuid):
 '''
 
 
+def render_channels_file(options):
+    """Target channels.scm for `guix time-machine`, with full closure."""
+    return channels_catalog.render(
+        options.channels,
+        options.kernel,
+        options.desktop,
+        options.browsers,
+    )
+
+
 def install_manager():
     manifest = json.loads((ROOT / "vendor/provenance.json").read_text())
     script = ROOT / "vendor/guix-install.sh"
@@ -1056,11 +1066,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
             config.write_text(render_config(options, root_uuid, esp_uuid))
             config.chmod(0o600)
             channels = etc / "channels.scm"
-            channels.write_text(
-                channels_catalog.render(
-                    options.channels, options.kernel, options.desktop
-                )
-            )
+            channels.write_text(render_channels_file(options))
             channels.chmod(0o600)
             stage_securityops_defconfig(options, target)
             mounted_target_is_current()

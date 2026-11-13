@@ -233,7 +233,7 @@ def write_image(image_path, disk_number, verify=False, progress=None):
                         if not expected:
                             break
                         done = ctypes.c_uint32()
-                        actual = ctypes.create_string_buffer(len(expected))
+                        actual = (ctypes.c_char * len(expected))()
                         if not kernel.ReadFile(
                             handle,
                             actual,

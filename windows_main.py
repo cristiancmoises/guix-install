@@ -7,6 +7,7 @@ and a thin WiX MSI are the whole Windows distribution.
 import argparse
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -89,7 +90,7 @@ def main(argv=None):
             findings = {
                 "Windows": os.name == "nt",
                 "Administrator": windows.is_admin(),
-                "PowerShell": True,
+                "PowerShell": shutil.which("powershell") is not None,
             }
             if args.json:
                 print(json.dumps(findings, indent=2))

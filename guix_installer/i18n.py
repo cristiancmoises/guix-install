@@ -85,8 +85,8 @@ TEXT = {
     ),
     "latest": ("latest", "mais recente"),
     "kernel_config": (
-        "Defconfig file (securityops kernel)",
-        "Arquivo defconfig (kernel securityops)",
+        "Defconfig file for the securityops kernel (blank = bundled)",
+        "Arquivo defconfig do kernel securityops (vazio = embarcado)",
     ),
     "channels": ("Channels", "Canais"),
     "channels_help": (

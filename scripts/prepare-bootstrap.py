@@ -8,6 +8,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = re.search(
+    r'__version__ = "([^"]+)"',
+    (ROOT / "guix_installer/__init__.py").read_text(),
+).group(1)
 FILES = [
     "installer.sh",
     "install.sh",
@@ -58,7 +62,9 @@ def main():
         files[name] = hashlib.sha256(data).hexdigest()
     template = (ROOT / "scripts/bootstrap-template.sh").read_text()
     (ROOT / "bootstrap.sh").write_text(
-        template.replace("@@COMMIT@@", commit).replace("@@FILES@@", repr(files))
+        template.replace("@@COMMIT@@", commit)
+        .replace("@@FILES@@", repr(files))
+        .replace("@@VERSION@@", VERSION)
     )
     (ROOT / "bootstrap.sh").chmod(0o755)
     print("Pinned payload:", commit)

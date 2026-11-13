@@ -26,7 +26,7 @@ SOURCES = [
 
 
 def verified_download(url, expected):
-    request = urllib.request.Request(url, headers={'User-Agent': 'guix-install-bootstrap/0.3.0'})
+    request = urllib.request.Request(url, headers={'User-Agent': 'guix-install-bootstrap/@@VERSION@@'})
     with urllib.request.urlopen(request, timeout=30) as response:
         if not response.geturl().startswith('https://'):
             raise ValueError('Refusing non-HTTPS source redirect')
