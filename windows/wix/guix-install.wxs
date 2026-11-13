@@ -6,6 +6,8 @@
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
     <MediaTemplate EmbedCab="yes" />
+    <Icon Id="GuixInstallExe" SourceFile="..\..\assets\guix-logo.ico" />
+    <Property Id="ARPPRODUCTICON" Value="GuixInstallExe" />
     <Directory Id="TARGETDIR" Name="SourceDir">
       <Directory Id="ProgramFiles64Folder">
         <Directory Id="INSTALLFOLDER" Name="GNU Guix Installer">
