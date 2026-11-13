@@ -52,13 +52,27 @@ class InstallerWindow:
         self.tk, self.ttk, self.root = tk, ttk, root
         self.language = language
         self.theme = theme
-        self.values = {
+        self.values: dict[str, tk.Variable] = {
             key: (
                 tk.BooleanVar(value=value)
                 if isinstance(value, bool)
                 else tk.StringVar(value=value)
             )
             for key, value in asdict(options).items()
+            if not isinstance(value, tuple)
+        }
+        self.kernel_labels = {}
+        self.terminal_vars = {
+            name: tk.BooleanVar(value=name in options.terminals)
+            for name in core.TERMINAL_CHOICES
+        }
+        self.browser_vars = {
+            name: tk.BooleanVar(value=name in options.browsers)
+            for name in core.BROWSER_CHOICES
+        }
+        self.channel_vars = {
+            name: tk.BooleanVar(value=name in (options.channels or ()))
+            for name in core.channels_catalog.OPTIONAL_NAMES
         }
         self.reviewed = False
         self.child = None
@@ -67,8 +81,8 @@ class InstallerWindow:
         self.generation = 0
         self.system_fields = []
         root.title("GNU Guix Installer")
-        root.geometry("1020x820")
-        root.minsize(780, 640)
+        root.geometry("1020x980")
+        root.minsize(780, 720)
         self.apply_theme()
         self.build()
         for variable in self.values.values():
@@ -271,7 +285,19 @@ class InstallerWindow:
             )
             self.label(cell, tr(field, self.language), 10).pack(anchor="w", pady=(0, 4))
             if field in {"desktop", "disk"}:
-                values = ["gnome", "xfce", "minimal"] if field == "desktop" else []
+                values = (
+                    [
+                        "gnome",
+                        "xfce",
+                        "minimal",
+                        "kde",
+                        "sway",
+                        "xmonad-xlibre",
+                        "river-xmonad",
+                    ]
+                    if field == "desktop"
+                    else []
+                )
                 widget = ttk.Combobox(
                     cell,
                     textvariable=self.values[field],
@@ -284,14 +310,162 @@ class InstallerWindow:
                 widget = ttk.Entry(cell, textvariable=self.values[field])
             widget.pack(fill="x")
             self.system_fields.append(widget)
-        firmware = ttk.Checkbutton(
-            form, text=tr("firmware", self.language), variable=self.values["nonguix"]
+        terminals_frame = tk.Frame(content, bg=self.BG)
+        terminals_frame.pack(fill="x", pady=(6, 0))
+        self.label(terminals_frame, tr("terminals", self.language), 13, self.GOLD).pack(
+            anchor="w", pady=(0, 4)
         )
-        firmware.grid(row=4, column=0, columnspan=2, sticky="w")
-        self.system_fields.append(firmware)
+        terminal_line = tk.Frame(terminals_frame, bg=self.WHITE, padx=10, pady=5)
+        terminal_line.pack(fill="x", pady=(0, 5))
+        for name in core.TERMINAL_CHOICES:
+            checkbox = ttk.Checkbutton(
+                terminal_line,
+                text=name,
+                variable=self.terminal_vars[name],
+                command=lambda: (
+                    self.sync_terminal_defaults(),
+                    self.invalidate(),
+                ),
+            )
+            checkbox.pack(side="left", padx=(0, 12))
+            self.system_fields.append(checkbox)
+        default_terminal_line = tk.Frame(terminals_frame, bg=self.BG)
+        default_terminal_line.pack(fill="x", pady=(0, 8))
         self.label(
-            form, tr("firmware_help", self.language), 9, self.MUTED, wraplength=620
-        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(4, 8))
+            default_terminal_line, tr("default_terminal", self.language), 10
+        ).pack(anchor="w", pady=(0, 4))
+        self.default_terminal_box = ttk.Combobox(
+            default_terminal_line,
+            textvariable=self.values["default_terminal"],
+            state="readonly",
+            width=24,
+        )
+        self.default_terminal_box.pack(fill="x")
+        self.system_fields.append(self.default_terminal_box)
+        self.sync_terminal_defaults()
+        browsers_frame = tk.Frame(content, bg=self.BG)
+        browsers_frame.pack(fill="x", pady=(6, 0))
+        self.label(browsers_frame, tr("browsers", self.language), 13, self.GOLD).pack(
+            anchor="w", pady=(0, 4)
+        )
+        self.label(
+            browsers_frame,
+            tr("browsers_help", self.language),
+            9,
+            self.MUTED,
+            wraplength=650,
+        ).pack(anchor="w", pady=(0, 6))
+        browser_line = tk.Frame(browsers_frame, bg=self.WHITE, padx=10, pady=5)
+        browser_line.pack(fill="x", pady=(0, 5))
+        for name in core.BROWSER_CHOICES:
+            checkbox = ttk.Checkbutton(
+                browser_line,
+                text=name,
+                variable=self.browser_vars[name],
+                command=lambda: (
+                    self.sync_browser_defaults(),
+                    self.invalidate(),
+                ),
+            )
+            checkbox.pack(side="left", padx=(0, 12))
+            self.system_fields.append(checkbox)
+        default_browser_line = tk.Frame(browsers_frame, bg=self.BG)
+        default_browser_line.pack(fill="x", pady=(0, 8))
+        self.label(default_browser_line, tr("default_browser", self.language), 10).pack(
+            anchor="w", pady=(0, 4)
+        )
+        self.default_browser_box = ttk.Combobox(
+            default_browser_line,
+            textvariable=self.values["default_browser"],
+            state="readonly",
+            width=24,
+        )
+        self.default_browser_box.pack(fill="x")
+        self.system_fields.append(self.default_browser_box)
+        self.sync_browser_defaults()
+        kernel_frame = tk.Frame(content, bg=self.BG)
+        kernel_frame.pack(fill="x", pady=(6, 0))
+        self.label(kernel_frame, tr("kernel", self.language), 13, self.GOLD).pack(
+            anchor="w", pady=(0, 6)
+        )
+        kernel_form = tk.Frame(kernel_frame, bg=self.BG)
+        kernel_form.pack(fill="x")
+        kernel_form.columnconfigure(0, weight=1)
+        kernel_form.columnconfigure(1, weight=1)
+        kernel_labels = {
+            tr("kernel_linux_libre", self.language): "linux-libre",
+            tr("kernel_linux", self.language): "linux",
+            tr("kernel_securityops", self.language): "securityops",
+        }
+        self.kernel_labels = kernel_labels
+        self.values["kernel_display"] = tk.StringVar(
+            value=next(
+                label
+                for label, value in kernel_labels.items()
+                if value == self.values["kernel"].get()
+            )
+        )
+        for index, (key, values) in enumerate(
+            [
+                ("kernel_display", list(kernel_labels)),
+                ("kernel_version", []),
+                ("kernel_config", []),
+            ]
+        ):
+            cell = tk.Frame(kernel_form, bg=self.BG)
+            cell.grid(
+                row=index // 2, column=index % 2, sticky="ew", padx=(0, 12), pady=(0, 8)
+            )
+            label_key = "kernel" if key == "kernel_display" else key
+            self.label(cell, tr(label_key, self.language), 10).pack(
+                anchor="w", pady=(0, 4)
+            )
+            if key == "kernel_display":
+                widget = ttk.Combobox(
+                    cell,
+                    textvariable=self.values["kernel_display"],
+                    values=values,
+                    state="readonly",
+                )
+                widget.bind(
+                    "<<ComboboxSelected>>",
+                    lambda event: self.kernel_selected(),
+                )
+            else:
+                widget = ttk.Entry(cell, textvariable=self.values[key])
+            widget.pack(fill="x")
+            self.system_fields.append(widget)
+        channels_frame = tk.Frame(content, bg=self.BG)
+        channels_frame.pack(fill="x", pady=(6, 0))
+        self.label(channels_frame, tr("channels", self.language), 13, self.GOLD).pack(
+            anchor="w", pady=(0, 4)
+        )
+        self.label(
+            channels_frame,
+            tr("channels_help", self.language),
+            9,
+            self.MUTED,
+            wraplength=650,
+        ).pack(anchor="w", pady=(0, 6))
+        for name in core.channels_catalog.OPTIONAL_NAMES:
+            channel = core.channels_catalog.CHANNELS[name]
+            line = tk.Frame(channels_frame, bg=self.WHITE, padx=10, pady=5)
+            line.pack(fill="x", pady=(0, 5))
+            checkbox = ttk.Checkbutton(
+                line,
+                text=name,
+                variable=self.channel_vars[name],
+                command=self.invalidate,
+            )
+            checkbox.pack(side="left")
+            self.label(
+                line,
+                channel.description[self.language == "pt-BR"],
+                9,
+                self.MUTED,
+                wraplength=580,
+            ).pack(side="left", padx=(10, 0))
+            self.system_fields.append(checkbox)
         tools = tk.Frame(content, bg=self.BG)
         tools.pack(fill="x", pady=(0, 12))
         ttk.Button(
@@ -341,23 +515,64 @@ class InstallerWindow:
             locale=str(values["locale"].get()),
             keyboard=str(values["keyboard"].get()),
             desktop=str(values["desktop"].get()),
-            nonguix=bool(values["nonguix"].get()),
+            kernel=str(values["kernel"].get()),
+            kernel_version=str(values["kernel_version"].get()).strip(),
+            kernel_config=str(values["kernel_config"].get()).strip(),
+            terminals=tuple(
+                name for name, variable in self.terminal_vars.items() if variable.get()
+            ),
+            default_terminal=str(values["default_terminal"].get()),
+            browsers=tuple(
+                name for name, variable in self.browser_vars.items() if variable.get()
+            ),
+            default_browser=str(values["default_browser"].get()),
+            channels=tuple(
+                name for name, variable in self.channel_vars.items() if variable.get()
+            ),
         )
+
+    def sync_terminal_defaults(self):
+        selected = [
+            name for name in core.TERMINAL_CHOICES if self.terminal_vars[name].get()
+        ]
+        self.default_terminal_box.configure(values=selected)
+        current = self.values["default_terminal"].get()
+        if current not in selected:
+            self.values["default_terminal"].set(selected[0] if selected else "")
+
+    def sync_browser_defaults(self):
+        selected = [
+            name for name in core.BROWSER_CHOICES if self.browser_vars[name].get()
+        ]
+        self.default_browser_box.configure(values=selected)
+        current = self.values["default_browser"].get()
+        if current not in selected:
+            self.values["default_browser"].set(selected[0] if selected else "")
+
+    def kernel_selected(self):
+        display = str(self.values["kernel_display"].get())
+        self.values["kernel"].set(str(self.kernel_labels.get(display, "linux-libre")))
+        self.mode_changed()
 
     def invalidate(self, *unused):
         self.generation += 1
         self.reviewed = False
-        self.install_button.configure(state="disabled")
+        button = getattr(self, "install_button", None)
+        if button is not None and button.winfo_exists():
+            button.configure(state="disabled")
 
     def mode_changed(self):
         enabled = self.values["mode"].get() == "system"
         for widget in self.system_fields:
-            widget.configure(
-                state=(
-                    "readonly" if isinstance(widget, self.ttk.Combobox) else "normal"
-                )
-                if enabled
-                else "disabled"
+            if isinstance(widget, self.ttk.Combobox):
+                widget.configure(state="readonly" if enabled else "disabled")
+            else:
+                widget.configure(state="normal" if enabled else "disabled")
+        kernel = self.values["kernel"].get()
+        if enabled:
+            nonguix_required = kernel in {"linux", "securityops"}
+            self.channel_vars["nonguix"].set(
+                self.channel_vars["nonguix"].get() or nonguix_required
             )
         self.invalidate()
 

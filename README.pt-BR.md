@@ -6,6 +6,39 @@
 
 ![GUI real em português, com tema preto, dourado e laranja](docs/screenshots/gui-pt-BR.png)
 
+## Novidades da versão 0.4.0
+
+O instalador System agora oferece três kernels, e os dois com blobs sempre
+acompanham a última versão estável do kernel.org (resolvida ao montar o plano
+e fixada por SHA-256 na configuração gerada; hoje 7.3.4):
+
+| Kernel | Base | Fonte | Extras |
+|---|---|---|---|
+| **linux-libre** | padrão do GNU Guix | fixada pelo canal Guix | nenhum |
+| **linux** | configuração ampla de drivers do Nonguix | última stable do kernel.org | firmware proprietário |
+| **securityops** | Nonguix + a `/etc/securityops.defconfig` do mantenedor | última stable do kernel.org | `kernel-arguments` endurecidos |
+
+O kernel securityops reproduz a receita em uso do mantenedor (`inherit linux`,
+`#:defconfig` substituído pela defconfig embarcada, mantendo as opções extras
+do Nonguix). `--kernel-version 7.3` fixa uma versão exata; vazio significa a
+última stable. Canais opcionais do `channels.guix` autenticado do mantenedor
+(Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix e Guix-Xlibre) podem ser
+escolhidos na GUI, no assistente ou com `--channel`, cada um com uma descrição
+curta. As dependências são fechadas automaticamente.
+
+Os ambientes agora incluem KDE Plasma, Sway, XMonad com XLibre e
+River + XMonad no Wayland, além de GNOME, XFCE e mínimo. Os terminais são
+selecionáveis em conjunto entre Wezterm, Kitty, Foot e Alacritty, com um
+definido como padrão (usado nos atalhos do Sway e do River). Os navegadores
+também permitem múltipla seleção (Tor Browser, LibreWolf, Chromium e Zen
+Browser) com um padrão; eles vêm do canal autenticado Security Ops, que é
+adicionado automaticamente.
+
+Usuários de Windows podem baixar os artefatos de compilação deste repositório
+(`GuixInstall.exe` e `GuixInstall.msi`, gerados pelo CI em windows-latest): o
+programa baixa a imagem do GNU Guix e a grava em um disco USB sob bloqueio de
+volume, permitindo migrar uma máquina Windows para o Guix System.
+
 ## Novidades da versão 0.3.0
 
 A GUI e o terminal agora incluem o símbolo oficial do GNU Guix, atribuído a Luis Felipe López Acevedo sob CC BY-SA 4.0. A GUI usa imagem transparente e ícone da janela; a CLI usa uma adaptação ASCII da mesma silhueta e o nome em terminais estreitos. Não é necessário instalar biblioteca de imagens nem baixar o logo durante a execução. Veja a [origem e licença da arte](assets/README.md).
@@ -42,7 +75,15 @@ Esta versão é uma candidata à instalação, **não uma declaração de compat
 
 Se o ambiente live não inclui Guix, instale primeiro o gerenciador de pacotes; depois execute novamente e escolha System. O programa recusa o disco do sistema em execução, partições montadas, swap ativa e dispositivos com dependentes RAID/LVM/device-mapper. Uma origem de boot ou um estado de Secure Boot desconhecido causa recusa. Faça backup e use um disco separado. Não existem opções `--yes` ou `--force` para ignorar essas verificações.
 
-Escopo inicial do sistema: x86_64 UEFI sem criptografia, GNOME/XFCE/mínimo e Linux-libre como padrão. Linux com firmware proprietário pelo Nonguix exige escolha explícita e usa um canal autenticado e fixado. BIOS, instalação System em ARM, redimensionamento automático para dual boot, destinos RAID/LVM, criptografia e recuperação de discos estão fora desta versão. Um disco removível inteiro pode ser usado se passar pelas mesmas verificações; dispositivos loop são recusados. O modo mínimo fornece DHCP por cabo, sem assistente Wi-Fi.
+Escopo inicial do sistema: x86_64 UEFI sem criptografia, com GNOME, XFCE,
+KDE Plasma, Sway, XMonad (XLibre), River + XMonad (Wayland) ou sistema mínimo;
+Linux-libre como padrão. Os kernels `linux` e `securityops` exigem escolha
+explícita, usam canais autenticados e fixados e sempre compilam a última
+versão estável do kernel.org. BIOS, instalação System em ARM,
+redimensionamento automático para dual boot, destinos RAID/LVM, criptografia
+e recuperação de discos estão fora desta versão. Um disco removível inteiro
+pode ser usado se passar pelas mesmas verificações; dispositivos loop são
+recusados. O modo mínimo fornece DHCP por cabo, sem assistente Wi-Fi.
 
 ## GUI e CLI
 
@@ -58,6 +99,11 @@ cd guix-install
 ./installer.sh doctor --mode system
 ./installer.sh disks
 ./installer.sh plan --mode system --disk /dev/example --username alice
+./installer.sh plan --mode system --disk /dev/example --kernel securityops \
+    --channel securityops --channel small-guix
+./installer.sh plan --kernel linux --kernel-version 7.3.4
+./installer.sh plan --desktop sway --terminal kitty --terminal foot \
+    --default-terminal foot --browser librewolf --default-browser librewolf
 ./installer.sh plan --json          # saída estruturada; sem instalar
 ./installer.sh gui --theme light
 ```
@@ -65,6 +111,25 @@ cd guix-install
 `/dev/example` é apenas um exemplo, nunca uma sugestão de disco. Use **Atualizar discos** para consultar os discos reais e **Revisar instalação** antes de continuar. Para editar os campos do sistema, selecione System primeiro. A GUI abre um terminal para sudo, entrada privada da senha, frase exata `ERASE /dev/…` e progresso. A GUI permanece sem privilégios. Terminais compatíveis: xterm, GNOME Terminal, Konsole, XFCE Terminal e MATE Terminal.
 
 O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, inspirado nas cores do Guix. Escolha **Claro** para fundo branco e texto preto. A CLI aceita `--theme dark|light`, colore planos interativos e respeita `NO_COLOR`; JSON e saídas redirecionadas ficam sem códigos de cor. O idioma padrão é inglês; use o seletor ou `--lang pt-BR`. As perguntas do instalador oficial incluído e erros de baixo nível podem permanecer em inglês.
+
+### Windows: migre para o Guix System a partir do Windows
+
+O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
+`GuixInstall.msi` (WiX) em windows-latest; baixe-os pelos artefatos do
+workflow ou por uma release. Execute como Administrador:
+
+```bat
+GuixInstall.exe list                      # inspeciona os discos
+GuixInstall.exe image --disk 2 --verify   # baixa o GNU Guix, grava no disco 2 e verifica
+GuixInstall.exe image --disk 2 --image D:\guix.iso
+GuixInstall.exe doctor
+```
+
+O gravador recusa discos menores que a imagem, mantém o volume bloqueado
+durante toda a gravação e pede para digitar o número do disco antes de
+escrever. Reinicie pelo disco USB e o instalador oficial do Guix assume. A
+imagem padrão é o instalador do Guix System em `ftp.gnu.org`; se precisar de
+autenticação do publicador, verifique a assinatura separadamente.
 
 A GUI exige a extensão Tk real do Python, normalmente `python3-tk` no Debian/Ubuntu ou `python3-tkinter` no Fedora. Verifique com `python3 -c 'import tkinter'`. No Guix, inclua a saída `tk` do Python no ambiente. A CLI e os planos não precisam de Tk. Use Tab/Shift+Tab, Espaço e Enter; Ctrl+Enter revisa o plano. Há rolagem para janelas menores. O suporte a leitores de tela do Tk no Linux depende do ambiente; não há declaração de certificação completa de acessibilidade.
 
@@ -97,7 +162,7 @@ O instalador oficial está inalterado no [commit GNU Guix 94bbecec](https://code
 python3 -m unittest discover -s tests -v
 ruff check guix_installer tests scripts/prepare-bootstrap.py run.py
 ruff format --check guix_installer tests scripts/prepare-bootstrap.py run.py
-pyright guix_installer run.py scripts/prepare-bootstrap.py
+pyright guix_installer run.py scripts/prepare-bootstrap.py windows_main.py
 shellcheck installer.sh install.sh bootstrap.sh
 ./scripts/check-guix.sh  # avaliação sem alterar o sistema; exige Guix existente
 ```

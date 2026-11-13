@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="GNU Guix Installer" Language="1033" Version="0.4.0"
+           Manufacturer="Security Ops"
+           UpgradeCode="C8B42D1F-3C21-4D9A-9B1F-7F5A0D2E6B30">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="GNU Guix Installer">
+          <Component Id="MainExecutable" Guid="*">
+            <File Id="GuixInstallExe" Source="..\..\dist\GuixInstall.exe" KeyPath="yes">
+              <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder"
+                        Name="GNU Guix Installer" WorkingDirectory="INSTALLFOLDER"
+                        Icon="GuixInstallExe" Advertise="no" />
+            </File>
+          </Component>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder" />
+    </Directory>
+    <Feature Id="MainFeature" Level="1">
+      <ComponentRef Id="MainExecutable" />
+    </Feature>
+  </Product>
+</Wix>

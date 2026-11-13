@@ -1,5 +1,9 @@
 ;; Evaluate configuration records only. Never lower derivations or build systems.
+;; Command line: operating-system files first, then the two channels files.
 (use-modules (gnu) (gnu system shadow) (guix channels) (srfi srfi-1))
+(define arguments (cdr (command-line)))
+(define channels-files (take-right arguments 2))
+(define config-files (drop-right arguments 2))
 (for-each
  (lambda (file)
    (let ((os (load file)))
@@ -10,12 +14,12 @@
                     (string=? "!" (user-account-password (car roots))))
          (error "root must be locked exactly once" file)))
      (format #t "PASS ~a~%" (basename file))))
- (take (cdr (command-line)) 3))
+ config-files)
 (for-each
  (lambda (file)
    (unless (every channel? (load file)) (error "invalid channels" file))
    (format #t "PASS ~a~%" (basename file)))
- (drop (cdr (command-line)) 3))
+ channels-files)
 ;; Exercise Guix's real account merge with fixture data; never activate accounts.
 (use-modules ((gnu build accounts) #:prefix db:)
              ((gnu system accounts) #:prefix spec:))

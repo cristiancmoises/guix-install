@@ -20,6 +20,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from . import channels as channels_catalog
+from . import kernels
+
 ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
 MIN_DISK = 32 * 1024**3
@@ -55,7 +58,122 @@ class Options:
     locale: str = "en_US.utf8"
     keyboard: str = "us"
     desktop: str = "gnome"
-    nonguix: bool = False
+    terminals: tuple = ("wezterm",)
+    default_terminal: str = "wezterm"
+    browsers: tuple = ()
+    default_browser: str = ""
+    kernel: str = "linux-libre"
+    kernel_version: str = ""
+    kernel_config: str = ""
+    channels: tuple = ()
+
+
+WM_PACKAGES = {
+    "sway": (
+        "sway",
+        "swaybg",
+        "swayidle",
+        "swaylock",
+        "waybar",
+        "wofi",
+        "mako",
+    ),
+    "river-xmonad": (
+        "river-xmonad-runtime",
+        "xmonad-wayland",
+        "waybar",
+        "wofi",
+        "mako",
+    ),
+    "xmonad-xlibre": (
+        "xlibre-server",
+        "xmonad",
+        "ghc-xmonad-contrib",
+        "xmobar",
+        "xterm",
+        "dmenu",
+        "feh",
+        "picom",
+        "rofi",
+        "xset",
+        "setxkbmap",
+    ),
+    "kde": ("plasma", "plasma-workspace"),
+}
+
+
+def sway_skeleton(terminal, browser=""):
+    bindsym = (
+        "\n".join(
+            (
+                "set $browser " + browser,
+                "bindsym $mod+e exec $browser",
+            )
+        )
+        if browser
+        else ""
+    )
+    return "\n".join(
+        [
+            "set $mod Mod4",
+            f"set $term {terminal}",
+            "set $menu wofi --show drun",
+            "output * bg #080808 solid_color",
+            "default_border pixel 2",
+            "exec mako",
+            "exec waybar",
+            "bar { swaybar_command waybar }",
+            "bindsym $mod+Return exec $term",
+            "bindsym $mod+d exec $menu",
+            "bindsym $mod+q kill",
+            "bindsym $mod+Shift+c reload",
+            "bindsym $mod+Shift+e exec swaymsg exit",
+            bindsym,
+            "",
+        ]
+    )
+
+
+def river_skeleton(terminal, browser="", manager=""):
+    browser_bind = f"riverctl map normal Super E spawn {browser}" if browser else ""
+    manager_spawn = f"riverctl spawn {manager}" if manager else ""
+    return "\n".join(
+        [
+            "#!/bin/sh",
+            "# XMonad-style keybindings for River (Wayland).",
+            "riverctl default-layout rivertile",
+            f"riverctl map normal Super Return spawn {terminal}",
+            'riverctl map normal Super D spawn "wofi --show drun"',
+            "riverctl map normal Super Q close",
+            "riverctl map normal Super J focus-view next",
+            "riverctl map normal Super K focus-view previous",
+            "riverctl map normal Super+Shift J swap next",
+            "riverctl map normal Super+Shift K swap previous",
+            "riverctl map normal Super Space zoom",
+            "riverctl map normal Super+Shift E exit",
+            browser_bind,
+            manager_spawn,
+            "riverctl spawn waybar",
+            "",
+        ]
+    )
+
+
+TERMINAL_CHOICES = ("wezterm", "kitty", "foot", "alacritty")
+
+BROWSER_CHOICES = {
+    "torbrowser": ("torbrowser", "(securityops packages tor)"),
+    "librewolf": ("librewolf", "(securityops packages librewolf)"),
+    "chromium": ("ungoogled-chromium", "(securityops packages browsers)"),
+    "zen-browser": ("zen-browser-bin", "(securityops packages zen)"),
+}
+
+BROWSER_BINARIES = {
+    "torbrowser": "torbrowser",
+    "librewolf": "librewolf",
+    "chromium": "chromium",
+    "zen-browser": "zen-browser",
+}
 
 
 def validate_options(options):
@@ -89,8 +207,46 @@ def validate_options(options):
         raise InstallError(
             "Timezone not found; install your distribution's tzdata package."
         ) from exc
-    if options.desktop not in {"gnome", "xfce", "minimal"}:
-        raise InstallError("Desktop must be gnome, xfce or minimal.")
+    if options.desktop not in {
+        "gnome",
+        "xfce",
+        "minimal",
+        "kde",
+        "sway",
+        "xmonad-xlibre",
+        "river-xmonad",
+    }:
+        raise InstallError(
+            "Desktop must be gnome, xfce, minimal, kde, sway, xmonad-xlibre "
+            "or river-xmonad."
+        )
+    unknown_terminals = set(options.terminals) - set(TERMINAL_CHOICES)
+    if unknown_terminals:
+        raise InstallError("Unknown terminals: " + ", ".join(sorted(unknown_terminals)))
+    if options.default_terminal not in options.terminals:
+        raise InstallError("Default terminal must be one of the selected terminals.")
+    unknown_browsers = set(options.browsers) - set(BROWSER_CHOICES)
+    if unknown_browsers:
+        raise InstallError("Unknown browsers: " + ", ".join(sorted(unknown_browsers)))
+    if options.default_browser and options.default_browser not in options.browsers:
+        raise InstallError("Default browser must be one of the selected browsers.")
+    if options.kernel not in {"linux-libre", "linux", "securityops"}:
+        raise InstallError("Kernel must be linux-libre, linux or securityops.")
+    if options.kernel_version and not kernels.VERSION_PATTERN.fullmatch(
+        options.kernel_version
+    ):
+        raise InstallError("Kernel version must look like 7.3.4, 7.3, or latest.")
+    if options.kernel_config and options.kernel != "securityops":
+        raise InstallError("A defconfig only applies to the securityops kernel.")
+    if options.kernel_config:
+        path = Path(options.kernel_config)
+        if not path.is_file():
+            raise InstallError(f"Defconfig not found: {options.kernel_config}")
+    unknown = [
+        name for name in options.channels if name not in channels_catalog.OPTIONAL_NAMES
+    ]
+    if unknown:
+        raise InstallError("Unknown channels: " + ", ".join(sorted(unknown)))
     if options.mode == "system" and not re.fullmatch(
         r"/dev/[a-zA-Z0-9_/-]+", options.disk
     ):
@@ -424,18 +580,45 @@ def make_plan(options):
             "Upstream may configure build users, daemon, profiles and official substitutes.",
             "No partitioning. Open a new login shell when finished.",
         ]
+    if options.kernel == "linux-libre":
+        kernel_line = "Linux-libre (GNU Guix default; channel-pinned)."
+    elif options.kernel == "linux":
+        version = kernels.resolve(options.kernel_version)[0]
+        kernel_line = f"Linux {version} (kernel.org, newest stable) + firmware."
+    else:
+        version = kernels.resolve(options.kernel_version)[0]
+        kernel_line = (
+            f"SecurityOps {version} (kernel.org newest stable + hardened defconfig)."
+        )
+    channel_names = ("guix",) + channels_catalog.normalize(
+        options.channels,
+        options.kernel,
+        options.desktop,
+        options.browsers,
+    )
+    desktop_line = f"Configure {options.hostname}; user {options.username}; desktop {options.desktop}."
+    selection_lines = []
+    if options.terminals:
+        terminal_list = ", ".join(
+            (f"{name} (default)" if name == options.default_terminal else name)
+            for name in options.terminals
+        )
+        selection_lines.append(f"Terminals: {terminal_list}.")
+    if options.browsers:
+        browser_list = ", ".join(
+            (f"{name} (default)" if name == options.default_browser else name)
+            for name in options.browsers
+        )
+        selection_lines.append(f"Browsers: {browser_list}.")
     return [
         f"ERASE ALL DATA: {options.disk} (minimum 32 GiB).",
         "Require x86_64 UEFI and Secure Boot disabled; reject busy/protected disks.",
         "Create GPT: 1 GiB FAT32 ESP + remaining ext4 root (unencrypted).",
-        f"Configure {options.hostname}; user {options.username}; desktop {options.desktop}.",
+        desktop_line,
+        *selection_lines,
         f"Locale {options.locale}; timezone {options.timezone}; keyboard {options.keyboard}.",
-        "Kernel: "
-        + (
-            "Linux + proprietary firmware (Nonguix opt-in)."
-            if options.nonguix
-            else "Linux-libre (GNU Guix default)."
-        ),
+        "Kernel: " + kernel_line,
+        "Channels: " + ", ".join(channel_names),
         "Use authenticated, commit-pinned channels and guix system init.",
         "Keep root locked; request an administrator password privately.",
         f"Required confirmation: ERASE {options.disk}",
@@ -450,29 +633,176 @@ def render_config(options, root_uuid, esp_uuid):
     ):
         raise InstallError("Invalid filesystem UUID returned by blkid.")
     modules = "(use-modules (gnu) (gnu services desktop) (gnu system shadow))"
-    kernel = ""
-    if options.nonguix:
+    kernel_fields = ""
+    definitions = ""
+    if options.kernel in {"linux", "securityops"}:
         modules += (
-            "\n(use-modules (nongnu packages linux) (nongnu system linux-initrd))"
+            "\n(use-modules (guix download) (guix gexp) (guix packages) (guix utils)"
+            "\n             (nongnu packages linux) (nongnu system linux-initrd))"
         )
-        kernel = "\n  (kernel linux)\n  (firmware (list linux-firmware))\n  (initrd microcode-initrd)"
-    service = (
-        ""
-        if options.desktop == "minimal"
-        else f"\n    (service {options.desktop}-desktop-service-type)"
-    )
+        version, digest = kernels.resolve(options.kernel_version)
+        name = "securityops" if options.kernel == "securityops" else "linux-latest"
+        definitions = (
+            f"(define {name}\n"
+            f"  (package\n"
+            f"    (inherit linux)\n"
+            f'    (name "{name}")\n'
+            f'    (version "{version}")\n'
+            f"    (source {kernels.source_origin(version, digest)})"
+        )
+        if options.kernel == "securityops":
+            definitions += (
+                "\n    (arguments\n"
+                "     (substitute-keyword-arguments (package-arguments linux)\n"
+                '       ((#:defconfig _) (list (local-file "/etc/securityops.defconfig")))\n'
+                "       ((#:phases phases) phases)))"
+            )
+        definitions += "))\n\n"
+        kernel_fields = (
+            f"\n  (kernel {name})"
+            "\n  (firmware (list linux-firmware))"
+            "\n  (initrd microcode-initrd)"
+        )
+        if options.kernel == "securityops":
+            kernel_fields += (
+                "\n  (kernel-arguments '("
+                + " ".join(
+                    f'"{argument}"' for argument in kernels.SECURITYOPS_KERNEL_ARGUMENTS
+                )
+                + "))"
+            )
+    desktop_service = ""
+    packages_field = ""
+    skeletons_field = ""
+    browser_symbols = tuple(BROWSER_CHOICES[name][0] for name in options.browsers)
+    browser_bin = BROWSER_BINARIES.get(options.default_browser, "")
+    if options.browsers:
+        modules += (
+            "\n(use-modules "
+            + " ".join(sorted({BROWSER_CHOICES[name][1] for name in options.browsers}))
+            + ")"
+        )
+    extra_packages = " ".join(tuple(options.terminals) + browser_symbols)
+    if options.desktop in {"gnome", "xfce"}:
+        desktop_service = f"\n    (service {options.desktop}-desktop-service-type)"
+        if extra_packages:
+            modules += "\n(use-modules (gnu packages terminals))"
+            packages_field = (
+                "\n  (packages (append (list " + extra_packages + ") %base-packages))"
+            )
+    elif options.desktop == "minimal":
+        if extra_packages:
+            modules += "\n(use-modules (gnu packages terminals))"
+            packages_field = (
+                "\n  (packages (append (list " + extra_packages + ") %base-packages))"
+            )
+    elif options.desktop == "kde":
+        modules += "\n(use-modules (gnu packages kde-plasma) (gnu packages terminals))"
+        desktop_service = "\n    (service plasma-desktop-service-type)"
+        packages_field = (
+            "\n  (packages (append (list plasma plasma-workspace "
+            + extra_packages
+            + ") %base-packages))"
+        )
+    elif options.desktop in WM_PACKAGES:
+        modules += (
+            "\n(use-modules (gnu packages wm) (gnu packages window-management)"
+            "\n             (gnu packages zig-xyz) (gnu packages terminals)"
+            "\n             (gnu packages xdisorg) (gnu packages xorg)"
+            "\n             (gnu packages suckless) (gnu packages image-viewers)"
+            "\n             (gnu packages compton))"
+        )
+        session_entry = ""
+        if options.desktop == "river-xmonad":
+            modules += (
+                "\n(use-modules (securityops packages river)"
+                "\n             (securityops packages xmonad-wayland)"
+                "\n             (guix packages) (guix build-system trivial)"
+                "\n             ((guix licenses) #:prefix license:))"
+            )
+            definitions += (
+                "(define river-xmonad-session-entry\n"
+                "  (package\n"
+                '    (name "river-xmonad-session-entry")\n'
+                '    (version "0.4.0")\n'
+                "    (source #f)\n"
+                "    (build-system trivial-build-system)\n"
+                "    (arguments\n"
+                "     (list #:modules '((guix build utils))\n"
+                "           #:builder\n"
+                "           #~(begin\n"
+                "               (use-modules (guix build utils))\n"
+                '               (mkdir-p (string-append #$output "/share/wayland-sessions"))\n'
+                "               (call-with-output-file\n"
+                '                   (string-append #$output "/share/wayland-sessions/river-xmonad.desktop")\n'
+                "                 (lambda (port)\n"
+                '                   (format port "[Desktop Entry]~%Name=River + XMonad (Wayland)~%'
+                "Comment=XMonad window management on River~%Exec=river~%"
+                'Type=Application~%"))))))\n'
+                '    (home-page "https://codeberg.org/berkeley/xmonad-wayland")\n'
+                '    (synopsis "GDM session entry for River + XMonad Wayland")\n'
+                '    (description "Login-session entry that starts the River compositor.")\n'
+                "    (license license:expat)))\n\n"
+            )
+            session_entry = " river-xmonad-session-entry"
+        packages_field = (
+            "\n  (packages (append (list "
+            + " ".join(
+                WM_PACKAGES[options.desktop]
+                + tuple(options.terminals)
+                + browser_symbols
+            )
+            + session_entry
+            + ") %base-packages))"
+        )
+        if options.desktop in {"sway", "river-xmonad"}:
+            if options.desktop == "sway":
+                target, content = (
+                    ".config/sway/config",
+                    sway_skeleton(options.default_terminal, browser_bin),
+                )
+            else:
+                target, content = (
+                    ".config/river/init",
+                    river_skeleton(
+                        options.default_terminal, browser_bin, manager="xmonad-wayland"
+                    ),
+                )
+            escaped = content.replace("\\", "\\\\").replace('"', '\\"')
+            skeletons_field = (
+                f'\n  (skeletons (cons (list "{target}" '
+                f'(plain-file "{target.split("/")[-1]}" "{escaped}")) '
+                "(default-skeletons)))"
+            )
+        if options.desktop == "xmonad-xlibre":
+            modules += "\n(use-modules (gnu services xorg) (xlibre))"
+            desktop_service = (
+                "\n    (service gdm-service-type"
+                "\n      (gdm-configuration"
+                "\n        (xorg-configuration"
+                "\n          (xlibre-configuration"
+                "\n            (keyboard-layout %kbd)"
+                "\n            (modules"
+                "\n              (list xlibre-video-amdgpu xlibre-video-ati"
+                "\n                    xlibre-video-cirrus xlibre-video-fbdev"
+                "\n                    xlibre-video-nouveau xlibre-video-vesa"
+                "\n                    xlibre-input-libinput xlibre-input-evdev"
+                "\n                    xlibre-input-mouse))))))"
+            )
     services = "%base-services" if options.desktop == "minimal" else "%desktop-services"
     return f'''{modules}
 (use-service-modules desktop networking)
+{definitions}(define %kbd (keyboard-layout "{options.keyboard}"))
 (operating-system
-  (host-name "{options.hostname}")
+  (host-name "{options.hostname}"){kernel_fields}
   (timezone "{options.timezone}")
   (locale "{options.locale}")
-  (keyboard-layout (keyboard-layout "{options.keyboard}")){kernel}
+  (keyboard-layout %kbd)
   (bootloader (bootloader-configuration
     (bootloader grub-efi-bootloader)
     (targets '("/boot/efi"))
     (keyboard-layout keyboard-layout)))
+{skeletons_field}{packages_field}
   (users (cons*
     (user-account
       (name "{options.username}")
@@ -483,7 +813,7 @@ def render_config(options, root_uuid, esp_uuid):
       (supplementary-groups '("wheel" "netdev" "audio" "video")))
     (user-account (inherit %root-account) (password "!"))
     (filter (lambda (account) (not (string=? (user-account-name account) "root"))) %base-user-accounts)))
-  (services (append (list{service}
+  (services (append (list{desktop_service}
     {"(service dhcp-client-service-type)" if options.desktop == "minimal" else ""}) {services}))
   (file-systems (cons*
     (file-system (mount-point "/")
@@ -507,6 +837,43 @@ def install_manager():
         and k not in {"ENV", "SHELLOPTS", "GLOBIGNORE"}
     }
     run(["bash", str(script)], env=environment)
+
+
+def stage_securityops_defconfig(options, target):
+    """Reproduce the maintainer's kernel recipe: /etc/securityops.defconfig.
+
+    The generated config references the defconfig through `local-file`, so the
+    host file is evaluated during `guix system init` and the identical file is
+    shipped to the target for later `guix system reconfigure`.
+    """
+    if options.kernel != "securityops":
+        return
+    source = (
+        Path(options.kernel_config)
+        if options.kernel_config
+        else ROOT / "assets/securityops.defconfig"
+    )
+    if not source.is_file():
+        raise InstallError(f"Defconfig not found: {source}")
+    content = source.read_text()
+    host_path = Path("/etc/securityops.defconfig")
+    if host_path.is_symlink():
+        raise InstallError("Refusing symlink /etc/securityops.defconfig.")
+    if host_path.exists():
+        if host_path.read_text() != content:
+            raise InstallError(
+                "/etc/securityops.defconfig differs from the selected source; "
+                "remove it or select it with --kernel-config."
+            )
+    else:
+        host_path.write_text(content)
+        host_path.chmod(0o644)
+    target_etc = target / "etc"
+    target_etc.mkdir(mode=0o755, exist_ok=True)
+    target_etc.chmod(0o755)
+    target_path = target_etc / "securityops.defconfig"
+    target_path.write_text(content)
+    target_path.chmod(0o644)
 
 
 def validate_password_hash(password_hash):
@@ -689,9 +1056,13 @@ def install_system(options, confirmation, password_hash, expected_identity):
             config.write_text(render_config(options, root_uuid, esp_uuid))
             config.chmod(0o600)
             channels = etc / "channels.scm"
-            shutil.copyfile(
-                ROOT / ("channels.scm" if options.nonguix else "channel.scm"), channels
+            channels.write_text(
+                channels_catalog.render(
+                    options.channels, options.kernel, options.desktop
+                )
             )
+            channels.chmod(0o600)
+            stage_securityops_defconfig(options, target)
             mounted_target_is_current()
             run(
                 [

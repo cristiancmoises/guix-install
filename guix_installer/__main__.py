@@ -32,10 +32,70 @@ def parser():
     for field in ["disk", "hostname", "username", "timezone", "locale", "keyboard"]:
         result.add_argument("--" + field, default=getattr(core.Options(), field))
     result.add_argument(
-        "--desktop", choices=["gnome", "xfce", "minimal"], default="gnome"
+        "--desktop",
+        choices=[
+            "gnome",
+            "xfce",
+            "minimal",
+            "kde",
+            "sway",
+            "xmonad-xlibre",
+            "river-xmonad",
+        ],
+        default="gnome",
     )
     result.add_argument(
-        "--nonguix", action="store_true", help="opt into Linux and proprietary firmware"
+        "--terminal",
+        action="append",
+        choices=["wezterm", "kitty", "foot", "alacritty"],
+        default=None,
+        help="terminal to install (repeatable; default: wezterm)",
+    )
+    result.add_argument(
+        "--default-terminal",
+        choices=["wezterm", "kitty", "foot", "alacritty"],
+        default=None,
+        help="default terminal among the selected ones",
+    )
+    result.add_argument(
+        "--browser",
+        action="append",
+        choices=["torbrowser", "librewolf", "chromium", "zen-browser"],
+        default=None,
+        help="browser to install (repeatable)",
+    )
+    result.add_argument(
+        "--default-browser",
+        choices=["torbrowser", "librewolf", "chromium", "zen-browser"],
+        default=None,
+        help="default browser among the selected ones",
+    )
+    result.add_argument(
+        "--kernel",
+        choices=["linux-libre", "linux", "securityops"],
+        default="linux-libre",
+        help="kernel to install (linux and securityops always use the newest kernel.org release)",
+    )
+    result.add_argument(
+        "--kernel-version",
+        default="",
+        help="explicit kernel.org version (e.g. 7.3.4); empty means the newest stable",
+    )
+    result.add_argument(
+        "--kernel-config",
+        default="",
+        help="defconfig file applied to the securityops kernel (default: bundled)",
+    )
+    result.add_argument(
+        "--channel",
+        action="append",
+        default=[],
+        help="optional channel to install (repeatable)",
+    )
+    result.add_argument(
+        "--nonguix",
+        action="store_true",
+        help="compatibility alias for --kernel linux",
     )
     result.add_argument(
         "--json",
@@ -49,7 +109,13 @@ def parser():
 def option_args(options):
     args = []
     for field, value in asdict(options).items():
-        if isinstance(value, bool):
+        if field == "channels":
+            for name in value:
+                args.extend(["--channel", name])
+        elif field in {"terminals", "browsers"}:
+            for name in value:
+                args.extend(["--" + field[:-1], name])
+        elif isinstance(value, bool):
             if value:
                 args.append("--" + field)
         elif value:
@@ -101,15 +167,100 @@ def choose_options(options, language):
             "timezone",
             "locale",
             "keyboard",
-            "desktop",
         ]:
             default = getattr(options, field)
             value = input(f"{tr(field, language)} ({default}): ").strip()
             if value:
                 setattr(options, field, value)
-        options.nonguix = input(
-            tr("firmware", language) + " [y/N]: "
-        ).strip().lower() in {"y", "yes", "s", "sim"}
+        options.desktop = (
+            input(
+                tr("desktop", language)
+                + " [minimal, gnome, xfce, kde, sway, xmonad-xlibre, "
+                f"river-xmonad] ({options.desktop}): "
+            ).strip()
+            or options.desktop
+        )
+        terminal_answer = input(
+            tr("terminals", language)
+            + " [wezterm, kitty, foot, alacritty] "
+            + "("
+            + ",".join(options.terminals)
+            + "): "
+        ).strip()
+        if terminal_answer:
+            terminals = tuple(
+                name.strip()
+                for name in terminal_answer.replace(" ", ",").split(",")
+                if name.strip()
+            )
+            if terminals:
+                options.terminals = tuple(dict.fromkeys(terminals))
+        if options.default_terminal not in options.terminals:
+            options.default_terminal = options.terminals[0]
+        if len(options.terminals) > 1:
+            options.default_terminal = (
+                input(
+                    tr("default_terminal", language)
+                    + " ["
+                    + ", ".join(options.terminals)
+                    + f"] ({options.default_terminal}): "
+                ).strip()
+                or options.default_terminal
+            )
+        browser_answer = input(
+            tr("browsers", language)
+            + " [torbrowser, librewolf, chromium, zen-browser] (none): "
+        ).strip()
+        if browser_answer:
+            browsers = tuple(
+                name.strip()
+                for name in browser_answer.replace(" ", ",").split(",")
+                if name.strip()
+            )
+            if browsers:
+                options.browsers = tuple(dict.fromkeys(browsers))
+                options.default_browser = options.browsers[0]
+                if len(options.browsers) > 1:
+                    options.default_browser = (
+                        input(
+                            tr("default_browser", language)
+                            + " ["
+                            + ", ".join(options.browsers)
+                            + f"] ({options.default_browser}): "
+                        ).strip()
+                        or options.default_browser
+                    )
+            else:
+                options.browsers = ()
+                options.default_browser = ""
+        else:
+            options.browsers = ()
+            options.default_browser = ""
+        print("\n" + tr("kernel", language) + ":")
+        print("  1. " + tr("kernel_linux_libre", language))
+        print("  2. " + tr("kernel_linux", language))
+        print("  3. " + tr("kernel_securityops", language))
+        kernel = input("[1/2/3] (1): ").strip() or "1"
+        options.kernel = {"1": "linux-libre", "2": "linux", "3": "securityops"}.get(
+            kernel
+        )
+        if not options.kernel:
+            raise core.InstallError("Choose 1, 2 or 3.")
+        options.kernel_version = input(
+            tr("kernel_version", language) + " [" + tr("latest", language) + "]: "
+        ).strip()
+        selected = []
+        print("\n" + tr("channels_help", language))
+        for name in core.channels_catalog.OPTIONAL_NAMES:
+            channel = core.channels_catalog.CHANNELS[name]
+            answer = (
+                input(f"[{name}] {channel.description[language == 'pt-BR']} [y/N]: ")
+                .strip()
+                .lower()
+            )
+            if answer in {"y", "yes", "s", "sim"}:
+                selected.append(name)
+        options.channels = tuple(selected)
     return options
 
 
@@ -148,7 +299,7 @@ def install(options, language, theme="dark", hold=False):
         )
     core.validate_options(options)
     elevate(options, language, theme, hold)
-    os.umask(0o077)
+    os.umask(0o022)
     log_fd, log_path = tempfile.mkstemp(
         prefix="guix-install-", suffix=".log", dir="/var/log"
     )
@@ -192,9 +343,25 @@ def install(options, language, theme="dark", hold=False):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    options = core.Options(
-        **{field: getattr(args, field) for field in asdict(core.Options())}
-    )
+    options = core.Options()
+    for field in asdict(options):
+        if field in {"channels", "terminals", "browsers"}:
+            continue
+        if hasattr(args, field):
+            setattr(options, field, getattr(args, field))
+    options.terminals = tuple(args.terminal) if args.terminal else ("wezterm",)
+    options.browsers = tuple(args.browser) if args.browser else ()
+    if args.default_terminal:
+        options.default_terminal = args.default_terminal
+    elif options.default_terminal not in options.terminals:
+        options.default_terminal = options.terminals[0]
+    if args.default_browser:
+        options.default_browser = args.default_browser
+    elif options.default_browser not in options.browsers:
+        options.default_browser = options.browsers[0] if options.browsers else ""
+    options.channels = tuple(args.channel or ())
+    if args.nonguix and options.kernel == "linux-libre":
+        options.kernel = "linux"
     status = 0
     try:
         if args.command == "gui":

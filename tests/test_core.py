@@ -100,15 +100,20 @@ class SafetyTests(unittest.TestCase):
         self.assertNotIn("(service gdm-service-type)", config)
         self.assertNotIn("openssh-service-type", config)
 
-    def test_nonguix_is_opt_in(self):
-        for enabled in (False, True):
+    def test_blob_kernel_is_opt_in(self):
+        for kernel in ("linux-libre", "linux"):
             config = core.render_config(
-                core.Options(mode="system", disk="/dev/testdisk", nonguix=enabled),
+                core.Options(
+                    mode="system",
+                    disk="/dev/testdisk",
+                    kernel=kernel,
+                    kernel_version="7.3.4",
+                ),
                 "11111111-1111-1111-1111-111111111111",
                 "ABCD-1234",
             )
-            self.assertEqual("(kernel linux)" in config, enabled)
-            self.assertEqual("(nongnu packages linux)" in config, enabled)
+            self.assertEqual("(kernel linux-latest)" in config, kernel == "linux")
+            self.assertEqual("(nongnu packages linux)" in config, kernel == "linux")
 
     def test_plan_does_not_execute_commands(self):
         with patch(

@@ -24,7 +24,7 @@ class CliTests(unittest.TestCase):
         result = self.cli("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("wizard", result.stdout)
-        self.assertIn("0.3.0", self.cli("--version").stdout)
+        self.assertIn("0.4.0", self.cli("--version").stdout)
 
     def test_plan_is_unprivileged_and_explicit(self):
         result = self.cli("plan", "--mode", "system", "--disk", "/dev/example")
@@ -97,6 +97,51 @@ class CliTests(unittest.TestCase):
     def test_no_yes_or_force_bypass(self):
         self.assertNotEqual(self.cli("install", "--yes").returncode, 0)
         self.assertNotEqual(self.cli("install", "--force").returncode, 0)
+
+    def test_multi_select_terminals_and_browsers(self):
+        import json
+
+        result = self.cli(
+            "plan",
+            "--json",
+            "--mode",
+            "system",
+            "--disk",
+            "/dev/example",
+            "--terminal",
+            "kitty",
+            "--terminal",
+            "foot",
+            "--default-terminal",
+            "foot",
+            "--browser",
+            "librewolf",
+            "--browser",
+            "zen-browser",
+            "--default-browser",
+            "zen-browser",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        plan = json.loads(result.stdout)
+        self.assertEqual(plan["options"]["terminals"], ["kitty", "foot"])
+        self.assertEqual(plan["options"]["default_terminal"], "foot")
+        self.assertEqual(plan["options"]["browsers"], ["librewolf", "zen-browser"])
+        self.assertEqual(plan["options"]["default_browser"], "zen-browser")
+
+    def test_default_terminal_must_be_selected(self):
+        result = self.cli(
+            "plan",
+            "--mode",
+            "system",
+            "--disk",
+            "/dev/example",
+            "--terminal",
+            "kitty",
+            "--default-terminal",
+            "foot",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Default terminal", result.stderr)
 
 
 if __name__ == "__main__":

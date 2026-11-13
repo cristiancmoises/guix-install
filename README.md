@@ -6,6 +6,38 @@
 
 ![Native GUI with the default black, gold and orange theme](docs/screenshots/gui-en.png)
 
+## What changed in 0.4.0
+
+The system installer now offers three kernels, and the two non-free ones always
+track the newest stable release from kernel.org (resolved at plan time and
+pinned by SHA-256 in the generated configuration, currently 7.3.4):
+
+| Kernel | Base | Source | Extra |
+|---|---|---|---|
+| **linux-libre** | GNU Guix default | pinned by the Guix channel | none |
+| **linux** | Nonguix broad driver config | newest kernel.org stable | proprietary firmware |
+| **securityops** | Nonguix + the maintainer's `/etc/securityops.defconfig` | newest kernel.org stable | hardened `kernel-arguments` |
+
+The securityops kernel reproduces the maintainer's in-use recipe
+(`inherit linux`, `#:defconfig` replaced by the bundled defconfig, nonguix
+extra options kept). `--kernel-version 7.3` pins an exact release; blank means
+newest stable. Optional channels from the maintainer's authenticated
+`channels.guix` (Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix,
+Guix-Xlibre) are selectable in the GUI, the wizard and `--channel`, each with
+a short description. Dependencies close automatically.
+
+Desktops now cover KDE Plasma, Sway, XMonad on XLibre and River + XMonad on
+Wayland, alongside GNOME, XFCE and minimal. Terminals are multi-select from
+Wezterm, Kitty, Foot and Alacritty with one chosen as the default, which the
+Sway and River skeletons bind to `$term`. Browsers are also multi-select
+(Tor Browser, LibreWolf, Chromium, Zen Browser) with one default; they come
+from the authenticated Security Ops channel, which is added automatically.
+
+Windows users can download the build artifacts of this repository
+(`GuixInstall.exe` and `GuixInstall.msi`, built by CI on windows-latest):
+the program downloads the GNU Guix image and writes it to a USB disk under a
+volume lock, so a Windows machine can be migrated to Guix System.
+
 ## What changed in 0.3.0
 
 The GUI and terminal now include the official GNU Guix mark, attributed to Luis Felipe López Acevedo under CC BY-SA 4.0. The GUI uses a bundled transparent image and window icon; the CLI uses an ASCII adaptation of the same silhouette and a wordmark on narrow terminals. No runtime image package or logo download is needed. See [artwork provenance and license](assets/README.md).
@@ -42,7 +74,15 @@ This release is an installation candidate, **not a claim of universal distributi
 
 For Guix System, first install the package manager if your live environment does not include it, then launch again and choose System. The tool refuses the running system's disk, mounted descendants, active swap, and device-mapper/RAID/LVM holders. Unknown root media or Secure Boot state is a refusal. Keep backups and use a separate disk. There is no `--yes` or `--force` bypass.
 
-Initial system scope: unencrypted x86_64 UEFI, GNOME/XFCE/minimal, Linux-libre by default. Nonguix Linux plus proprietary firmware is an explicit opt-in, using an authenticated pinned channel. BIOS boot, ARM system installation, automatic dual-boot resizing, RAID/LVM targets, encryption and disk recovery are outside this release. A removable whole disk is allowed if it passes the same checks; loop devices are refused. Minimal mode provides wired DHCP, not a Wi-Fi setup wizard.
+Initial system scope: unencrypted x86_64 UEFI with GNOME, XFCE, KDE Plasma,
+Sway, XMonad (XLibre), River + XMonad (Wayland) or a minimal system;
+Linux-libre by default. The `linux` and `securityops` kernels are explicit
+opt-ins through authenticated pinned channels and always build the newest
+kernel.org stable release. BIOS boot, ARM system installation, automatic
+dual-boot resizing, RAID/LVM targets, encryption and disk recovery are
+outside this release. A removable whole disk is allowed if it passes the same
+checks; loop devices are refused. Minimal mode provides wired DHCP, not a
+Wi-Fi setup wizard.
 
 ## GUI and CLI
 
@@ -58,6 +98,11 @@ cd guix-install
 ./installer.sh doctor --mode system
 ./installer.sh disks
 ./installer.sh plan --mode system --disk /dev/example --username alice
+./installer.sh plan --mode system --disk /dev/example --kernel securityops \
+    --channel securityops --channel small-guix
+./installer.sh plan --kernel linux --kernel-version 7.3.4
+./installer.sh plan --desktop sway --terminal kitty --terminal foot \
+    --default-terminal foot --browser librewolf --default-browser librewolf
 ./installer.sh plan --json          # machine-readable; no installation commands
 ./installer.sh gui --theme light
 ```
@@ -65,6 +110,25 @@ cd guix-install
 `/dev/example` is a placeholder, never a suggested device. Use **Refresh disks** to inspect real disks and **Review installation** before continuing. For system settings, select System first. The GUI opens a terminal for sudo, private password entry, the exact `ERASE /dev/…` phrase and live progress. The GUI itself stays unprivileged. Supported terminal launchers: xterm, GNOME Terminal, Konsole, XFCE Terminal and MATE Terminal.
 
 The default theme is **black, white text, golden yellow and orange**, inspired by Guix colors. Select **Light** for a white background and black text. The CLI accepts `--theme dark|light`, colors interactive plan output, and respects `NO_COLOR`; JSON and redirected output stay plain. English is the default; use the language selector or `--lang pt-BR`. The bundled upstream installer's own prompts and low-level system errors may remain English.
+
+### Windows: migrate to Guix System from Windows
+
+CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
+(WiX) on windows-latest; download them from the workflow artifacts or a
+release. Run as Administrator:
+
+```bat
+GuixInstall.exe list                      # inspect disks
+GuixInstall.exe image --disk 2 --verify   # download GNU Guix, write disk 2, verify
+GuixInstall.exe image --disk 2 --image D:\guix.iso
+GuixInstall.exe doctor
+```
+
+The image writer refuses disks smaller than the image, holds a volume lock
+for the whole write, and asks you to type the disk number before writing.
+Reboot from the USB disk and the official Guix installer takes over. The
+default image is the GNU Guix system installer from `ftp.gnu.org`; inspect it
+and verify its signature separately if you need publisher authentication.
 
 The GUI needs Python's actual Tk extension, usually `python3-tk` on Debian/Ubuntu or `python3-tkinter` on Fedora. Check with `python3 -c 'import tkinter'`. On Guix, include Python's `tk` output in your environment. CLI planning and the terminal wizard do not need Tk. Use Tab/Shift+Tab, Space and Enter; Ctrl+Enter reviews the plan. Content scrolls in smaller windows. Linux Tk screen-reader support depends on the desktop/toolkit; full accessibility certification is not claimed.
 
@@ -97,7 +161,7 @@ The upstream script is unchanged from [GNU Guix commit 94bbecec](https://codeber
 python3 -m unittest discover -s tests -v
 ruff check guix_installer tests scripts/prepare-bootstrap.py run.py
 ruff format --check guix_installer tests scripts/prepare-bootstrap.py run.py
-pyright guix_installer run.py scripts/prepare-bootstrap.py
+pyright guix_installer run.py scripts/prepare-bootstrap.py windows_main.py
 shellcheck installer.sh install.sh bootstrap.sh
 ./scripts/check-guix.sh  # read-only expression checks; requires existing Guix
 ```

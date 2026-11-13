@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0 — 2026-11-13
+
+- Add kernel choice: linux-libre (default), linux and securityops; the two
+  blob kernels always build the newest stable kernel.org release (resolved at
+  plan time, SHA-256-pinned in the generated configuration, 7.3.4 today).
+- Reproduce the maintainer's in-use securityops kernel: nonguix base,
+  vanilla source, `#:defconfig` from the bundled defconfig and hardened
+  runtime `kernel-arguments`; `--kernel-version` pins an exact release.
+- Add selectable authenticated channels with short EN/PT descriptions
+  (nonguix, securityops, small-guix, sops-guix, gocix, guix-xlibre) with
+  automatic dependency closure and dynamically generated channels.scm.
+- Add desktops KDE Plasma, Sway, XMonad on XLibre and River + XMonad
+  (Wayland) with a generated GDM session entry, XLibre X server override
+  and pre-wired Sway/River key bindings.
+- Add multi-select terminals (wezterm, kitty, foot, alacritty) and browsers
+  (torbrowser, librewolf, chromium, zen-browser) with a configurable default
+  in the GUI, wizard and CLI; browsers come from the authenticated
+  securityops channel, which is added automatically.
+- Add Windows migration tooling: raw disk writer via PowerShell/ctypes with
+  volume lock and read-back verification, PyInstaller one-file build and
+  WiX MSI, built by GitHub Actions on windows-latest.
+- Fix restrictive initialization umask (077 to 022 with explicit private
+  file permissions); keep partition/mount identity and cancellation fixes.
+- Extend evaluation checks to all three kernels, every desktop and browser
+  sets with local nonguix/securityops checkouts; update bilingual docs and
+  screenshots.
+- Preserve the existing VM/boot qualification limitation and authenticated
+  channel pins.
+
 ## 0.3.0 — 2026-11-11
 
 - Add attributed official GNU Guix SVG, transparent GUI/window icon, and derived ASCII CLI mark; bundle all assets offline.

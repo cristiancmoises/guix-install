@@ -1,5 +1,8 @@
 """Small explicit English / Portuguese interface catalogue."""
 
+from . import channels as channels_catalog
+from . import kernels
+
 TEXT = {
     "query_running": (
         "Checking… the window remains available.",
@@ -41,6 +44,55 @@ TEXT = {
     "locale": ("Locale", "Idioma do sistema"),
     "keyboard": ("Keyboard layout", "Layout do teclado"),
     "desktop": ("Desktop", "Ambiente gráfico"),
+    "terminal": ("Terminal", "Terminal"),
+    "terminals": (
+        "Terminals (comma-separated, may pick several)",
+        "Terminais (separados por vírgula, pode escolher vários)",
+    ),
+    "default_terminal": (
+        "Default terminal",
+        "Terminal padrão",
+    ),
+    "browsers": (
+        "Browsers (comma-separated, may pick several)",
+        "Navegadores (separados por vírgula, pode escolher vários)",
+    ),
+    "browser": ("Browser", "Navegador"),
+    "default_browser": (
+        "Default browser",
+        "Navegador padrão",
+    ),
+    "browsers_help": (
+        "Browsers come from the authenticated Security Ops channel; it is added automatically.",
+        "Os navegadores vêm do canal autenticado Security Ops; ele é adicionado automaticamente.",
+    ),
+    "kernel": ("Kernel", "Kernel"),
+    "kernel_linux_libre": (
+        "Linux-libre (GNU Guix default)",
+        "Linux-libre (padrão GNU Guix)",
+    ),
+    "kernel_linux": (
+        "Linux — newest kernel.org stable + firmware",
+        "Linux — última stable do kernel.org + firmware",
+    ),
+    "kernel_securityops": (
+        "SecurityOps — newest kernel.org stable + hardened defconfig",
+        "SecurityOps — última stable do kernel.org + defconfig endurecida",
+    ),
+    "kernel_version": (
+        "Kernel version (blank = newest stable)",
+        "Versão do kernel (vazio = última stable)",
+    ),
+    "latest": ("latest", "mais recente"),
+    "kernel_config": (
+        "Defconfig file (securityops kernel)",
+        "Arquivo defconfig (kernel securityops)",
+    ),
+    "channels": ("Channels", "Canais"),
+    "channels_help": (
+        "Optional authenticated channels. Guix is always installed.",
+        "Canais autenticados opcionais. O canal Guix sempre é instalado.",
+    ),
     "firmware": (
         "Enable Nonguix Linux + proprietary firmware",
         "Ativar Linux + firmware proprietário do Nonguix",
@@ -95,6 +147,34 @@ TEXT = {
         "Install GNU Guix alongside the current distribution.\nVerify the pinned official installer, then request sudo.\nThe official installer verifies archive signatures and configures the daemon.\nNo partitioning; open a new login shell afterward.",
         "Instalar o GNU Guix junto à distribuição atual.\nVerificar o instalador oficial fixado e solicitar sudo.\nO instalador oficial verifica assinaturas e configura o daemon.\nSem particionamento; abra uma nova sessão ao terminar.",
     ),
+    "windows_admin": (
+        "Run this program as Administrator.",
+        "Execute este programa como Administrador.",
+    ),
+    "windows_no_disks": (
+        "No disks found.",
+        "Nenhum disco encontrado.",
+    ),
+    "windows_disk_confirm": (
+        "Type the disk NUMBER to erase and write the GNU Guix image: ",
+        "Digite o NÚMERO do disco para apagar e gravar a imagem GNU Guix: ",
+    ),
+    "windows_download": (
+        "Downloading GNU Guix image",
+        "Baixando a imagem GNU Guix",
+    ),
+    "windows_writing": (
+        "Writing image to disk",
+        "Gravando imagem no disco",
+    ),
+    "windows_verifying": (
+        "Verifying written image",
+        "Verificando imagem gravada",
+    ),
+    "windows_done": (
+        "Image written. Reboot from the USB disk to install GNU Guix.",
+        "Imagem gravada. Reinicie pelo disco USB para instalar o GNU Guix.",
+    ),
 }
 
 
@@ -107,18 +187,45 @@ def translated_plan(options, language, english):
         return english
     if options.mode == "manager":
         return tr("manager_plan", language).splitlines()
+    if options.kernel == "linux-libre":
+        kernel_line = "Linux-libre (padrão GNU Guix, fixado pelo canal)."
+    elif options.kernel == "linux":
+        version = kernels.resolve(options.kernel_version)[0]
+        kernel_line = f"Linux {version} (kernel.org, última stable) + firmware."
+    else:
+        version = kernels.resolve(options.kernel_version)[0]
+        kernel_line = (
+            f"SecurityOps {version} (kernel.org última stable + defconfig endurecida)."
+        )
+    channel_names = ("guix",) + channels_catalog.normalize(
+        options.channels, options.kernel, options.desktop, options.browsers
+    )
+    desktop_line = (
+        f"Computador {options.hostname}; administrador {options.username}; "
+        f"ambiente {options.desktop}."
+    )
+    selection_lines = []
+    if options.terminals:
+        terminal_list = ", ".join(
+            (f"{name} (padrão)" if name == options.default_terminal else name)
+            for name in options.terminals
+        )
+        selection_lines.append(f"Terminais: {terminal_list}.")
+    if options.browsers:
+        browser_list = ", ".join(
+            (f"{name} (padrão)" if name == options.default_browser else name)
+            for name in options.browsers
+        )
+        selection_lines.append(f"Navegadores: {browser_list}.")
     return [
         f"APAGAR TODOS OS DADOS: {options.disk} (mínimo 32 GiB).",
         "Exigir x86_64 UEFI e Secure Boot desativado; recusar discos em uso/protegidos.",
         "Criar GPT: ESP FAT32 de 1 GiB + raiz ext4 no restante (sem criptografia).",
-        f"Computador {options.hostname}; administrador {options.username}; ambiente {options.desktop}.",
+        desktop_line,
+        *selection_lines,
         f"Idioma {options.locale}; fuso {options.timezone}; teclado {options.keyboard}.",
-        "Kernel: "
-        + (
-            "Linux + firmware proprietário (Nonguix opcional)."
-            if options.nonguix
-            else "Linux-libre."
-        ),
+        "Kernel: " + kernel_line,
+        "Canais: " + ", ".join(channel_names),
         "Usar canais autenticados e fixados por commit com guix system init.",
         "Manter root bloqueado; solicitar senha do administrador em modo privado.",
         f"Confirmação obrigatória: ERASE {options.disk}",
