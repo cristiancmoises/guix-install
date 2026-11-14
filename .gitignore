@@ -6,6 +6,9 @@ __pycache__/
 .evidence/
 dist/
 rpmwork/
+packaging/arch/pkg/
+packaging/arch/src/
+packaging/arch/*.pkg.tar.zst
 # debhelper work files from local dpkg-buildpackage runs
 packaging/debian/files
 packaging/debian/guix-install.substvars
