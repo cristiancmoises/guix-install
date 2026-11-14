@@ -116,8 +116,10 @@ O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, ins
 ### Windows: migre para o Guix System a partir do Windows
 
 O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
-`GuixInstall.msi` (WiX) em windows-latest; baixe-os pelos artefatos do
-workflow ou por uma release. Execute como Administrador:
+`GuixInstall.msi` (WiX) em windows-latest. Os artefatos do CI ficam anexados
+à [release v0.4.1](https://github.com/cristiancmoises/guix-install/releases/tag/v0.4.1)
+(espelho: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.4.1)).
+Execute como Administrador:
 
 ```bat
 GuixInstall.exe list                      # inspeciona os discos

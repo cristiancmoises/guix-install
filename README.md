@@ -115,8 +115,10 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 ### Windows: migrate to Guix System from Windows
 
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
-(WiX) on windows-latest; download them from the workflow artifacts or a
-release. Run as Administrator:
+(WiX) on windows-latest. The CI-built artifacts are attached to the
+[v0.4.1 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.4.1)
+(mirror: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.4.1)).
+Run as Administrator:
 
 ```bat
 GuixInstall.exe list                      # inspect disks
