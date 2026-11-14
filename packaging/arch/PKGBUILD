@@ -6,7 +6,6 @@ arch=('any')
 url="https://github.com/cristiancmoises/guix-install"
 license=('GPL3')
 depends=('python>=3.10')
-makedepends=('git')
 optdepends=(
   'tk: native GUI'
   'sudo: privileged installation steps'
@@ -17,10 +16,10 @@ optdepends=(
 )
 
 prepare() {
+  local repo="$startdir/../.."
   mkdir -p "$srcdir/$pkgname-$pkgver"
-  if ! git -C "$startdir/../.." archive HEAD | tar -x -C "$srcdir/$pkgname-$pkgver"; then
-    cp -a "$startdir/../.."/. "$srcdir/$pkgname-$pkgver/"
-  fi
+  cp -a "$repo/guix_installer" "$repo/run.py" "$repo/vendor" "$repo/assets" \
+    "$repo/packaging" "$srcdir/$pkgname-$pkgver/"
 }
 
 package() {

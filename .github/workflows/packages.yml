@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install Debian tooling
-        run: sudo apt-get update && sudo apt-get install -y debhelper fakeroot
+        run: sudo apt-get update && sudo apt-get install -y debhelper fakeroot build-essential
       - name: Build .deb
         run: dpkg-buildpackage -us -uc -b
       - name: Collect artifacts
@@ -32,10 +32,12 @@ jobs:
         run: dnf install -y rpm-build git
       - name: Build .rpm
         run: |
-          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          git -c safe.directory='*' archive --format=tar.gz \
-            --prefix=guix-install-0.4.1/ \
-            -o rpmbuild/SOURCES/guix-install-0.4.1.tar.gz HEAD
+          mkdir -p rpmbuild/BUILD rpmbuild/RPMS rpmbuild/SOURCES \
+            rpmbuild/SPECS rpmbuild/SRPMS rpmbuild/SOURCES/guix-install-0.4.1
+          cp -r guix_installer run.py vendor assets packaging \
+            rpmbuild/SOURCES/guix-install-0.4.1/
+          tar -C rpmbuild/SOURCES -czf rpmbuild/SOURCES/guix-install-0.4.1.tar.gz \
+            guix-install-0.4.1
           rpmbuild --define "_topdir $PWD/rpmbuild" -ba packaging/rpm/guix-install.spec
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
