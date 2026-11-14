@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Align the channel catalogue with the Security Ops OS v1.14.0 channel graph:
+  guix 505ade83, nonguix c241d19f, small-guix 26cc257 with its signed Security
+  Ops trust checkpoint, securityops 017b9e3, gocix d4beb391 and sops-guix
+  c53e27e5, served from the maintainer's primary Forgejo namespace.
+- Add the authenticated radix and rosenthal channels so generated
+  configurations can layer Radix/Rosenthal system and home management.
+- Retire the separate guix-xlibre channel: the XLibre server and drivers now
+  ship inside the securityops channel, so XMonad-on-XLibre selects
+  securityops automatically.
+- Keep the newest-stable kernel resolution at Linux 7.3.4 with its bundled
+  SHA-256 verification.
+
 ## 0.4.0 — 2026-11-13
 
 - Add kernel choice: linux-libre (default), linux and securityops; the two

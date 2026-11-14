@@ -1,8 +1,10 @@
 """Commit-pinned channel catalogue with short EN/PT descriptions.
 
-Pins and introductions come from the maintainer's authenticated
-`channels.guix` (securityops-iso). `guix` is always present and first;
-everything else is opt-in with automatic dependency closure.
+Pins and introductions reproduce the maintainer's authenticated
+`channels.guix` (securityops-iso), the same graph the Security Ops OS live
+image boots with. `guix` is always present and first; everything else is
+opt-in with automatic dependency closure. XLibre now ships inside the
+securityops channel, so the separate guix-xlibre channel is retired.
 """
 
 from dataclasses import dataclass
@@ -23,9 +25,9 @@ CHANNELS = {
     for channel in (
         Channel(
             "guix",
-            "https://codeberg.org/guix/guix.git",
+            "https://git.securityops.com.br/cristiancmoises/guix.git",
             "master",
-            "b9a35ee6b53438d53d66cbe3e82f26bb22a44b5b",
+            "505ade83fc62b438c558653dd57f7fb3b197cc8f",
             (
                 "9edb3f66fd807b096b48283debdcddccfea34bad",
                 "BBB0 2DDF 2CEA F6A8 0D1D E643 A2A0 6DF2 A33A 54FA",
@@ -37,9 +39,9 @@ CHANNELS = {
         ),
         Channel(
             "nonguix",
-            "https://gitlab.com/nonguix/nonguix",
+            "https://git.securityops.com.br/cristiancmoises/nonguix.git",
             "master",
-            "bf39542ca537fde8839b209ac21d6f3254469b15",
+            "c241d19ff840dc75556f722b231760d119b6adea",
             (
                 "897c1a470da759236cc11798f4e0a5f7d4d59fbc",
                 "2A39 3FFF 68F4 EF7A 3D29 12AF 6F51 20A0 22FB B2D5",
@@ -51,7 +53,7 @@ CHANNELS = {
         ),
         Channel(
             "sops-guix",
-            "https://github.com/fishinthecalculator/sops-guix",
+            "https://git.securityops.com.br/cristiancmoises/sops-guix.git",
             "main",
             "c53e27e533836ea8595626ba6796dee5362f8c4a",
             (
@@ -65,9 +67,9 @@ CHANNELS = {
         ),
         Channel(
             "gocix",
-            "https://github.com/fishinthecalculator/gocix",
+            "https://git.securityops.com.br/cristiancmoises/gocix.git",
             "main",
-            "5cbc7d0cb911dd27eb364d350ac5a1ef43308316",
+            "d4beb39153608a68d2278085847cee585ca851b5",
             (
                 "cdb78996334c4f63304ecce224e95bb96bfd4c7d",
                 "8D10 60B9 6BB8 292E 829B 7249 AED4 1CC1 93B7 01E2",
@@ -79,12 +81,12 @@ CHANNELS = {
         ),
         Channel(
             "small-guix",
-            "https://codeberg.org/fishinthecalculator/small-guix.git",
+            "https://git.securityops.com.br/cristiancmoises/small-guix.git",
             "main",
-            "042722ed1c20f41e3b85e6eee022f19cc2d1646d",
+            "26cc25719837c8c914079d0df82aafb0e4c66b78",
             (
-                "f260da13666cd41ae3202270784e61e062a3999c",
-                "8D10 60B9 6BB8 292E 829B 7249 AED4 1CC1 93B7 01E2",
+                "59de79f673669b798f650754b629404418464784",
+                "0CFA 43B9 AA96 42EA AF2B E983 C4C6 61C9 ECFB 46E8",
             ),
             (
                 "Small Guix: the Mullvad VPN package.",
@@ -92,28 +94,45 @@ CHANNELS = {
             ),
         ),
         Channel(
-            "guix-xlibre",
-            "https://gitlab.vulnix.sh/spacecadet/guix-xlibre.git",
-            "master",
-            "09edbfa3c5c4eaafbbb1947445c219ac53c465a6",
-            (),
+            "radix",
+            "https://git.securityops.com.br/cristiancmoises/radix.git",
+            "main",
+            "d12acbe81ae3a5ff9ad8b705a13a5d1613384df4",
             (
-                "Guix-Xlibre: XLibre X server (pinned commit; no signed introduction).",
-                "Guix-Xlibre: servidor X XLibre (commit fixo; sem introdução assinada).",
+                "f9130e11e35d2c147c6764ef85542dc58dc09c4f",
+                "F164 709E 5FC7 B32B AEC7 9F37 1F2E 76AC E3F5 31C8",
+            ),
+            (
+                "Radix: declarative system and home management built on Guix.",
+                "Radix: gerenciamento declarativo de sistema e home sobre Guix.",
+            ),
+        ),
+        Channel(
+            "rosenthal",
+            "https://git.securityops.com.br/cristiancmoises/rosenthal.git",
+            "trunk",
+            "bfe0d7379d399c7886e7c991d0c4bd01a3dfb015",
+            (
+                "7677db76330121a901604dfbad19077893865f35",
+                "13E7 6CD6 E649 C28C 3385 4DF5 5E5A A665 6149 17F7",
+            ),
+            (
+                "Rosenthal: hardware-first configuration layered over Radix.",
+                "Rosenthal: configuração orientada a hardware sobre Radix.",
             ),
         ),
         Channel(
             "securityops",
             "https://git.securityops.com.br/cristiancmoises/securityops-channel.git",
             "main",
-            "98df294f8e626cc16374a20785943c20eb1636ec",
+            "017b9e3aa09bbafca341dfba7c91ca96211e8020",
             (
-                "af46f5cce66179f3e53f87c86ca2538c8fc63f98",
+                "fb3223f3afdc14bab294c78d88e545eda2b146d9",
                 "0CFA 43B9 AA96 42EA AF2B E983 C4C6 61C9 ECFB 46E8",
             ),
             (
-                "Security Ops: curated apps (kitty, Tor Browser, Torando service).",
-                "Security Ops: apps curados (kitty, Tor Browser, serviço Torando).",
+                "Security Ops: curated apps, XLibre server, Torando service.",
+                "Security Ops: apps curados, servidor XLibre, serviço Torando.",
             ),
         ),
     )
@@ -126,11 +145,12 @@ OPTIONAL_NAMES = (
     "small-guix",
     "sops-guix",
     "gocix",
-    "guix-xlibre",
+    "radix",
+    "rosenthal",
 )
 
 DEPENDENCIES = {"small-guix": ("sops-guix", "gocix")}
-DESKTOP_DEPENDENCIES = {"xmonad-xlibre": ("guix-xlibre",)}
+DESKTOP_DEPENDENCIES = {"xmonad-xlibre": ("securityops",)}
 
 
 def normalize(channels, kernel="linux-libre", desktop="gnome", browsers=()):

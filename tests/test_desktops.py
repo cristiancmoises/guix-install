@@ -54,11 +54,11 @@ class DesktopWindowManagerTests(unittest.TestCase):
                 )
             )
 
-    def test_xmonad_xlibre_requires_xlibre_channel(self):
+    def test_xmonad_xlibre_requires_securityops_channel(self):
         from guix_installer import channels
 
         self.assertIn(
-            "guix-xlibre",
+            "securityops",
             channels.normalize((), "linux-libre", "xmonad-xlibre"),
         )
 

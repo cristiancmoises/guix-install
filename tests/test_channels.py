@@ -23,13 +23,26 @@ class ChannelSelectionTests(unittest.TestCase):
         text = channels.render(("securityops",), "linux-libre")
         self.assertIn("(list\n", text)
         self.assertIn("(name 'guix)", text)
-        self.assertIn('(commit "b9a35ee6b53438d53d66cbe3e82f26bb22a44b5b")', text)
+        self.assertIn('(commit "505ade83fc62b438c558653dd57f7fb3b197cc8f")', text)
+        self.assertIn('(commit "017b9e3aa09bbafca341dfba7c91ca96211e8020")', text)
         self.assertIn("(openpgp-fingerprint", text)
 
-    def test_guix_xlibre_has_no_introduction(self):
-        text = channels.render(("guix-xlibre",), "linux-libre")
-        xlibre = text.split("(name 'guix-xlibre)")[1].split(")\n (channel")[0]
-        self.assertNotIn("make-channel-introduction", xlibre)
+    def test_xlibre_now_comes_from_securityops(self):
+        selected = channels.normalize(("securityops",), "linux-libre", "xmonad-xlibre")
+        self.assertIn("securityops", selected)
+        self.assertNotIn("guix-xlibre", channels.OPTIONAL_NAMES)
+
+    def test_radix_and_rosenthal_are_authenticated(self):
+        text = channels.render(("radix", "rosenthal"), "linux-libre")
+        for name in ("radix", "rosenthal"):
+            block = text.split(f"(name '{name})")[1].split(")\n (channel")[0]
+            self.assertIn("make-channel-introduction", block)
+        self.assertIn(
+            "(commit \"d12acbe81ae3a5ff9ad8b705a13a5d1613384df4\")", text
+        )
+        self.assertIn(
+            "(commit \"bfe0d7379d399c7886e7c991d0c4bd01a3dfb015\")", text
+        )
 
     def test_selected_descriptions_exist_in_both_languages(self):
         for channel in channels.CHANNELS.values():
