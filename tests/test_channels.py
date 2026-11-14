@@ -37,12 +37,8 @@ class ChannelSelectionTests(unittest.TestCase):
         for name in ("radix", "rosenthal"):
             block = text.split(f"(name '{name})")[1].split(")\n (channel")[0]
             self.assertIn("make-channel-introduction", block)
-        self.assertIn(
-            "(commit \"d12acbe81ae3a5ff9ad8b705a13a5d1613384df4\")", text
-        )
-        self.assertIn(
-            "(commit \"bfe0d7379d399c7886e7c991d0c4bd01a3dfb015\")", text
-        )
+        self.assertIn('(commit "d12acbe81ae3a5ff9ad8b705a13a5d1613384df4")', text)
+        self.assertIn('(commit "bfe0d7379d399c7886e7c991d0c4bd01a3dfb015")', text)
 
     def test_selected_descriptions_exist_in_both_languages(self):
         for channel in channels.CHANNELS.values():

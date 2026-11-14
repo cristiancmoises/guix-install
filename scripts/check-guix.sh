@@ -69,7 +69,7 @@ if [ -n "${securityops_path:-}" ]; then
 fi
 
 mapfile -t configs < <(find "$check_dir" -maxdepth 1 -name '*.scm' ! -name '*channels.scm' | sort)
-mapfile -t base_configs < <(printf '%s\n' "${configs[@]}" | grep -vE '(river-xmonad|-torbrowser|-librewolf|-chromium|-zen-browser)\.scm$' || true)
+mapfile -t base_configs < <(printf '%s\n' "${configs[@]}" | grep -vE '(river-xmonad|xmonad-xlibre|-torbrowser|-librewolf|-chromium|-zen-browser)\.scm$' || true)
 if [ -n "${nonguix_path:-}" ] && [ -f /etc/securityops.defconfig ]; then
     if [ -n "${securityops_path:-}" ]; then
         GUIX_PACKAGE_PATH="$nonguix_path:$securityops_path" guix repl -q -- \
