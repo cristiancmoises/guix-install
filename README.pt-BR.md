@@ -69,8 +69,11 @@ O lançador baixado é código executável: inspecione `bootstrap.sh` antes de e
 ## Instale um pacote nativo
 
 Os pacotes pré-compilados da versão 0.5.0 ficam anexados à página da versão
-no GitHub e no Codeberg, junto com os `GuixInstall.exe` e `GuixInstall.msi`
-do Windows.
+no GitHub, no Codeberg e no
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0),
+junto com os `GuixInstall.exe` e `GuixInstall.msi` do Windows. No host da
+Security Ops os binários Debian, RPM, Arch e `.exe` seguem dentro de
+`guix-install-0.5.0-binaries.tar.gz`, cujo README explica o passo de renomear.
 
 Debian, Ubuntu e derivados:
 
@@ -161,7 +164,8 @@ O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, ins
 O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
 `GuixInstall.msi` (WiX) em windows-latest. Os artefatos do CI ficam anexados
 à [release v0.5.0](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.0)
-(espelho: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0)).
+(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0)).
 Execute como Administrador:
 
 ```bat

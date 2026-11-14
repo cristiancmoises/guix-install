@@ -66,8 +66,13 @@ A downloaded launcher is executable code: inspect `bootstrap.sh` first if you ne
 
 ## Install a native package
 
-Prebuilt packages for 0.5.0 are attached to the release page on GitHub and
-Codeberg, alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`.
+Prebuilt packages for 0.5.0 are attached to the release page on GitHub,
+Codeberg and
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0),
+alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`. On the
+Security Ops host the Debian, RPM, Arch and `.exe` binaries travel inside
+`guix-install-0.5.0-binaries.tar.gz`, which explains the rename step in its
+README.
 
 Debian, Ubuntu and derivatives:
 
@@ -160,7 +165,8 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
 (WiX) on windows-latest. The CI-built artifacts are attached to the
 [v0.5.0 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.0)
-(mirror: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0)).
+(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0)).
 Run as Administrator:
 
 ```bat
