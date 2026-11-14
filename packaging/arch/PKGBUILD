@@ -18,8 +18,10 @@ optdepends=(
 prepare() {
   local repo="$startdir/../.."
   mkdir -p "$srcdir/$pkgname-$pkgver"
+  mkdir -p "$srcdir/$pkgname-$pkgver/packaging"
   cp -a "$repo/guix_installer" "$repo/run.py" "$repo/vendor" "$repo/assets" \
-    "$repo/packaging" "$srcdir/$pkgname-$pkgver/"
+    "$srcdir/$pkgname-$pkgver/"
+  cp -a "$repo/packaging/linux" "$srcdir/$pkgname-$pkgver/packaging/"
 }
 
 package() {
