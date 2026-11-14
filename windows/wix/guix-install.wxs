@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-  <Product Id="*" Name="GNU Guix Installer" Language="1033" Version="0.4.0"
+  <Product Id="*" Name="GNU Guix Installer" Language="1033" Version="0.4.1"
            Manufacturer="Security Ops"
            UpgradeCode="C8B42D1F-3C21-4D9A-9B1F-7F5A0D2E6B30">
     <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />

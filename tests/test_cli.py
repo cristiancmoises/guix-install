@@ -24,7 +24,7 @@ class CliTests(unittest.TestCase):
         result = self.cli("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("wizard", result.stdout)
-        self.assertIn("0.4.0", self.cli("--version").stdout)
+        self.assertIn("0.4.1", self.cli("--version").stdout)
 
     def test_plan_is_unprivileged_and_explicit(self):
         result = self.cli("plan", "--mode", "system", "--disk", "/dev/example")

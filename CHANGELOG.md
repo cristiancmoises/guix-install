@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 — 2026-11-13
 
 - Align the channel catalogue with the Security Ops OS v1.14.0 channel graph:
   guix 505ade83, nonguix c241d19f, small-guix 26cc257 with its signed Security
@@ -13,6 +13,13 @@
   securityops automatically.
 - Keep the newest-stable kernel resolution at Linux 7.3.4 with its bundled
   SHA-256 verification.
+- Add browser-selected channels to the target channels.scm so the
+  time-machine closure resolves the Security Ops browser packages.
+- Ask the wizard for an optional custom securityops defconfig path.
+- Use exact-size buffers for the Windows read-back verification and report
+  actual PowerShell availability in the Windows doctor command.
+- Keep the bootstrap launcher User-Agent in sync with the release and ship
+  Windows exe/msi build artifacts for this version.
 
 ## 0.4.0 — 2026-11-13
 

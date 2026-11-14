@@ -724,7 +724,7 @@ def render_config(options, root_uuid, esp_uuid):
                 "(define river-xmonad-session-entry\n"
                 "  (package\n"
                 '    (name "river-xmonad-session-entry")\n'
-                '    (version "0.4.0")\n'
+                '    (version "0.4.1")\n'
                 "    (source #f)\n"
                 "    (build-system trivial-build-system)\n"
                 "    (arguments\n"
