@@ -40,6 +40,6 @@ install -Dm644 assets/guix-logo.png %{buildroot}%{_datadir}/pixmaps/guix-logo.pn
 %{_datadir}/pixmaps/guix-logo.png
 
 %changelog
-* Fri Nov 14 2026 Security Ops <sac@securityops.co> - 0.5.0-1
+* Sat Nov 14 2026 Security Ops <sac@securityops.co> - 0.5.0-1
 - Add Zen, Linux, Linux-libre and SecurityOps kernel choices with an
   optional defconfig for every kernel.
