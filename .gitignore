@@ -4,6 +4,13 @@ __pycache__/
 .superpowers/
 .worktrees/
 .evidence/
+dist/
+# debhelper work files from local dpkg-buildpackage runs
+packaging/debian/files
+packaging/debian/guix-install.substvars
+packaging/debian/debhelper-build-stamp
+packaging/debian/.debhelper/
+packaging/debian/guix-install/
 
 # Local agent instructions, working documents, reports and backups.
 .codex-local/

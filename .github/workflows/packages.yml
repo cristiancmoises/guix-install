@@ -1,0 +1,75 @@
+name: Build Linux packages
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deb:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Debian tooling
+        run: sudo apt-get update && sudo apt-get install -y debhelper fakeroot
+      - name: Build .deb
+        run: dpkg-buildpackage -us -uc -b
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          cp ../guix-install_*_all.deb dist/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: guix-install-deb
+          path: dist/guix-install_*.deb
+  rpm:
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install RPM tooling
+        run: dnf install -y rpm-build git
+      - name: Build .rpm
+        run: |
+          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          git -c safe.directory='*' archive --format=tar.gz \
+            --prefix=guix-install-0.4.1/ \
+            -o rpmbuild/SOURCES/guix-install-0.4.1.tar.gz HEAD
+          rpmbuild --define "_topdir $PWD/rpmbuild" -ba packaging/rpm/guix-install.spec
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: guix-install-rpm
+          path: rpmbuild/RPMS/noarch/guix-install-*.rpm
+  arch:
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Arch tooling
+        run: pacman -Sy --noconfirm base-devel git
+      - name: Build Arch package
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+          su builder -c 'cd packaging/arch && makepkg -f'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: guix-install-arch
+          path: packaging/arch/guix-install-*.pkg.tar.zst
+  portable:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build portable tarball
+        run: sh packaging/linux/build-portable.sh
+      - name: Smoke test the relocatable bundle
+        run: |
+          mkdir -p /tmp/gi-smoke
+          tar -xzf dist/guix-install-*-linux-x86_64.tar.gz -C /tmp/gi-smoke
+          /tmp/gi-smoke/guix-install-0.4.1-linux-x86_64/bin/guix-install --version
+          /tmp/gi-smoke/guix-install-0.4.1-linux-x86_64/bin/guix-install plan --help >/dev/null
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: guix-install-portable
+          path: dist/guix-install-*.tar.gz

@@ -64,6 +64,45 @@ bash -o pipefail -c 'curl --proto "=https" --tlsv1.2 -fsSL https://raw.githubuse
 
 A downloaded launcher is executable code: inspect `bootstrap.sh` first if you need to audit it. HTTPS protects the initial download; the embedded hashes protect its pinned payload, not a compromised launcher or hosting account. The launcher never installs distribution dependencies automatically.
 
+## Install a native package
+
+Prebuilt packages for 0.4.1 are attached to the release page on GitHub and
+Codeberg, alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`.
+
+Debian, Ubuntu and derivatives:
+
+```sh
+sudo apt install ./guix-install_0.4.1-1_all.deb
+```
+
+Fedora, RHEL, openSUSE and other RPM distributions:
+
+```sh
+sudo dnf install ./guix-install-0.4.1-1.noarch.rpm
+```
+
+Arch Linux and derivatives (build from the `packaging/arch` PKGBUILD):
+
+```sh
+cd packaging/arch
+makepkg -si
+```
+
+Any other distribution: extract the portable tarball and add its `bin`
+directory to your `PATH`:
+
+```sh
+tar -xzf guix-install-0.4.1-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.4.1-linux-x86_64/bin:$PATH"
+guix-install gui
+```
+
+Every package installs the same runtime: the `guix-install` command opens the
+GUI when Python Tk and a display are available, otherwise the terminal
+wizard. As with the one-line launcher, the packages never install
+distribution dependencies automatically; they require Python 3.10+ and
+recommend tk, sudo, curl, wget, gnupg and xz.
+
 ## Choose what to install
 
 | Mode | What changes | Requirements |

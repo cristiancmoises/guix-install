@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+%:
+	dh $@
+
+override_dh_auto_build:
+override_dh_auto_test:
+override_dh_auto_install:
+	mkdir -p debian/guix-install/usr/lib/guix-install
+	cp -r guix_installer run.py vendor assets debian/guix-install/usr/lib/guix-install/
+	find debian/guix-install/usr/lib/guix-install -type d -name '__pycache__' -prune -exec rm -r {} +
+	install -Dm755 packaging/linux/guix-install debian/guix-install/usr/bin/guix-install
+	install -Dm644 packaging/linux/guix-install.desktop debian/guix-install/usr/share/applications/guix-install.desktop
+	install -Dm644 assets/guix-logo.png debian/guix-install/usr/share/pixmaps/guix-logo.png

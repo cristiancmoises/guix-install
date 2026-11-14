@@ -20,6 +20,11 @@
   actual PowerShell availability in the Windows doctor command.
 - Keep the bootstrap launcher User-Agent in sync with the release and ship
   Windows exe/msi build artifacts for this version.
+- Ship native Linux packages for 0.4.1: a Debian `.deb`, a Fedora/EL
+  `.noarch.rpm`, an Arch `pkg.tar.zst` and a relocatable portable tarball,
+  built by a new packaging workflow and attached to the release on GitHub
+  and Codeberg.
+- Document package installation commands in the bilingual READMEs.
 
 ## 0.4.0 — 2026-11-13
 

@@ -1,0 +1,19 @@
+Source: guix-install
+Section: utils
+Priority: optional
+Maintainer: Security Ops <sac@securityops.co>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+Homepage: https://github.com/cristiancmoises/guix-install
+Vcs-Git: https://github.com/cristiancmoises/guix-install.git
+Vcs-Browser: https://github.com/cristiancmoises/guix-install
+
+Package: guix-install
+Architecture: all
+Depends: ${misc:Depends}, python3 (>= 3.10)
+Recommends: python3-tk, sudo, curl, wget, gnupg, xz-utils
+Description: install GNU Guix from any GNU/Linux distribution
+ Native GUI and terminal installer for the Guix package manager and for
+ Guix System. Plans are read-only and disk installation always requires
+ the exact device name, with busy and protected disks refused.

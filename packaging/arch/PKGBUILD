@@ -1,0 +1,36 @@
+pkgname=guix-install
+pkgver=0.4.1
+pkgrel=1
+pkgdesc="Install GNU Guix from any GNU/Linux distribution"
+arch=('any')
+url="https://github.com/cristiancmoises/guix-install"
+license=('GPL3')
+depends=('python>=3.10')
+makedepends=('git')
+optdepends=(
+  'tk: native GUI'
+  'sudo: privileged installation steps'
+  'curl: download backend'
+  'wget: download backend'
+  'gnupg: signature verification'
+  'xz: archive handling'
+)
+
+prepare() {
+  mkdir -p "$srcdir/$pkgname-$pkgver"
+  if ! git -C "$startdir/../.." archive HEAD | tar -x -C "$srcdir/$pkgname-$pkgver"; then
+    cp -a "$startdir/../.."/. "$srcdir/$pkgname-$pkgver/"
+  fi
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  install -dm755 "$pkgdir/usr/lib/guix-install"
+  cp -r guix_installer run.py vendor assets "$pkgdir/usr/lib/guix-install/"
+  find "$pkgdir/usr/lib/guix-install" -type d -name '__pycache__' -prune -exec rm -r {} +
+  install -Dm755 packaging/linux/guix-install "$pkgdir/usr/bin/guix-install"
+  install -Dm644 packaging/linux/guix-install.desktop \
+    "$pkgdir/usr/share/applications/guix-install.desktop"
+  install -Dm644 assets/guix-logo.png \
+    "$pkgdir/usr/share/pixmaps/guix-logo.png"
+}

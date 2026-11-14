@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=GNU Guix Installer
+GenericName=Guix installer
+Comment=Install GNU Guix on GNU/Linux
+Exec=guix-install gui
+Icon=guix-logo
+Terminal=false
+Categories=System;Settings;
+Keywords=guix;installer;system;

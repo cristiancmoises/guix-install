@@ -65,6 +65,46 @@ bash -o pipefail -c 'curl --proto "=https" --tlsv1.2 -fsSL https://raw.githubuse
 
 O lançador baixado é código executável: inspecione `bootstrap.sh` antes de executar se precisar auditá-lo. HTTPS protege o download inicial; os hashes protegem o conteúdo fixado, mas não um lançador ou uma conta de hospedagem comprometidos. Dependências da distribuição nunca são instaladas automaticamente.
 
+## Instale um pacote nativo
+
+Os pacotes pré-compilados da versão 0.4.1 ficam anexados à página da versão
+no GitHub e no Codeberg, junto com os `GuixInstall.exe` e `GuixInstall.msi`
+do Windows.
+
+Debian, Ubuntu e derivados:
+
+```sh
+sudo apt install ./guix-install_0.4.1-1_all.deb
+```
+
+Fedora, RHEL, openSUSE e demais distribuições RPM:
+
+```sh
+sudo dnf install ./guix-install-0.4.1-1.noarch.rpm
+```
+
+Arch Linux e derivados (compile a partir do PKGBUILD em `packaging/arch`):
+
+```sh
+cd packaging/arch
+makepkg -si
+```
+
+Qualquer outra distribuição: extraia o tarball portátil e adicione o
+diretório `bin` ao `PATH`:
+
+```sh
+tar -xzf guix-install-0.4.1-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.4.1-linux-x86_64/bin:$PATH"
+guix-install gui
+```
+
+Todos os pacotes instalam o mesmo programa: o comando `guix-install` abre a
+GUI quando o Python Tk e uma tela estão disponíveis; caso contrário, abre o
+assistente do terminal. Assim como no lançador de um comando, os pacotes
+nunca instalam dependências da distribuição automaticamente; eles exigem
+Python 3.10+ e recomendam tk, sudo, curl, wget, gnupg e xz.
+
 ## Escolha o que instalar
 
 | Modo | Alterações | Requisitos |
