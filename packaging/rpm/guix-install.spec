@@ -1,10 +1,10 @@
 Name:           guix-install
-Version:        0.4.1
+Version:        0.5.0
 Release:        1
 Summary:        Install GNU Guix from any GNU/Linux distribution
 License:        GPL-3.0-or-later
 URL:            https://github.com/cristiancmoises/guix-install
-Source0:        guix-install-0.4.1.tar.gz
+Source0:        guix-install-%{version}.tar.gz
 BuildArch:      noarch
 Requires:       python3 >= 3.10
 Recommends:     python3-tkinter
@@ -40,5 +40,6 @@ install -Dm644 assets/guix-logo.png %{buildroot}%{_datadir}/pixmaps/guix-logo.pn
 %{_datadir}/pixmaps/guix-logo.png
 
 %changelog
-* Fri Nov 13 2026 Security Ops <sac@securityops.co> - 0.4.1-1
-- First native RPM packaging of the 0.4.1 installer.
+* Fri Nov 14 2026 Security Ops <sac@securityops.co> - 0.5.0-1
+- Add Zen, Linux, Linux-libre and SecurityOps kernel choices with an
+  optional defconfig for every kernel.

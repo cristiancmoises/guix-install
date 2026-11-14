@@ -12,6 +12,7 @@ class ChannelSelectionTests(unittest.TestCase):
 
     def test_blob_kernels_require_nonguix(self):
         self.assertIn("nonguix", channels.normalize((), "linux"))
+        self.assertIn("nonguix", channels.normalize((), "zen"))
         self.assertIn("nonguix", channels.normalize((), "securityops"))
         self.assertNotIn("nonguix", channels.normalize((), "linux-libre"))
 

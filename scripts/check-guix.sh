@@ -13,6 +13,10 @@ from guix_installer.core import Options, render_config
 
 destination = Path(sys.argv[1])
 uuid = '11111111-1111-1111-1111-111111111111'
+defconfig_path = str(destination / 'guix-install.defconfig')
+(destination / 'guix-install.defconfig').write_text(
+    (Path('assets/securityops.defconfig').read_text())
+)
 configs = [
     Options(mode='system', disk='/dev/example', desktop='gnome'),
     Options(mode='system', disk='/dev/example', desktop='minimal'),
@@ -35,14 +39,24 @@ configs = [
             kernel='securityops', kernel_version='7.3.4',
             channels=('securityops', 'small-guix')),
     Options(mode='system', disk='/dev/example', desktop='gnome',
+            kernel='zen', kernel_version='7.3.4'),
+    Options(mode='system', disk='/dev/example', desktop='gnome',
+            kernel='linux', kernel_version='7.3.4',
+            kernel_config=defconfig_path),
+    Options(mode='system', disk='/dev/example', desktop='gnome',
+            kernel='linux-libre', kernel_config=defconfig_path),
+    Options(mode='system', disk='/dev/example', desktop='gnome',
             browsers=('torbrowser', 'librewolf', 'chromium', 'zen-browser'),
             default_browser='zen-browser'),
 ]
 for options in configs:
     terminal_part = '-'.join(options.terminals) or 'none'
     browser_part = '-'.join(options.browsers) or 'none'
-    name = f'{options.kernel}-{options.desktop}-{terminal_part}-{browser_part}.scm'
-    (destination / name).write_text(render_config(options, uuid, 'ABCD-1234'))
+    config_part = 'custom-defconfig' if options.kernel_config else 'stock'
+    name = f'{options.kernel}-{options.desktop}-{config_part}-{terminal_part}-{browser_part}.scm'
+    (destination / name).write_text(
+        render_config(options, uuid, 'ABCD-1234', defconfig_path=defconfig_path)
+    )
 (destination / 'guix-only-channels.scm').write_text(channels_catalog.render((), 'linux-libre'))
 (destination / 'all-channels.scm').write_text(
     channels_catalog.render(
@@ -70,7 +84,7 @@ fi
 
 mapfile -t configs < <(find "$check_dir" -maxdepth 1 -name '*.scm' ! -name '*channels.scm' | sort)
 mapfile -t base_configs < <(printf '%s\n' "${configs[@]}" | grep -vE '(river-xmonad|xmonad-xlibre|-torbrowser|-librewolf|-chromium|-zen-browser)\.scm$' || true)
-if [ -n "${nonguix_path:-}" ] && [ -f /etc/securityops.defconfig ]; then
+if [ -n "${nonguix_path:-}" ] && [ -f "$check_dir/guix-install.defconfig" ]; then
     if [ -n "${securityops_path:-}" ]; then
         GUIX_PACKAGE_PATH="$nonguix_path:$securityops_path" guix repl -q -- \
             "$repo_dir/tests/check-guix.scm" \

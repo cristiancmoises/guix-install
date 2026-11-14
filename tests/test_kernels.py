@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from guix_installer import core, kernels
@@ -84,23 +85,64 @@ class KernelConfigTests(unittest.TestCase):
             kernel_version="7.3.4",
         )
         config = core.render_config(options, self.UUID, "ABCD-1234")
-        self.assertIn("(inherit linux)", config)
+        self.assertIn("(customize-linux", config)
+        self.assertIn("#:linux linux", config)
         self.assertIn(
-            '((#:defconfig _) (list (local-file "/etc/securityops.defconfig")))',
+            '#:defconfig (local-file "/etc/guix-install.defconfig")',
             config,
         )
         self.assertIn('(kernel-arguments \'("mitigations=on"', config)
         self.assertIn('"slab_nomerge"', config)
         self.assertIn("(kernel securityops)", config)
 
-    def test_defconfig_only_for_securityops(self):
-        with self.assertRaises(core.InstallError):
-            core.validate_options(
-                core.Options(
-                    mode="system",
-                    kernel="linux-libre",
-                    kernel_config="/etc/securityops.defconfig",
+    def test_zen_config_is_tuned_mainline(self):
+        options = core.Options(
+            mode="system",
+            disk="/dev/example",
+            kernel="zen",
+            kernel_version="7.3.4",
+        )
+        config = core.render_config(options, self.UUID, "ABCD-1234")
+        self.assertIn("(define linux-zen", config)
+        self.assertIn("#:defconfig \"nonguix_defconfig\"", config)
+        self.assertIn('"CONFIG_HZ=1000\\n', config)
+        self.assertIn("(kernel linux-zen)", config)
+        self.assertIn("(firmware (list linux-firmware))", config)
+        self.assertIn('(kernel-arguments \'("preempt=full"', config)
+
+    def test_zen_accepts_custom_defconfig_without_tuning_overrides(self):
+        options = core.Options(
+            mode="system",
+            disk="/dev/example",
+            kernel="zen",
+            kernel_version="7.3.4",
+            kernel_config="/tmp/example.defconfig",
+        )
+        with patch.object(Path, "is_file", return_value=True):
+            config = core.render_config(options, self.UUID, "ABCD-1234")
+        self.assertIn(
+            '#:defconfig (local-file "/etc/guix-install.defconfig")', config
+        )
+        self.assertNotIn("#:configs", config)
+
+    def test_defconfig_applies_to_every_kernel(self):
+        for kernel in ("linux-libre", "linux", "zen", "securityops"):
+            with self.subTest(kernel=kernel), patch.object(
+                Path, "is_file", return_value=True
+            ):
+                config = core.render_config(
+                    core.Options(
+                        mode="system",
+                        disk="/dev/example",
+                        kernel=kernel,
+                        kernel_version="7.3.4",
+                        kernel_config="/tmp/example.defconfig",
+                    ),
+                    self.UUID,
+                    "ABCD-1234",
                 )
+            self.assertIn(
+                '(local-file "/etc/guix-install.defconfig")', config
             )
 
     def test_invalid_kernel_version_is_refused(self):

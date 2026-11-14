@@ -156,7 +156,7 @@ DESKTOP_DEPENDENCIES = {"xmonad-xlibre": ("securityops",)}
 def normalize(channels, kernel="linux-libre", desktop="gnome", browsers=()):
     """Close dependencies and apply kernel/browser requirements, in stable order."""
     selected = {name for name in channels if name in OPTIONAL_NAMES}
-    if kernel in {"linux", "securityops"}:
+    if kernel in {"linux", "zen", "securityops"}:
         selected.add("nonguix")
     if browsers:
         selected.add("securityops")

@@ -72,9 +72,9 @@ def parser():
     )
     result.add_argument(
         "--kernel",
-        choices=["linux-libre", "linux", "securityops"],
+        choices=["linux-libre", "linux", "zen", "securityops"],
         default="linux-libre",
-        help="kernel to install (linux and securityops always use the newest kernel.org release)",
+        help="kernel to install (linux, zen and securityops always use the newest kernel.org release)",
     )
     result.add_argument(
         "--kernel-version",
@@ -84,7 +84,7 @@ def parser():
     result.add_argument(
         "--kernel-config",
         default="",
-        help="defconfig file applied to the securityops kernel (default: bundled)",
+        help="defconfig file applied to the selected kernel (securityops defaults to the bundled hardened config)",
     )
     result.add_argument(
         "--channel",
@@ -239,18 +239,21 @@ def choose_options(options, language):
         print("\n" + tr("kernel", language) + ":")
         print("  1. " + tr("kernel_linux_libre", language))
         print("  2. " + tr("kernel_linux", language))
-        print("  3. " + tr("kernel_securityops", language))
-        kernel = input("[1/2/3] (1): ").strip() or "1"
-        options.kernel = {"1": "linux-libre", "2": "linux", "3": "securityops"}.get(
-            kernel
-        )
+        print("  3. " + tr("kernel_zen", language))
+        print("  4. " + tr("kernel_securityops", language))
+        kernel = input("[1/2/3/4] (1): ").strip() or "1"
+        options.kernel = {
+            "1": "linux-libre",
+            "2": "linux",
+            "3": "zen",
+            "4": "securityops",
+        }.get(kernel)
         if not options.kernel:
-            raise core.InstallError("Choose 1, 2 or 3.")
+            raise core.InstallError("Choose 1, 2, 3 or 4.")
         options.kernel_version = input(
             tr("kernel_version", language) + " [" + tr("latest", language) + "]: "
         ).strip()
-        if options.kernel == "securityops":
-            options.kernel_config = input(tr("kernel_config", language) + ": ").strip()
+        options.kernel_config = input(tr("kernel_config", language) + ": ").strip()
         selected = []
         print("\n" + tr("channels_help", language))
         for name in core.channels_catalog.OPTIONAL_NAMES:

@@ -26,6 +26,7 @@ from . import kernels
 ROOT = Path(__file__).resolve().parents[1]
 LOGGER = logging.getLogger(__name__)
 MIN_DISK = 32 * 1024**3
+HOST_DEFCONFIG_PATH = "/etc/guix-install.defconfig"
 SYSTEM_TOOLS = (
     "lsblk",
     "findmnt",
@@ -160,6 +161,8 @@ def river_skeleton(terminal, browser="", manager=""):
 
 
 TERMINAL_CHOICES = ("wezterm", "kitty", "foot", "alacritty")
+KERNEL_CHOICES = ("linux-libre", "linux", "zen", "securityops")
+NONGUIX_KERNELS = {"linux", "zen", "securityops"}
 
 BROWSER_CHOICES = {
     "torbrowser": ("torbrowser", "(securityops packages tor)"),
@@ -230,14 +233,14 @@ def validate_options(options):
         raise InstallError("Unknown browsers: " + ", ".join(sorted(unknown_browsers)))
     if options.default_browser and options.default_browser not in options.browsers:
         raise InstallError("Default browser must be one of the selected browsers.")
-    if options.kernel not in {"linux-libre", "linux", "securityops"}:
-        raise InstallError("Kernel must be linux-libre, linux or securityops.")
+    if options.kernel not in KERNEL_CHOICES:
+        raise InstallError(
+            "Kernel must be linux-libre, linux, zen or securityops."
+        )
     if options.kernel_version and not kernels.VERSION_PATTERN.fullmatch(
         options.kernel_version
     ):
         raise InstallError("Kernel version must look like 7.3.4, 7.3, or latest.")
-    if options.kernel_config and options.kernel != "securityops":
-        raise InstallError("A defconfig only applies to the securityops kernel.")
     if options.kernel_config:
         path = Path(options.kernel_config)
         if not path.is_file():
@@ -585,6 +588,9 @@ def make_plan(options):
     elif options.kernel == "linux":
         version = kernels.resolve(options.kernel_version)[0]
         kernel_line = f"Linux {version} (kernel.org, newest stable) + firmware."
+    elif options.kernel == "zen":
+        version = kernels.resolve(options.kernel_version)[0]
+        kernel_line = f"Zen {version} (kernel.org newest stable, low-latency tuning) + firmware."
     else:
         version = kernels.resolve(options.kernel_version)[0]
         kernel_line = (
@@ -626,7 +632,9 @@ def make_plan(options):
     ]
 
 
-def render_config(options, root_uuid, esp_uuid):
+def render_config(
+    options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PATH
+):
     validate_options(options)
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", root_uuid) or not re.fullmatch(
         r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}", esp_uuid
@@ -635,40 +643,101 @@ def render_config(options, root_uuid, esp_uuid):
     modules = "(use-modules (gnu) (gnu services desktop) (gnu system shadow))"
     kernel_fields = ""
     definitions = ""
-    if options.kernel in {"linux", "securityops"}:
+    kernel = options.kernel
+    if kernel in NONGUIX_KERNELS:
         modules += (
-            "\n(use-modules (guix download) (guix gexp) (guix packages) (guix utils)"
-            "\n             (nongnu packages linux) (nongnu system linux-initrd))"
+            "\n(use-modules (guix download) (guix gexp) (guix packages)"
+            "\n             (gnu packages linux) (nongnu packages linux)"
+            "\n             (nongnu system linux-initrd))"
         )
-        version, digest = kernels.resolve(options.kernel_version)
-        name = "securityops" if options.kernel == "securityops" else "linux-latest"
-        definitions = (
-            f"(define {name}\n"
-            f"  (package\n"
-            f"    (inherit linux)\n"
-            f'    (name "{name}")\n'
-            f'    (version "{version}")\n'
-            f"    (source {kernels.source_origin(version, digest)})"
-        )
-        if options.kernel == "securityops":
-            definitions += (
-                "\n    (arguments\n"
-                "     (substitute-keyword-arguments (package-arguments linux)\n"
-                '       ((#:defconfig _) (list (local-file "/etc/securityops.defconfig")))\n'
-                "       ((#:phases phases) phases)))"
+    elif kernel == "linux-libre" and options.kernel_config:
+        modules += "\n(use-modules (guix gexp) (gnu packages linux))"
+    if kernel == "linux-libre":
+        if options.kernel_config:
+            definitions = (
+                "(define linux-libre-custom\n"
+                "  (customize-linux\n"
+                '    #:name "linux-libre-custom"\n'
+                "    #:linux linux-libre\n"
+                f'    #:defconfig (local-file "{defconfig_path}")))\n\n'
             )
-        definitions += "))\n\n"
+            kernel_fields = "\n  (kernel linux-libre-custom)"
+    else:
+        version, digest = kernels.resolve(options.kernel_version)
+        source = kernels.source_origin(version, digest)
+        if kernel == "linux":
+            name = "linux-latest"
+            if options.kernel_config:
+                definitions = (
+                    f"(define {name}\n"
+                    "  (package\n"
+                    "    (inherit (customize-linux\n"
+                    f'               #:name "{name}"\n'
+                    "               #:linux linux\n"
+                    f"               #:source {source}\n"
+                    f'               #:defconfig (local-file "{defconfig_path}")))\n'
+                    f'    (version "{version}")))\n\n'
+                )
+            else:
+                definitions = (
+                    f"(define {name}\n"
+                    "  (package\n"
+                    "    (inherit linux)\n"
+                    f'    (name "{name}")\n'
+                    f'    (version "{version}")\n'
+                    f"    (source {source})))\n\n"
+                )
+        elif kernel == "zen":
+            name = "linux-zen"
+            config_line = ""
+            if options.kernel_config:
+                defconfig_arg = f'(local-file "{defconfig_path}")'
+            else:
+                defconfig_arg = '"nonguix_defconfig"'
+                escaped = (
+                    kernels.ZEN_KERNEL_CONFIGS
+                    .replace("\\", "\\\\")
+                    .replace('"', '\\"')
+                    .replace("\n", "\\n")
+                )
+                config_line = f'\n               #:configs "{escaped}"'
+            definitions = (
+                f"(define {name}\n"
+                "  (package\n"
+                "    (inherit (customize-linux\n"
+                f'               #:name "{name}"\n'
+                "               #:linux linux\n"
+                f"               #:source {source}\n"
+                f"               #:defconfig {defconfig_arg}{config_line}))\n"
+                f'    (version "{version}")))\n\n'
+            )
+        else:
+            name = "securityops"
+            definitions = (
+                f"(define {name}\n"
+                "  (package\n"
+                "    (inherit (customize-linux\n"
+                f'               #:name "{name}"\n'
+                "               #:linux linux\n"
+                f"               #:source {source}\n"
+                f'               #:defconfig (local-file "{defconfig_path}")))\n'
+                f'    (version "{version}")))\n\n'
+            )
         kernel_fields = (
             f"\n  (kernel {name})"
             "\n  (firmware (list linux-firmware))"
             "\n  (initrd microcode-initrd)"
         )
-        if options.kernel == "securityops":
+        if kernel == "securityops":
+            arguments = kernels.SECURITYOPS_KERNEL_ARGUMENTS
+        elif kernel == "zen":
+            arguments = kernels.ZEN_KERNEL_ARGUMENTS
+        else:
+            arguments = ()
+        if arguments:
             kernel_fields += (
                 "\n  (kernel-arguments '("
-                + " ".join(
-                    f'"{argument}"' for argument in kernels.SECURITYOPS_KERNEL_ARGUMENTS
-                )
+                + " ".join(f'"{argument}"' for argument in arguments)
                 + "))"
             )
     desktop_service = ""
@@ -724,7 +793,7 @@ def render_config(options, root_uuid, esp_uuid):
                 "(define river-xmonad-session-entry\n"
                 "  (package\n"
                 '    (name "river-xmonad-session-entry")\n'
-                '    (version "0.4.1")\n'
+                '    (version "0.5.0")\n'
                 "    (source #f)\n"
                 "    (build-system trivial-build-system)\n"
                 "    (arguments\n"
@@ -849,14 +918,18 @@ def install_manager():
     run(["bash", str(script)], env=environment)
 
 
-def stage_securityops_defconfig(options, target):
-    """Reproduce the maintainer's kernel recipe: /etc/securityops.defconfig.
+def stage_kernel_defconfig(
+    options, target, defconfig_path=HOST_DEFCONFIG_PATH
+):
+    """Stage the selected defconfig for any kernel that uses one.
 
     The generated config references the defconfig through `local-file`, so the
     host file is evaluated during `guix system init` and the identical file is
-    shipped to the target for later `guix system reconfigure`.
+    shipped to the target for later `guix system reconfigure`. The securityops
+    kernel uses the bundled hardened defconfig; every other kernel uses the
+    user-supplied defconfig when one is provided.
     """
-    if options.kernel != "securityops":
+    if not options.kernel_config and options.kernel != "securityops":
         return
     source = (
         Path(options.kernel_config)
@@ -866,13 +939,14 @@ def stage_securityops_defconfig(options, target):
     if not source.is_file():
         raise InstallError(f"Defconfig not found: {source}")
     content = source.read_text()
-    host_path = Path("/etc/securityops.defconfig")
+    host_path = Path(defconfig_path)
+    host_name = host_path.name
     if host_path.is_symlink():
-        raise InstallError("Refusing symlink /etc/securityops.defconfig.")
+        raise InstallError(f"Refusing symlink {host_path}.")
     if host_path.exists():
         if host_path.read_text() != content:
             raise InstallError(
-                "/etc/securityops.defconfig differs from the selected source; "
+                f"{host_path} differs from the selected source; "
                 "remove it or select it with --kernel-config."
             )
     else:
@@ -881,7 +955,7 @@ def stage_securityops_defconfig(options, target):
     target_etc = target / "etc"
     target_etc.mkdir(mode=0o755, exist_ok=True)
     target_etc.chmod(0o755)
-    target_path = target_etc / "securityops.defconfig"
+    target_path = target_etc / host_name
     target_path.write_text(content)
     target_path.chmod(0o644)
 
@@ -1068,7 +1142,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
             channels = etc / "channels.scm"
             channels.write_text(render_channels_file(options))
             channels.chmod(0o600)
-            stage_securityops_defconfig(options, target)
+            stage_kernel_defconfig(options, target)
             mounted_target_is_current()
             run(
                 [

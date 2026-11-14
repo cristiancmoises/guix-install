@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0 — 2026-11-14
+
+- Add a Zen kernel choice: the newest kernel.org source on the Nonguix Linux
+  base with low-latency desktop tuning and firmware, still resolved at plan
+  time and SHA-256-pinned.
+- Let every kernel accept an optional defconfig: linux-libre, linux, zen and
+  securityops now stage the selected file and build through `customize-linux`,
+  so the defconfig is actually applied instead of being silently ignored.
+- Keep linux and securityops on the newest stable kernel.org release, 7.3.4.
+
 ## 0.4.1 — 2026-11-13
 
 - Align the channel catalogue with the Security Ops OS v1.14.0 channel graph:

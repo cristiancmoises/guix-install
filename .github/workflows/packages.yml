@@ -32,12 +32,13 @@ jobs:
         run: dnf install -y rpm-build git
       - name: Build .rpm
         run: |
+          VERSION="$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' guix_installer/__init__.py)"
           mkdir -p rpmbuild/BUILD rpmbuild/RPMS rpmbuild/SOURCES \
-            rpmbuild/SPECS rpmbuild/SRPMS rpmbuild/SOURCES/guix-install-0.4.1
+            rpmbuild/SPECS rpmbuild/SRPMS rpmbuild/SOURCES/guix-install-${VERSION}
           cp -r guix_installer run.py vendor assets packaging \
-            rpmbuild/SOURCES/guix-install-0.4.1/
-          tar -C rpmbuild/SOURCES -czf rpmbuild/SOURCES/guix-install-0.4.1.tar.gz \
-            guix-install-0.4.1
+            rpmbuild/SOURCES/guix-install-${VERSION}/
+          tar -C rpmbuild/SOURCES -czf rpmbuild/SOURCES/guix-install-${VERSION}.tar.gz \
+            guix-install-${VERSION}
           rpmbuild --define "_topdir $PWD/rpmbuild" -ba packaging/rpm/guix-install.spec
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -69,8 +70,9 @@ jobs:
         run: |
           mkdir -p /tmp/gi-smoke
           tar -xzf dist/guix-install-*-linux-x86_64.tar.gz -C /tmp/gi-smoke
-          /tmp/gi-smoke/guix-install-0.4.1-linux-x86_64/bin/guix-install --version
-          /tmp/gi-smoke/guix-install-0.4.1-linux-x86_64/bin/guix-install plan --help >/dev/null
+          bundle_dir="$(find /tmp/gi-smoke -maxdepth 1 -type d -name 'guix-install-*-linux-x86_64' | head -1)"
+          "${bundle_dir}/bin/guix-install" --version
+          "${bundle_dir}/bin/guix-install" plan --help >/dev/null
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: guix-install-portable

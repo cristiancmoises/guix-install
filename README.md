@@ -66,19 +66,19 @@ A downloaded launcher is executable code: inspect `bootstrap.sh` first if you ne
 
 ## Install a native package
 
-Prebuilt packages for 0.4.1 are attached to the release page on GitHub and
+Prebuilt packages for 0.5.0 are attached to the release page on GitHub and
 Codeberg, alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`.
 
 Debian, Ubuntu and derivatives:
 
 ```sh
-sudo apt install ./guix-install_0.4.1-1_all.deb
+sudo apt install ./guix-install_0.5.0-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE and other RPM distributions:
 
 ```sh
-sudo dnf install ./guix-install-0.4.1-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.0-1.noarch.rpm
 ```
 
 Arch Linux and derivatives (build from the `packaging/arch` PKGBUILD):
@@ -92,8 +92,8 @@ Any other distribution: extract the portable tarball and add its `bin`
 directory to your `PATH`:
 
 ```sh
-tar -xzf guix-install-0.4.1-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.4.1-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.0-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.0-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -116,13 +116,16 @@ For Guix System, first install the package manager if your live environment does
 
 Initial system scope: unencrypted x86_64 UEFI with GNOME, XFCE, KDE Plasma,
 Sway, XMonad (XLibre), River + XMonad (Wayland) or a minimal system;
-Linux-libre by default. The `linux` and `securityops` kernels are explicit
-opt-ins through authenticated pinned channels and always build the newest
-kernel.org stable release. BIOS boot, ARM system installation, automatic
-dual-boot resizing, RAID/LVM targets, encryption and disk recovery are
-outside this release. A removable whole disk is allowed if it passes the same
-checks; loop devices are refused. Minimal mode provides wired DHCP, not a
-Wi-Fi setup wizard.
+Linux-libre by default. The `linux`, `zen` and `securityops` kernels are
+explicit opt-ins through authenticated pinned channels and always build the
+newest kernel.org stable release; `zen` adds low-latency desktop tuning.
+Every kernel accepts an optional `--kernel-config` defconfig, so users can
+apply their own kernel configuration to Linux-libre, Linux, Zen or
+SecurityOps. BIOS boot, ARM system installation, automatic dual-boot
+resizing, RAID/LVM targets, encryption and disk recovery are outside this
+release. A removable whole disk is allowed if it passes the same checks;
+loop devices are refused. Minimal mode provides wired DHCP, not a Wi-Fi
+setup wizard.
 
 ## GUI and CLI
 
@@ -141,6 +144,7 @@ cd guix-install
 ./installer.sh plan --mode system --disk /dev/example --kernel securityops \
     --channel securityops --channel small-guix
 ./installer.sh plan --kernel linux --kernel-version 7.3.4
+./installer.sh plan --kernel zen --kernel-config ./my-zen.defconfig
 ./installer.sh plan --desktop sway --terminal kitty --terminal foot \
     --default-terminal foot --browser librewolf --default-browser librewolf
 ./installer.sh plan --json          # machine-readable; no installation commands
@@ -155,8 +159,8 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
 (WiX) on windows-latest. The CI-built artifacts are attached to the
-[v0.4.1 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.4.1)
-(mirror: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.4.1)).
+[v0.5.0 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.0)
+(mirror: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0)).
 Run as Administrator:
 
 ```bat

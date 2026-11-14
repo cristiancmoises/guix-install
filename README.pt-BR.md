@@ -6,9 +6,9 @@
 
 ![GUI real em português, com tema preto, dourado e laranja](docs/screenshots/gui-pt-BR.png)
 
-## Novidades da versão 0.4.0
+## Novidades da versão 0.5.0
 
-O instalador System agora oferece três kernels, e os dois com blobs sempre
+O instalador System agora oferece quatro kernels, e os três com blobs sempre
 acompanham a última versão estável do kernel.org (resolvida ao montar o plano
 e fixada por SHA-256 na configuração gerada; hoje 7.3.4):
 
@@ -16,16 +16,17 @@ e fixada por SHA-256 na configuração gerada; hoje 7.3.4):
 |---|---|---|---|
 | **linux-libre** | padrão do GNU Guix | fixada pelo canal Guix | nenhum |
 | **linux** | configuração ampla de drivers do Nonguix | última stable do kernel.org | firmware proprietário |
-| **securityops** | Nonguix + a `/etc/securityops.defconfig` do mantenedor | última stable do kernel.org | `kernel-arguments` endurecidos |
+| **zen** | Nonguix com ajuste de baixa latência | última stable do kernel.org | firmware proprietário |
+| **securityops** | Nonguix + a defconfig endurecida do mantenedor | última stable do kernel.org | `kernel-arguments` endurecidos |
 
-O kernel securityops reproduz a receita em uso do mantenedor (`inherit linux`,
-`#:defconfig` substituído pela defconfig embarcada, mantendo as opções extras
-do Nonguix). `--kernel-version 7.3` fixa uma versão exata; vazio significa a
-última stable. Canais opcionais do `channels.guix` autenticado do mantenedor
+Todo kernel aceita uma defconfig opcional via `--kernel-config`, que agora é
+aplicada de verdade pelo `customize-linux` em vez de ser ignorada.
+`--kernel-version 7.3` fixa uma versão exata; vazio significa a última
+stable. Canais opcionais do `channels.guix` autenticado do mantenedor
 (Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix, Radix e Rosenthal)
-podem ser escolhidos na GUI, no assistente ou com `--channel`, cada um com uma
-descrição curta. As dependências são fechadas automaticamente; o XLibre vem
-dentro do canal Security Ops.
+podem ser escolhidos na GUI, no assistente ou com `--channel`, cada um com
+uma descrição curta. As dependências são fechadas automaticamente; o XLibre
+vem dentro do canal Security Ops.
 
 Os ambientes agora incluem KDE Plasma, Sway, XMonad com XLibre e
 River + XMonad no Wayland, além de GNOME, XFCE e mínimo. Os terminais são
@@ -67,20 +68,20 @@ O lançador baixado é código executável: inspecione `bootstrap.sh` antes de e
 
 ## Instale um pacote nativo
 
-Os pacotes pré-compilados da versão 0.4.1 ficam anexados à página da versão
+Os pacotes pré-compilados da versão 0.5.0 ficam anexados à página da versão
 no GitHub e no Codeberg, junto com os `GuixInstall.exe` e `GuixInstall.msi`
 do Windows.
 
 Debian, Ubuntu e derivados:
 
 ```sh
-sudo apt install ./guix-install_0.4.1-1_all.deb
+sudo apt install ./guix-install_0.5.0-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE e demais distribuições RPM:
 
 ```sh
-sudo dnf install ./guix-install-0.4.1-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.0-1.noarch.rpm
 ```
 
 Arch Linux e derivados (compile a partir do PKGBUILD em `packaging/arch`):
@@ -94,8 +95,8 @@ Qualquer outra distribuição: extraia o tarball portátil e adicione o
 diretório `bin` ao `PATH`:
 
 ```sh
-tar -xzf guix-install-0.4.1-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.4.1-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.0-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.0-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -118,13 +119,15 @@ Se o ambiente live não inclui Guix, instale primeiro o gerenciador de pacotes; 
 
 Escopo inicial do sistema: x86_64 UEFI sem criptografia, com GNOME, XFCE,
 KDE Plasma, Sway, XMonad (XLibre), River + XMonad (Wayland) ou sistema mínimo;
-Linux-libre como padrão. Os kernels `linux` e `securityops` exigem escolha
-explícita, usam canais autenticados e fixados e sempre compilam a última
-versão estável do kernel.org. BIOS, instalação System em ARM,
-redimensionamento automático para dual boot, destinos RAID/LVM, criptografia
-e recuperação de discos estão fora desta versão. Um disco removível inteiro
-pode ser usado se passar pelas mesmas verificações; dispositivos loop são
-recusados. O modo mínimo fornece DHCP por cabo, sem assistente Wi-Fi.
+Linux-libre como padrão. Os kernels `linux`, `zen` e `securityops` exigem
+escolha explícita, usam canais autenticados e fixados e sempre compilam a
+última versão estável do kernel.org; `zen` adiciona ajuste de baixa latência.
+Todo kernel aceita um `--kernel-config` opcional. BIOS, instalação System em
+ARM, redimensionamento automático para dual boot, destinos RAID/LVM,
+criptografia e recuperação de discos estão fora desta versão. Um disco
+removível inteiro pode ser usado se passar pelas mesmas verificações;
+dispositivos loop são recusados. O modo mínimo fornece DHCP por cabo, sem
+assistente Wi-Fi.
 
 ## GUI e CLI
 
@@ -157,8 +160,8 @@ O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, ins
 
 O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
 `GuixInstall.msi` (WiX) em windows-latest. Os artefatos do CI ficam anexados
-à [release v0.4.1](https://github.com/cristiancmoises/guix-install/releases/tag/v0.4.1)
-(espelho: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.4.1)).
+à [release v0.5.0](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.0)
+(espelho: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0)).
 Execute como Administrador:
 
 ```bat

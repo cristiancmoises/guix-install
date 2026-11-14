@@ -41,6 +41,25 @@ SECURITYOPS_KERNEL_ARGUMENTS = (
     "numa_balancing=disable",
 )
 
+# Zen flavour: the newest kernel.org source built on the Nonguix Linux base
+# with a low-latency, responsive desktop configuration. It is a tuned mainline
+# kernel, not the Arch `linux-zen` patchset, so it stays reproducible inside
+# the authenticated Nonguix channel.
+ZEN_KERNEL_CONFIGS = (
+    "CONFIG_HZ=1000\n"
+    "CONFIG_HZ_1000=y\n"
+    "# CONFIG_HZ_250 is not set\n"
+    "# CONFIG_HZ_300 is not set\n"
+    "CONFIG_SCHED_AUTOGROUP=y\n"
+    "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y\n"
+)
+
+ZEN_KERNEL_ARGUMENTS = (
+    "preempt=full",
+    "transparent_hugepage=madvise",
+    "nowatchdog",
+)
+
 VERSION_PATTERN = re.compile(r"^(?:latest|\d+\.\d+(?:\.\d+)?)$")
 
 

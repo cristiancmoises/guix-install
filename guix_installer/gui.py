@@ -395,6 +395,7 @@ class InstallerWindow:
         kernel_labels = {
             tr("kernel_linux_libre", self.language): "linux-libre",
             tr("kernel_linux", self.language): "linux",
+            tr("kernel_zen", self.language): "zen",
             tr("kernel_securityops", self.language): "securityops",
         }
         self.kernel_labels = kernel_labels

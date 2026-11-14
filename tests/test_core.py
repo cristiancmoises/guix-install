@@ -101,7 +101,7 @@ class SafetyTests(unittest.TestCase):
         self.assertNotIn("openssh-service-type", config)
 
     def test_blob_kernel_is_opt_in(self):
-        for kernel in ("linux-libre", "linux"):
+        for kernel in ("linux-libre", "linux", "zen"):
             config = core.render_config(
                 core.Options(
                     mode="system",
@@ -112,8 +112,15 @@ class SafetyTests(unittest.TestCase):
                 "11111111-1111-1111-1111-111111111111",
                 "ABCD-1234",
             )
-            self.assertEqual("(kernel linux-latest)" in config, kernel == "linux")
-            self.assertEqual("(nongnu packages linux)" in config, kernel == "linux")
+            self.assertEqual(
+                "(kernel linux-latest)" in config, kernel == "linux"
+            )
+            self.assertEqual(
+                "(kernel linux-zen)" in config, kernel == "zen"
+            )
+            self.assertEqual(
+                "(nongnu packages linux)" in config, kernel != "linux-libre"
+            )
 
     def test_plan_does_not_execute_commands(self):
         with patch(
