@@ -23,8 +23,9 @@ The securityops kernel reproduces the maintainer's in-use recipe
 extra options kept). `--kernel-version 7.3` pins an exact release; blank means
 newest stable. Optional channels from the maintainer's authenticated
 `channels.guix` (Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix,
-Guix-Xlibre) are selectable in the GUI, the wizard and `--channel`, each with
-a short description. Dependencies close automatically.
+Radix, Rosenthal) are selectable in the GUI, the wizard and `--channel`, each
+with a short description. Dependencies close automatically; XLibre ships
+inside the Security Ops channel.
 
 Desktops now cover KDE Plasma, Sway, XMonad on XLibre and River + XMonad on
 Wayland, alongside GNOME, XFCE and minimal. Terminals are multi-select from
@@ -155,7 +156,7 @@ Command names and exit statuses are retained in a root-readable `/var/log/guix-i
 
 The installer carries forward **specific safeguards**, not the full Security Ops OS distribution: fail-closed target checks, swap/holder protection, disk identity rechecks, private state, authenticated pinned channels, explicit firmware choice and no automatic reboot. It does not copy the ISO's package set, hardening claims, custom substitute keys or build gate status.
 
-The upstream script is unchanged from [GNU Guix commit 94bbecec](https://codeberg.org/guix/guix/src/commit/94bbecec92475689df5b9056720795d40e0198a3/etc/guix-install.sh); its digest is in [vendor/provenance.json](vendor/provenance.json). The system-channel pins originate from the inspected `securityops-iso/channels.guix`: Guix `b9a35ee6` and Nonguix `bf39542c`, with their published introductions retained. Pins are deliberate compatibility inputs, not a promise that they are the latest or security-qualified releases. No custom substitute key is authorized by this wrapper.
+The upstream script is unchanged from [GNU Guix commit 94bbecec](https://codeberg.org/guix/guix/src/commit/94bbecec92475689df5b9056720795d40e0198a3/etc/guix-install.sh); its digest is in [vendor/provenance.json](vendor/provenance.json). The system-channel pins reproduce the maintainer's `securityops-iso/channels.guix` graph at the Security Ops OS v1.14.0 revisions (Guix `505ade83`, Nonguix `c241d19f`, Security Ops `017b9e3`, plus the signed Radix, Rosenthal and Small Guix checkpoints), with their published introductions retained. Pins are deliberate compatibility inputs, not a promise that they are the latest or security-qualified releases. No custom substitute key is authorized by this wrapper.
 
 ```sh
 python3 -m unittest discover -s tests -v

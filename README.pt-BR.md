@@ -22,9 +22,10 @@ O kernel securityops reproduz a receita em uso do mantenedor (`inherit linux`,
 `#:defconfig` substituído pela defconfig embarcada, mantendo as opções extras
 do Nonguix). `--kernel-version 7.3` fixa uma versão exata; vazio significa a
 última stable. Canais opcionais do `channels.guix` autenticado do mantenedor
-(Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix e Guix-Xlibre) podem ser
-escolhidos na GUI, no assistente ou com `--channel`, cada um com uma descrição
-curta. As dependências são fechadas automaticamente.
+(Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix, Radix e Rosenthal)
+podem ser escolhidos na GUI, no assistente ou com `--channel`, cada um com uma
+descrição curta. As dependências são fechadas automaticamente; o XLibre vem
+dentro do canal Security Ops.
 
 Os ambientes agora incluem KDE Plasma, Sway, XMonad com XLibre e
 River + XMonad no Wayland, além de GNOME, XFCE e mínimo. Os terminais são
@@ -156,7 +157,7 @@ Comandos e códigos de saída ficam em `/var/log/guix-install-*.log`, legível s
 
 Foram reaproveitadas **proteções específicas** do Security Ops OS: recusa de destinos inseguros, proteção de swap/dependentes, nova conferência de identidade, estado privado, canais autenticados e fixados, firmware opcional e ausência de reinício automático. Não são copiados o conjunto de pacotes da ISO, suas declarações de hardening, chaves de substitutos ou resultados de gates de compilação.
 
-O instalador oficial está inalterado no [commit GNU Guix 94bbecec](https://codeberg.org/guix/guix/src/commit/94bbecec92475689df5b9056720795d40e0198a3/etc/guix-install.sh); o hash está em [vendor/provenance.json](vendor/provenance.json). Os commits dos canais vieram do `securityops-iso/channels.guix` consultado: Guix `b9a35ee6` e Nonguix `bf39542c`, preservando suas introduções publicadas. São escolhas de compatibilidade, sem promessa de serem versões mais recentes ou qualificadas para segurança. Este wrapper não autoriza chaves de substitutos personalizados.
+O instalador oficial está inalterado no [commit GNU Guix 94bbecec](https://codeberg.org/guix/guix/src/commit/94bbecec92475689df5b9056720795d40e0198a3/etc/guix-install.sh); o hash está em [vendor/provenance.json](vendor/provenance.json). Os commits dos canais reproduzem o grafo `securityops-iso/channels.guix` do mantenedor nas revisões do Security Ops OS v1.14.0 (Guix `505ade83`, Nonguix `c241d19f`, Security Ops `017b9e3`, além dos checkpoints assinados de Radix, Rosenthal e Small Guix), preservando suas introduções publicadas. São escolhas de compatibilidade, sem promessa de serem versões mais recentes ou qualificadas para segurança. Este wrapper não autoriza chaves de substitutos personalizados.
 
 ```sh
 python3 -m unittest discover -s tests -v
