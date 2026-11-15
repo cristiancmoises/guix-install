@@ -9,6 +9,30 @@ from guix_installer import core
 
 
 class InstallationBoundaryTests(unittest.TestCase):
+    def test_defconfig_preflight_rejects_conflicting_host_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "selected.defconfig"
+            host = Path(temporary) / "host.defconfig"
+            source.write_text("CONFIG_A=y\n")
+            host.write_text("CONFIG_A=n\n")
+            options = core.Options(kernel="linux", kernel_config=str(source))
+            with self.assertRaisesRegex(core.InstallError, "differs"):
+                core.check_kernel_defconfig(options, str(host))
+            self.assertEqual(host.read_text(), "CONFIG_A=n\n")
+
+    def test_conflicting_defconfig_is_refused_before_partitioning(self):
+        with (
+            patch.object(core, "doctor", return_value=[]),
+            patch.object(core, "check_kernel_defconfig", side_effect=core.InstallError("conflict")),
+            patch.object(core, "run") as run,
+            self.assertRaisesRegex(core.InstallError, "conflict"),
+        ):
+            core.install_system(
+                core.Options(mode="system", disk="/dev/testdisk", kernel="securityops", kernel_version="7.3.4"),
+                "ERASE /dev/testdisk", "$6$salt$hash", core.disk_identity(disk(), "14"),
+            )
+        run.assert_not_called()
+
     def test_wrong_phrase_never_runs_a_command(self):
         with patch.object(core, "run") as run, self.assertRaises(core.InstallError):
             core.install_system(

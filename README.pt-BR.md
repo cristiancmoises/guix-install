@@ -6,7 +6,7 @@
 
 ![GUI real em português, com tema preto, dourado e laranja](docs/screenshots/gui-pt-BR.png)
 
-## Novidades da versão 0.5.0
+## Novidades da versão 0.5.1
 
 O instalador System agora oferece quatro kernels, e os três com blobs sempre
 acompanham a última versão estável do kernel.org (resolvida ao montar o plano
@@ -68,23 +68,23 @@ O lançador baixado é código executável: inspecione `bootstrap.sh` antes de e
 
 ## Instale um pacote nativo
 
-Os pacotes pré-compilados da versão 0.5.0 ficam anexados à página da versão
+Os pacotes pré-compilados da versão 0.5.1 ficam anexados à página da versão
 no GitHub, no Codeberg e no
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1),
 junto com os `GuixInstall.exe` e `GuixInstall.msi` do Windows. No host da
 Security Ops os binários Debian, RPM, Arch e `.exe` seguem dentro de
-`guix-install-0.5.0-binaries.tar.gz`, cujo README explica o passo de renomear.
+`guix-install-0.5.1-binaries.tar.gz`, cujo README explica o passo de renomear.
 
 Debian, Ubuntu e derivados:
 
 ```sh
-sudo apt install ./guix-install_0.5.0-1_all.deb
+sudo apt install ./guix-install_0.5.1-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE e demais distribuições RPM:
 
 ```sh
-sudo dnf install ./guix-install-0.5.0-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.1-1.noarch.rpm
 ```
 
 Arch Linux e derivados (compile a partir do PKGBUILD em `packaging/arch`):
@@ -98,8 +98,8 @@ Qualquer outra distribuição: extraia o tarball portátil e adicione o
 diretório `bin` ao `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.0-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.0-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.1-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.1-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -163,9 +163,9 @@ O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, ins
 
 O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
 `GuixInstall.msi` (WiX) em windows-latest. Os artefatos do CI ficam anexados
-à [release v0.5.0](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.0)
-(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0)).
+à [release v0.5.1](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.1)
+(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.1),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1)).
 Execute como Administrador:
 
 ```bat

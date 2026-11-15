@@ -1,5 +1,5 @@
 Name:           guix-install
-Version:        0.5.0
+Version:        0.5.1
 Release:        1
 Summary:        Install GNU Guix from any GNU/Linux distribution
 License:        GPL-3.0-or-later
@@ -40,6 +40,5 @@ install -Dm644 assets/guix-logo.png %{buildroot}%{_datadir}/pixmaps/guix-logo.pn
 %{_datadir}/pixmaps/guix-logo.png
 
 %changelog
-* Sat Nov 14 2026 Security Ops <sac@securityops.co> - 0.5.0-1
-- Add Zen, Linux, Linux-libre and SecurityOps kernel choices with an
-  optional defconfig for every kernel.
+* Sun Nov 15 2026 Security Ops <sac@securityops.co> - 0.5.1-1
+- Refuse conflicting host defconfig files before disk partitioning.

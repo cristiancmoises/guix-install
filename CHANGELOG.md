@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1 — 2026-11-15
+
+- Refuse conflicting host defconfig files before partitioning starts.
+- Recheck the selected defconfig during staging to catch changes before Guix evaluation.
+
 ## 0.5.0 — 2026-11-14
 
 - Add a Zen kernel choice: the newest kernel.org source on the Nonguix Linux

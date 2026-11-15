@@ -793,7 +793,7 @@ def render_config(
                 "(define river-xmonad-session-entry\n"
                 "  (package\n"
                 '    (name "river-xmonad-session-entry")\n'
-                '    (version "0.5.0")\n'
+                '    (version "0.5.1")\n'
                 "    (source #f)\n"
                 "    (build-system trivial-build-system)\n"
                 "    (arguments\n"
@@ -918,19 +918,10 @@ def install_manager():
     run(["bash", str(script)], env=environment)
 
 
-def stage_kernel_defconfig(
-    options, target, defconfig_path=HOST_DEFCONFIG_PATH
-):
-    """Stage the selected defconfig for any kernel that uses one.
-
-    The generated config references the defconfig through `local-file`, so the
-    host file is evaluated during `guix system init` and the identical file is
-    shipped to the target for later `guix system reconfigure`. The securityops
-    kernel uses the bundled hardened defconfig; every other kernel uses the
-    user-supplied defconfig when one is provided.
-    """
+def check_kernel_defconfig(options, defconfig_path=HOST_DEFCONFIG_PATH):
+    """Refuse host conflicts before the target disk can be changed."""
     if not options.kernel_config and options.kernel != "securityops":
-        return
+        return None
     source = (
         Path(options.kernel_config)
         if options.kernel_config
@@ -940,16 +931,31 @@ def stage_kernel_defconfig(
         raise InstallError(f"Defconfig not found: {source}")
     content = source.read_text()
     host_path = Path(defconfig_path)
-    host_name = host_path.name
     if host_path.is_symlink():
         raise InstallError(f"Refusing symlink {host_path}.")
-    if host_path.exists():
-        if host_path.read_text() != content:
-            raise InstallError(
-                f"{host_path} differs from the selected source; "
-                "remove it or select it with --kernel-config."
-            )
-    else:
+    if host_path.exists() and host_path.read_text() != content:
+        raise InstallError(
+            f"{host_path} differs from the selected source; "
+            "remove it or select it with --kernel-config."
+        )
+    return content
+
+
+def stage_kernel_defconfig(options, target, defconfig_path=HOST_DEFCONFIG_PATH):
+    """Stage the selected defconfig for any kernel that uses one.
+
+    The generated config references the defconfig through `local-file`, so the
+    host file is evaluated during `guix system init` and the identical file is
+    shipped to the target for later `guix system reconfigure`. The securityops
+    kernel uses the bundled hardened defconfig; every other kernel uses the
+    user-supplied defconfig when one is provided.
+    """
+    content = check_kernel_defconfig(options, defconfig_path)
+    if content is None:
+        return
+    host_path = Path(defconfig_path)
+    host_name = host_path.name
+    if not host_path.exists():
         host_path.write_text(content)
         host_path.chmod(0o644)
     target_etc = target / "etc"
@@ -1040,6 +1046,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
         raise InstallError("Prerequisites missing: " + ", ".join(failed))
     # Validate generated fields/password before the first disk write.
     render_config(options, "11111111-1111-1111-1111-111111111111", "ABCD-1234")
+    check_kernel_defconfig(options)
     validate_password_hash(password_hash)
     run(
         ["guix", "repl", "-q", "--", str(ROOT / "guix_installer/check-daemon.scm")],

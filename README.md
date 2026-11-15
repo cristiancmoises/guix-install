@@ -66,24 +66,24 @@ A downloaded launcher is executable code: inspect `bootstrap.sh` first if you ne
 
 ## Install a native package
 
-Prebuilt packages for 0.5.0 are attached to the release page on GitHub,
+Prebuilt packages for 0.5.1 are attached to the release page on GitHub,
 Codeberg and
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1),
 alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`. On the
 Security Ops host the Debian, RPM, Arch and `.exe` binaries travel inside
-`guix-install-0.5.0-binaries.tar.gz`, which explains the rename step in its
+`guix-install-0.5.1-binaries.tar.gz`, which explains the rename step in its
 README.
 
 Debian, Ubuntu and derivatives:
 
 ```sh
-sudo apt install ./guix-install_0.5.0-1_all.deb
+sudo apt install ./guix-install_0.5.1-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE and other RPM distributions:
 
 ```sh
-sudo dnf install ./guix-install-0.5.0-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.1-1.noarch.rpm
 ```
 
 Arch Linux and derivatives (build from the `packaging/arch` PKGBUILD):
@@ -97,8 +97,8 @@ Any other distribution: extract the portable tarball and add its `bin`
 directory to your `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.0-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.0-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.1-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.1-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -164,9 +164,9 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
 (WiX) on windows-latest. The CI-built artifacts are attached to the
-[v0.5.0 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.0)
-(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.0),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.0)).
+[v0.5.1 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.1)
+(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.1),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1)).
 Run as Administrator:
 
 ```bat
