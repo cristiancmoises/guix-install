@@ -71,8 +71,8 @@ Codeberg and
 [git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1),
 alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`. On the
 Security Ops host the Debian, RPM, Arch and `.exe` binaries travel inside
-`guix-install-0.5.1-binaries.tar.gz`, which explains the rename step in its
-README.
+[`guix-install-0.5.1-all-linux-packages.tar.xz`](https://git.securityops.com.br/attachments/1c091d86-19bc-4baa-9176-4f87f400b0f9) with original filenames
+and SHA-256 checksums. The `.exe` and `.msi` are separate assets.
 
 Debian, Ubuntu and derivatives:
 
