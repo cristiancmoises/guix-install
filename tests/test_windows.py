@@ -104,6 +104,88 @@ class WindowsImagerTests(unittest.TestCase):
                 all("PhysicalDrive" not in device for device, code in operations)
             )
 
+    def test_readback_detects_corruption_after_input_is_truncated_or_replaced(self):
+        for mutation in ("truncate", "replace", "same-size"):
+            with (
+                self.subTest(mutation=mutation),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                image = Path(temporary) / "fixture.iso"
+                payload = b"x" * 1024
+                image.write_bytes(payload)
+                fake = FakeKernel(payload, bytearray())
+
+                def flush(
+                    handle, fake=fake, image=image, mutation=mutation, payload=payload
+                ):
+                    fake.disk[-1] = ord("!")
+                    if mutation == "replace":
+                        replacement = image.with_suffix(".new")
+                        replacement.write_bytes(b"")
+                        replacement.replace(image)
+                    elif mutation == "same-size":
+                        image.write_bytes(payload[:-1] + b"!")
+                    else:
+                        image.write_bytes(b"")
+                    return True
+
+                fake.FlushFileBuffers = flush
+                with (
+                    patch.object(windows, "require_windows"),
+                    patch.object(windows, "require_admin"),
+                    patch.object(windows, "disk_capacity", return_value=1048576),
+                    patch.object(windows, "_kernel32", return_value=fake),
+                    self.assertRaisesRegex(windows.WindowsError, "verification failed"),
+                ):
+                    windows.write_image(image, 1, verify=True)
+
+    def test_readback_succeeds_if_the_written_image_is_removed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "fixture.iso"
+            payload = b"x" * 1024
+            image.write_bytes(payload)
+            fake = FakeKernel(payload, bytearray())
+
+            def flush(handle):
+                image.unlink(missing_ok=True)
+                return True
+
+            fake.FlushFileBuffers = flush
+            with (
+                patch.object(windows, "require_windows"),
+                patch.object(windows, "require_admin"),
+                patch.object(windows, "disk_capacity", return_value=1048576),
+                patch.object(windows, "_kernel32", return_value=fake),
+            ):
+                windows.write_image(image, 1, verify=True)
+            self.assertEqual(bytes(fake.disk), payload)
+
+    def test_growing_image_never_writes_beyond_the_original_size(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "fixture.iso"
+            payload = b"x" * 1024
+            image.write_bytes(payload)
+            fake = FakeKernel(payload, bytearray())
+            write = fake.WriteFile
+
+            def grow_after_write(*args):
+                result = write(*args)
+                if len(fake.disk) == len(payload):
+                    with image.open("ab") as stream:
+                        stream.write(b"unexpected tail")
+                return result
+
+            fake.WriteFile = grow_after_write
+            with (
+                patch.object(windows, "require_windows"),
+                patch.object(windows, "require_admin"),
+                patch.object(windows, "disk_capacity", return_value=1048576),
+                patch.object(windows, "_kernel32", return_value=fake),
+                self.assertRaises(windows.WindowsError),
+            ):
+                windows.write_image(image, 1, verify=True)
+            self.assertEqual(bytes(fake.disk), payload)
+
     def test_changed_disk_is_refused_before_open(self):
         with tempfile.TemporaryDirectory() as temporary:
             image = Path(temporary) / "fixture.iso"

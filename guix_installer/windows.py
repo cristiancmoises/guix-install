@@ -324,11 +324,14 @@ def write_image(
             if not kernel.SetFilePointerEx(handle, 0, None, 0):
                 raise_win_error()
             written = 0
+            written_digest = hashlib.sha256()
             with open(image, "rb") as source:
-                while True:
-                    block = source.read(CHUNK)
+                while written < image_size:
+                    block = source.read(min(CHUNK, image_size - written))
                     if not block:
                         break
+                    if verify:
+                        written_digest.update(block)
                     remaining = memoryview(block)
                     while remaining:
                         done = ctypes.c_uint32()
@@ -351,6 +354,8 @@ def write_image(
                         remaining = remaining[done.value :]
                         if progress:
                             progress(written, image_size)
+                if source.read(1):
+                    raise WindowsError("Image size changed during writing.")
             if written != image_size:
                 raise WindowsError(
                     f"Incomplete write: {written} of {image_size} bytes."
@@ -361,26 +366,27 @@ def write_image(
                 if not kernel.SetFilePointerEx(handle, 0, None, 0):
                     raise_win_error()
                 verified = 0
-                with open(image, "rb") as source:
-                    while True:
-                        expected = source.read(CHUNK)
-                        if not expected:
-                            break
-                        done = ctypes.c_uint32()
-                        actual = (ctypes.c_char * len(expected))()
-                        if not kernel.ReadFile(
-                            handle,
-                            actual,
-                            len(expected),
-                            ctypes.byref(done),
-                            None,
-                        ):
-                            raise_win_error()
-                        if done.value != len(expected) or actual.raw != expected:
-                            raise WindowsError("Read-back verification failed.")
-                        verified += len(expected)
-                        if progress:
-                            progress(verified, image_size)
+                readback_digest = hashlib.sha256()
+                while verified < image_size:
+                    count = min(CHUNK, image_size - verified)
+                    done = ctypes.c_uint32()
+                    actual = (ctypes.c_char * count)()
+                    if not kernel.ReadFile(
+                        handle,
+                        actual,
+                        count,
+                        ctypes.byref(done),
+                        None,
+                    ):
+                        raise_win_error()
+                    if done.value != count:
+                        raise WindowsError("Read-back verification failed.")
+                    readback_digest.update(actual.raw)
+                    verified += count
+                    if progress:
+                        progress(verified, image_size)
+                if readback_digest.digest() != written_digest.digest():
+                    raise WindowsError("Read-back verification failed.")
             if not kernel.FlushFileBuffers(handle):
                 raise_win_error()
     finally:
