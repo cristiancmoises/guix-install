@@ -1,8 +1,8 @@
 # Security model / Modelo de segurança
 
-This is privileged installation software. Review it before granting sudo. The current system path has not completed disposable-VM installation/boot qualification. Do not treat unit tests, Guix record evaluation, or screenshots as evidence that a real installation is bootable.
+This is privileged installation software. Review it before granting sudo. The system path completed installation, independent first boot, administrator login and sudo in a disposable x86-64 UEFI VM with Linux-libre/minimal/Foot. This qualifies that fixture, not all hardware, desktop combinations or custom kernels. Unit tests and record evaluation alone do not establish bootability.
 
-Este é um programa de instalação privilegiado. Revise antes de conceder sudo. O caminho System ainda não completou instalação/boot em VM descartável. Testes unitários, avaliação de registros Guix e capturas de tela não comprovam uma instalação inicializável.
+Este é um programa de instalação privilegiado. Revise antes de conceder sudo. O caminho System completou instalação, primeiro boot independente, login do administrador e sudo em VM x86-64 UEFI descartável com Linux-libre/mínimo/Foot. Isso qualifica esse cenário, não todos os hardwares, desktops ou kernels personalizados. Testes unitários e avaliação de registros isoladamente não comprovam boot.
 
 ## Trust and privilege
 
@@ -24,7 +24,7 @@ Este é um programa de instalação privilegiado. Revise antes de conceder sudo.
 ## Credentials and local data
 
 - Password entry uses the terminal's non-echoing password reader. OpenSSL receives input through stdin, never argv/environment. No plaintext password or verifier is logged.
-- The generated configuration declares locked accounts. The salted verifier is seeded only into target `/etc/shadow`, with mode 0600, atomic replacement and fsync, after successful init. Guix's existing-entry preservation was checked with its actual account merge function; first boot remains untested.
+- The generated configuration declares locked accounts. The salted verifier is seeded only into target `/etc/shadow`, with mode 0600, atomic replacement and fsync, after successful init. Guix's existing-entry preservation was checked with its actual account merge function; password login and sudo also passed the disposable-VM first-boot fixture.
 - Keep the target disk and backups protected; SHA-512 crypt is not encryption. Configuration changes cannot protect a disk stolen without encryption.
 - Command-status logs are root-readable under `/var/log/guix-install-*.log`. They include paths/device names and native exit status; they do not record a full terminal transcript. Retain them for recovery, remove manually when no longer needed.
 - Bootstrap sources remain in a private temporary directory until manually removed or the OS cleans temporary files. They contain source only. No service token is distributed or committed. Maintainer publishing credentials stay outside the source tree.

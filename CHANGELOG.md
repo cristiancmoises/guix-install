@@ -2,6 +2,8 @@
 
 ## 0.5.3 — 2026-11-16
 
+- Qualify complete installation and independent first boot in a disposable x86-64 UEFI VM with Linux-libre/minimal/Foot, including administrator login, sudo and DHCP.
+
 - Prepare the authenticated pinned Guix environment and lower the planned system configuration before partitioning, so detected bootstrap, channel and configuration failures leave the target disk untouched.
 - Use the current dhcpcd service in generated minimal systems. Guix checks now force record fields, fold services and parse the bundled defconfig to catch deferred configuration errors.
 - Replace the existing desktop login service for XLibre instead of defining a conflicting second Xorg server.
