@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3 — 2026-11-16
+
+- Prepare and authenticate the pinned Guix environment before partitioning, so bootstrap or channel failures leave the target disk untouched.
+- Use the current dhcpcd service in generated minimal systems. Guix checks now force service, package, kernel and bootloader fields to catch deferred configuration errors.
+- Run kernel version lookups in the GUI background worker and discard reviews when settings change, keeping the interface responsive during network requests.
+
 ## 0.5.2 — 2026-11-16
 
 - Read disk sequence numbers directly from kernel sysfs, supporting live environments whose older blockdev lacks --getdiskseq.

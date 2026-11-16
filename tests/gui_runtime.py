@@ -59,6 +59,30 @@ class NativeGuiTests(unittest.TestCase):
         self.spin(lambda: not self.window.query_running)
         self.assertEqual(applied, [])
 
+    def test_kernel_lookup_keeps_review_responsive_and_discards_changed_plan(self):
+        self.window.values["mode"].set("system")
+        self.window.values["disk"].set("/dev/example")
+        self.window.values["kernel"].set("linux")
+        ticked = []
+
+        def slow_plan(options):
+            self.assertIsNot(threading.current_thread(), threading.main_thread())
+            time.sleep(0.15)
+            return ["fixture plan"]
+
+        self.root.after(10, lambda: ticked.append(True))
+        with patch.object(core, "make_plan", side_effect=slow_plan):
+            self.window.review()
+            self.spin(lambda: bool(ticked))
+            self.assertTrue(self.window.query_running)
+            self.window.values["hostname"].set("changed")
+            self.spin(lambda: not self.window.query_running)
+            self.assertFalse(self.window.reviewed)
+            self.window.review()
+            self.spin(lambda: not self.window.query_running)
+            self.assertTrue(self.window.reviewed)
+        self.assertFalse(self.errors)
+
     def test_language_and_theme_preserve_form_and_logo(self):
         self.window.values["username"].set("alice")
         self.window.change_theme("Light")

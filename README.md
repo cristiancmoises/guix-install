@@ -66,24 +66,24 @@ A downloaded launcher is executable code: inspect `bootstrap.sh` first if you ne
 
 ## Install a native package
 
-Prebuilt packages for 0.5.2 are attached to the release page on GitHub,
+Prebuilt packages for 0.5.3 are attached to the release page on GitHub,
 Codeberg and
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3),
 alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`. On the
 Security Ops host all six formats are available together in
-[`guix-install-0.5.2-all-platforms.tar.xz`](https://git.securityops.com.br/attachments/4f3a2903-4223-4c1f-a6bb-fb5e5aae298c), with original filenames
+[`guix-install-0.5.3-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3), with original filenames
 and SHA-256 checksums.
 
 Debian, Ubuntu and derivatives:
 
 ```sh
-sudo apt install ./guix-install_0.5.2-1_all.deb
+sudo apt install ./guix-install_0.5.3-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE and other RPM distributions:
 
 ```sh
-sudo dnf install ./guix-install-0.5.2-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.3-1.noarch.rpm
 ```
 
 Arch Linux and derivatives (build from the `packaging/arch` PKGBUILD):
@@ -97,8 +97,8 @@ Any other distribution: extract the portable tarball and add its `bin`
 directory to your `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.2-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.2-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.3-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.3-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -118,6 +118,11 @@ recommend tk, sudo, curl, wget, gnupg and xz.
 This release is an installation candidate, **not a claim of universal distribution compatibility or a boot-tested release**. Package-manager installation uses upstream compatibility checks. The system path has unit/fixture tests and real Guix configuration evaluation; destructive installation and boot still need qualification in a disposable VM.
 
 For Guix System, first install the package manager if your live environment does not include it, then launch again and choose System. The tool refuses the running system's disk, mounted descendants, active swap, and device-mapper/RAID/LVM holders. Unknown root media or Secure Boot state is a refusal. Keep backups and use a separate disk. There is no `--yes` or `--force` bypass.
+
+The authenticated, pinned Guix environment is prepared before partitioning.
+Bootstrap, channel or store-space failures at this stage leave the target disk
+untouched. Live environments need enough writable store/cache space; a small
+RAM-backed filesystem may need additional preparation before System mode.
 
 Initial system scope: unencrypted x86_64 UEFI with GNOME, XFCE, KDE Plasma,
 Sway, XMonad (XLibre), River + XMonad (Wayland) or a minimal system;
@@ -164,9 +169,9 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
 (WiX) on windows-latest. The CI-built artifacts are attached to the
-[v0.5.2 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.2)
-(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.2),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2)).
+[v0.5.3 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.3)
+(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.3),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3)).
 Run as Administrator:
 
 ```bat

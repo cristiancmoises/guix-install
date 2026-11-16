@@ -657,10 +657,20 @@ class InstallerWindow:
             self.invalidate()
         try:
             options = self.options()
-            plan = translated_plan(options, self.language, core.make_plan(options))
-            self.display(tr("plan", self.language) + "\n\n" + "\n".join(plan))
-            self.reviewed = True
-            self.install_button.configure(state="normal")
+            language = self.language
+
+            def show(plan):
+                self.display(tr("plan", language) + "\n\n" + "\n".join(plan))
+                self.reviewed = True
+                self.install_button.configure(state="normal")
+
+            def prepare():
+                return translated_plan(options, language, core.make_plan(options))
+
+            if options.mode == "system" and options.kernel in core.NONGUIX_KERNELS:
+                self.background_query(prepare, show)
+            else:
+                show(prepare())
         except (core.InstallError, OSError, ValueError) as exc:
             self.error(exc)
 

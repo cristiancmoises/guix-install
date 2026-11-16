@@ -805,7 +805,7 @@ def render_config(
                 "(define river-xmonad-session-entry\n"
                 "  (package\n"
                 '    (name "river-xmonad-session-entry")\n'
-                '    (version "0.5.2")\n'
+                '    (version "0.5.3")\n'
                 "    (source #f)\n"
                 "    (build-system trivial-build-system)\n"
                 "    (arguments\n"
@@ -895,7 +895,7 @@ def render_config(
     (user-account (inherit %root-account) (password "!"))
     (filter (lambda (account) (not (string=? (user-account-name account) "root"))) %base-user-accounts)))
   (services (append (list{desktop_service}
-    {"(service dhcp-client-service-type)" if options.desktop == "minimal" else ""}) {services}))
+    {"(service dhcpcd-service-type)" if options.desktop == "minimal" else ""}) {services}))
   (file-systems (cons*
     (file-system (mount-point "/")
       (device (uuid "{root_uuid}")) (type "ext4"))
@@ -1068,6 +1068,17 @@ def install_system(options, confirmation, password_hash, expected_identity):
     expected = inspect_target(options.disk)
     require_same_identity(expected_identity, expected)
     options.disk = expected[0]
+    with tempfile.TemporaryDirectory(prefix="guix-install-channels-") as temporary:
+        channels = Path(temporary) / "channels.scm"
+        channels.write_text(render_channels_file(options))
+        try:
+            run(["guix", "time-machine", "-C", str(channels), "--", "describe"])
+        except InstallError as exc:
+            raise InstallError(
+                "Cannot prepare the pinned Guix environment. Check Guix updates, "
+                "channel access and free space in the Guix store. "
+                "Target disk unchanged by this attempt."
+            ) from exc
     with staging_directory() as target:
         mounts = []
         layout = None

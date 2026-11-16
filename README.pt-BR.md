@@ -6,7 +6,7 @@
 
 ![GUI real em português, com tema preto, dourado e laranja](docs/screenshots/gui-pt-BR.png)
 
-## Novidades da versão 0.5.2
+## Novidades da versão 0.5.3
 
 O instalador System agora oferece quatro kernels, e os três com blobs sempre
 acompanham a última versão estável do kernel.org (resolvida ao montar o plano
@@ -68,24 +68,24 @@ O lançador baixado é código executável: inspecione `bootstrap.sh` antes de e
 
 ## Instale um pacote nativo
 
-Os pacotes pré-compilados da versão 0.5.2 ficam anexados à página da versão
+Os pacotes pré-compilados da versão 0.5.3 ficam anexados à página da versão
 no GitHub, no Codeberg e no
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3),
 junto com os `GuixInstall.exe` e `GuixInstall.msi` do Windows. No host da
 Security Ops os seis formatos estão disponíveis juntos em
-[`guix-install-0.5.2-all-platforms.tar.xz`](https://git.securityops.com.br/attachments/4f3a2903-4223-4c1f-a6bb-fb5e5aae298c), com os nomes originais
+[`guix-install-0.5.3-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3), com os nomes originais
 e os hashes SHA-256.
 
 Debian, Ubuntu e derivados:
 
 ```sh
-sudo apt install ./guix-install_0.5.2-1_all.deb
+sudo apt install ./guix-install_0.5.3-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE e demais distribuições RPM:
 
 ```sh
-sudo dnf install ./guix-install-0.5.2-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.3-1.noarch.rpm
 ```
 
 Arch Linux e derivados (compile a partir do PKGBUILD em `packaging/arch`):
@@ -99,8 +99,8 @@ Qualquer outra distribuição: extraia o tarball portátil e adicione o
 diretório `bin` ao `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.2-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.2-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.3-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.3-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -120,6 +120,11 @@ Python 3.10+ e recomendam tk, sudo, curl, wget, gnupg e xz.
 Esta versão é uma candidata à instalação, **não uma declaração de compatibilidade com todas as distribuições ou uma versão validada por inicialização**. O modo de pacotes usa as verificações de compatibilidade oficiais. O modo System possui testes unitários/com fixtures e avaliação real das configurações Guix; instalação destrutiva e boot ainda precisam de validação em uma VM descartável.
 
 Se o ambiente live não inclui Guix, instale primeiro o gerenciador de pacotes; depois execute novamente e escolha System. O programa recusa o disco do sistema em execução, partições montadas, swap ativa e dispositivos com dependentes RAID/LVM/device-mapper. Uma origem de boot ou um estado de Secure Boot desconhecido causa recusa. Faça backup e use um disco separado. Não existem opções `--yes` ou `--force` para ignorar essas verificações.
+
+O ambiente Guix autenticado e fixado é preparado antes do particionamento.
+Falhas de bootstrap, canais ou espaço no store nessa etapa mantêm o disco de
+destino intacto. Ambientes live precisam de espaço gravável para store/cache;
+um sistema de arquivos pequeno em RAM pode precisar de preparação adicional.
 
 Escopo inicial do sistema: x86_64 UEFI sem criptografia, com GNOME, XFCE,
 KDE Plasma, Sway, XMonad (XLibre), River + XMonad (Wayland) ou sistema mínimo;
@@ -164,9 +169,9 @@ O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, ins
 
 O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
 `GuixInstall.msi` (WiX) em windows-latest. Os artefatos do CI ficam anexados
-à [release v0.5.2](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.2)
-(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.2),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2)).
+à [release v0.5.3](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.3)
+(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.3),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3)).
 Execute como Administrador:
 
 ```bat

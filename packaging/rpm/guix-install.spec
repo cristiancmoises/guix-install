@@ -1,5 +1,5 @@
 Name:           guix-install
-Version:        0.5.2
+Version:        0.5.3
 Release:        1
 Summary:        Install GNU Guix from any GNU/Linux distribution
 License:        GPL-3.0-or-later
@@ -40,5 +40,7 @@ install -Dm644 assets/guix-logo.png %{buildroot}%{_datadir}/pixmaps/guix-logo.pn
 %{_datadir}/pixmaps/guix-logo.png
 
 %changelog
+* Mon Nov 16 2026 Security Ops <sac@securityops.co> - 0.5.3-1
+- Validate Guix readiness, fix minimal networking and responsive GUI reviews.
 * Mon Nov 16 2026 Security Ops <sac@securityops.co> - 0.5.2-1
 - Verify Windows images, lock target volumes, and test installed packages.

@@ -1,5 +1,5 @@
 pkgname=guix-install
-pkgver=0.5.2
+pkgver=0.5.3
 pkgrel=1
 pkgdesc="Install GNU Guix from any GNU/Linux distribution"
 arch=('any')

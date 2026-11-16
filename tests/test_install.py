@@ -9,6 +9,26 @@ from guix_installer import core
 
 
 class InstallationBoundaryTests(unittest.TestCase):
+    def test_guix_bootstrap_failure_never_partitions(self):
+        def command(args, **kwargs):
+            if args[:2] == ["guix", "time-machine"]:
+                raise core.InstallError("bootstrap failed")
+            return ""
+
+        expected = core.disk_identity(disk(), "14")
+        with (
+            patch.object(core, "doctor", return_value=[]),
+            patch.object(core, "run", side_effect=command) as run,
+            patch.object(core, "inspect_target", return_value=expected),
+            patch.object(core, "staging_directory", side_effect=AssertionError("Partitioning stage reached before bootstrap check")),
+            self.assertRaisesRegex(core.InstallError, "Guix environment"),
+        ):
+            core.install_system(
+                core.Options(mode="system", disk="/dev/testdisk"),
+                "ERASE /dev/testdisk", "$6$salt$hash", expected,
+            )
+        self.assertFalse(any(call.args[0][0] == "parted" for call in run.call_args_list))
+
     def test_defconfig_preflight_rejects_conflicting_host_file(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / "selected.defconfig"
@@ -169,7 +189,7 @@ class InstallationBoundaryTests(unittest.TestCase):
 
             def command(args, **kwargs):
                 calls.append(args)
-                if args[:2] == ["guix", "time-machine"]:
+                if args[:2] == ["guix", "time-machine"] and "init" in args:
                     raise core.InstallError("simulated build failure")
                 if args[0] == "findmnt":
                     return (

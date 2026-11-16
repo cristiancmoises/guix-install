@@ -1,3 +1,10 @@
+guix-install (0.5.3-1) unstable; urgency=medium
+
+  * Validate Guix readiness before partitioning and fix minimal networking.
+  * Keep graphical reviews responsive during kernel lookups.
+
+ -- Security Ops <sac@securityops.co>  Mon, 16 Nov 2026 12:00:00 -0300
+
 guix-install (0.5.2-1) unstable; urgency=medium
 
   * Verify Windows images, lock target volumes, and test installed packages.
