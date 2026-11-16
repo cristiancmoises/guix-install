@@ -15,7 +15,7 @@
             <File Id="GuixInstallExe" Source="dist\GuixInstall.exe" KeyPath="yes">
               <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder"
                         Name="GNU Guix Installer" WorkingDirectory="INSTALLFOLDER"
-                        Icon="GuixInstallExe" Advertise="no" />
+                        Icon="GuixInstallExe" Advertise="yes" />
             </File>
           </Component>
         </Directory>

@@ -34,10 +34,15 @@ jobs:
             $installed = Join-Path $env:ProgramFiles 'GNU Guix Installer\GuixInstall.exe'
             & $installed --version
             if ($LASTEXITCODE -ne 0) { throw 'Installed executable failed' }
+            $shortcut = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'GNU Guix Installer.lnk'
+            if (-not (Test-Path -LiteralPath $shortcut)) { throw 'Machine-wide shortcut is missing' }
+            $link = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
+            if ($link.WorkingDirectory.TrimEnd('\') -ne (Split-Path $installed).TrimEnd('\')) { throw 'Shortcut working directory is incorrect' }
           } finally {
             $result = Start-Process msiexec.exe -ArgumentList '/x', "$PWD\dist\GuixInstall.msi", '/qn', '/norestart' -Wait -PassThru
             if ($result.ExitCode -notin @(0, 3010)) { throw "MSI removal failed: $($result.ExitCode)" }
           }
+          if (Test-Path -LiteralPath $shortcut) { throw 'MSI removal left its shortcut behind' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: guix-install-windows

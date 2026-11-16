@@ -35,6 +35,42 @@ KERNEL_CONTROLS = (
 
 def account_failure_diagnostics(pid=None):
     """Emit bounded public service diagnostics, never arguments or environment."""
+    if pid is not None:
+        counters = {
+            "rchar",
+            "wchar",
+            "syscr",
+            "syscw",
+            "read_bytes",
+            "write_bytes",
+            "cancelled_write_bytes",
+        }
+        try:
+            with Path(f"/proc/{pid}/io").open(encoding="ascii") as source:
+                lines = source.read(1024).splitlines()
+            for line in lines:
+                key, separator, value = line.partition(":")
+                value = value.strip()
+                if separator and key in counters and value.isdecimal():
+                    print(f"useradd io {key}={value}", flush=True)
+        except OSError as error:
+            print(f"useradd io: unavailable ({type(error).__name__})", flush=True)
+        try:
+            with os.scandir(f"/proc/{pid}/fd") as descriptors:
+                for index, descriptor in enumerate(descriptors):
+                    if index == 32:
+                        print("[descriptor output limited]", flush=True)
+                        break
+                    try:
+                        target = os.readlink(descriptor.path)
+                    except OSError as error:
+                        target = f"unavailable ({type(error).__name__})"
+                    print(
+                        f"useradd fd={descriptor.name} target={target[:240]!r}",
+                        flush=True,
+                    )
+        except OSError as error:
+            print(f"useradd fd: unavailable ({type(error).__name__})", flush=True)
     processes = [
         "ps",
         "-C",
@@ -46,6 +82,16 @@ def account_failure_diagnostics(pid=None):
         processes.extend(["--pid", str(pid), "--ppid", str(pid)])
     commands = [
         ("process pid/ppid/comm/wchan", processes),
+        (
+            "account log size/allocation (512-byte blocks)",
+            [
+                "stat",
+                "--format=%n size=%s blocks=%b",
+                "--",
+                "/var/log/lastlog",
+                "/var/log/faillog",
+            ],
+        ),
         (
             "selected service state",
             [
