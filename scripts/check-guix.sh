@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
-# Evaluate generated Guix records without building or modifying any system.
+# Evaluate records, defconfig syntax and service extensions by default.
 set -euo pipefail
+if [ "${1:-}" = "--lower" ] && [ "$#" -eq 1 ]; then
+    export GUIX_INSTALL_CHECK_LOWER=1
+    echo "Lowering OS derivations with grafts/offloading disabled; computed inputs may still be realized."
+elif [ "$#" -ne 0 ]; then
+    echo "Usage: $0 [--lower]" >&2
+    exit 2
+else
+    unset GUIX_INSTALL_CHECK_LOWER
+fi
 repo_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
 check_dir=$(mktemp -d)
 trap 'rm -rf -- "$check_dir"' EXIT

@@ -8,16 +8,17 @@
 
 ## Novidades da versão 0.5.3
 
-O instalador System agora oferece quatro kernels, e os três com blobs sempre
-acompanham a última versão estável do kernel.org (resolvida ao montar o plano
+O instalador System agora oferece quatro kernels. Por padrão, os três com blobs acompanham a última versão estável do kernel.org (resolvida ao montar o plano
 e fixada por SHA-256 na configuração gerada; hoje 7.3.4):
 
 | Kernel | Base | Fonte | Extras |
 |---|---|---|---|
 | **linux-libre** | padrão do GNU Guix | fixada pelo canal Guix | nenhum |
 | **linux** | configuração ampla de drivers do Nonguix | última stable do kernel.org | firmware proprietário |
-| **zen** | Nonguix com ajuste de baixa latência | última stable do kernel.org | firmware proprietário |
+| **zen** | Nonguix + patches oficiais do Zen | última stable do kernel.org | firmware proprietário |
 | **securityops** | Nonguix + a defconfig endurecida do mantenedor | última stable do kernel.org | `kernel-arguments` endurecidos |
+
+Resolver a versão mais recente exige rede; sem rede, selecione explicitamente uma versão suportada.
 
 Todo kernel aceita uma defconfig opcional via `--kernel-config`, que agora é
 aplicada de verdade pelo `customize-linux` em vez de ser ignorada.
@@ -129,8 +130,10 @@ um sistema de arquivos pequeno em RAM pode precisar de preparação adicional.
 Escopo inicial do sistema: x86_64 UEFI sem criptografia, com GNOME, XFCE,
 KDE Plasma, Sway, XMonad (XLibre), River + XMonad (Wayland) ou sistema mínimo;
 Linux-libre como padrão. Os kernels `linux`, `zen` e `securityops` exigem
-escolha explícita, usam canais autenticados e fixados e sempre compilam a
-última versão estável do kernel.org; `zen` adiciona ajuste de baixa latência.
+escolha explícita e usam canais autenticados e fixados. Resolvem por padrão a
+última versão estável do kernel.org ou uma versão selecionada explicitamente; `zen` aplica os patches oficiais correspondentes do Zen, fixados por SHA-256 (atualmente 7.3.4-zen2). A ausência de uma versão Zen correspondente gera um erro, sem substituir silenciosamente por Linux mainline.
+O perfil SecurityOps incluído passa pela geração Kconfig do Linux 7.3.4 e pela verificação de configuração do Guix. Compilação completa e boot dos kernels personalizados ainda não estão qualificados. Defconfigs personalizados precisam manter o suporte de boot, sistema de arquivos e hardware necessário.
+
 Todo kernel aceita um `--kernel-config` opcional. BIOS, instalação System em
 ARM, redimensionamento automático para dual boot, destinos RAID/LVM,
 criptografia e recuperação de discos estão fora desta versão. Um disco
@@ -161,7 +164,7 @@ cd guix-install
 ./installer.sh gui --theme light
 ```
 
-`/dev/example` é apenas um exemplo, nunca uma sugestão de disco. Use **Atualizar discos** para consultar os discos reais e **Revisar instalação** antes de continuar. Para editar os campos do sistema, selecione System primeiro. A GUI abre um terminal para sudo, entrada privada da senha, frase exata `ERASE /dev/…` e progresso. A GUI permanece sem privilégios. Terminais compatíveis: xterm, GNOME Terminal, Konsole, XFCE Terminal e MATE Terminal.
+`/dev/example` é apenas um exemplo, nunca uma sugestão de disco. Use **Atualizar discos** para consultar os discos reais e **Revisar instalação** antes de continuar. Para editar os campos do sistema, selecione System primeiro. A GUI abre um terminal para sudo, entrada privada da senha, frase exata `ERASE /dev/…` e progresso. A GUI permanece sem privilégios. Terminais compatíveis: xterm, GNOME Terminal, Konsole, XFCE Terminal e MATE Terminal, WezTerm, Kitty, Foot e Alacritty.
 
 O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, inspirado nas cores do Guix. Escolha **Claro** para fundo branco e texto preto. A CLI aceita `--theme dark|light`, colore planos interativos e respeita `NO_COLOR`; JSON e saídas redirecionadas ficam sem códigos de cor. O idioma padrão é inglês; use o seletor ou `--lang pt-BR`. As perguntas do instalador oficial incluído e erros de baixo nível podem permanecer em inglês.
 
@@ -187,14 +190,14 @@ durante toda a gravação e pede para digitar o número do disco antes de
 escrever. Reinicie pelo disco USB e o instalador oficial do Guix assume. A
 imagem padrão é o instalador do Guix System em `ftp.gnu.org`. O SHA-256 fixado
 foi obtido da imagem validada com a chave OpenPGP de lançamento do GNU Guix
-`3CE464558A84FDC69DB40CFB090B11993D9AEBB5`. URLs personalizadas exigem
+`A28BF40C3E551372662D14F741AAE7DCCA3D8351`. URLs personalizadas exigem
 `--sha256` de uma fonte confiável do publicador. Downloads precisam conferir
 antes da gravação; a CLI Windows sempre verifica a leitura do disco gravado.
 Arquivos locais com `--image` são escolhidos e considerados confiáveis pelo usuário.
 Se o FTP GNU estiver indisponível, o download padrão tenta um espelho GNU e
 continua exigindo o mesmo checksum fixado.
 
-A GUI exige a extensão Tk real do Python, normalmente `python3-tk` no Debian/Ubuntu ou `python3-tkinter` no Fedora. Verifique com `python3 -c 'import tkinter'`. No Guix, inclua a saída `tk` do Python no ambiente. A CLI e os planos não precisam de Tk. Use Tab/Shift+Tab, Espaço e Enter; Ctrl+Enter revisa o plano. Há rolagem para janelas menores. O suporte a leitores de tela do Tk no Linux depende do ambiente; não há declaração de certificação completa de acessibilidade.
+Os pacotes Debian, RPM e Arch exigem Python Tk para a GUI. Instalações portáveis ou pelo código-fonte exigem a extensão Tk real do Python, normalmente `python3-tk` no Debian/Ubuntu ou `python3-tkinter` no Fedora. Verifique com `python3 -c 'import tkinter'`. No Guix, inclua a saída `tk` do Python no ambiente. A CLI e os planos não precisam de Tk. Use Tab/Shift+Tab, Espaço e Enter; Ctrl+Enter revisa o plano. Há rolagem para janelas menores. O suporte a leitores de tela do Tk no Linux depende do ambiente; não há declaração de certificação completa de acessibilidade.
 
 ![Plano real da CLI, sem gravações em disco](docs/screenshots/cli-en.png)
 
@@ -210,6 +213,8 @@ As imagens são capturas do programa real. A CLI mostra um plano para um disco f
 ## Segurança e recuperação
 
 O instalador registra a identidade do disco antes da confirmação, incluindo sequência do kernel, número major/minor, tamanho e identificadores de hardware, e confere novamente antes dos comandos destrutivos. Um bloqueio exclusivo pertence ao root. Essas verificações reduzem corridas, mas não protegem contra um processo root malicioso ou outros programas privilegiados alterando discos ao mesmo tempo. Não execute outro particionador durante a instalação.
+
+Antes de apagar um disco, o instalador System prepara o ambiente Guix autenticado e fixado e pede ao Guix que derive a configuração planejada. Isso pode baixar ou compilar pré-requisitos e consumir espaço no store Guix de origem. Passar por essa preparação não comprova que a compilação ou o boot seguintes terão sucesso.
 
 A senha do administrador é digitada de forma privada, enviada ao OpenSSL pela entrada padrão e nunca aparece em argumentos ou logs. O verificador SHA-512 com salt fica somente em `/etc/shadow` do destino, com modo 0600, escrito atomicamente após sucesso do Guix init. A configuração declarativa mantém as contas bloqueadas e não inclui o verificador na store; a ativação de contas do Guix preserva a entrada protegida no primeiro boot. O root permanece bloqueado. Nenhum serviço SSH ou reinício automático é adicionado.
 
@@ -227,7 +232,7 @@ ruff check guix_installer tests scripts/prepare-bootstrap.py run.py
 ruff format --check guix_installer tests scripts/prepare-bootstrap.py run.py
 pyright guix_installer run.py scripts/prepare-bootstrap.py windows_main.py
 shellcheck installer.sh install.sh bootstrap.sh
-./scripts/check-guix.sh  # avaliação sem alterar o sistema; exige Guix existente
+./scripts/check-guix.sh  # verifica registros, serviços e defconfig; exige Guix existente
 ```
 
 

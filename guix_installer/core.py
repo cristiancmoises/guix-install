@@ -233,9 +233,7 @@ def validate_options(options):
     if options.default_browser and options.default_browser not in options.browsers:
         raise InstallError("Default browser must be one of the selected browsers.")
     if options.kernel not in KERNEL_CHOICES:
-        raise InstallError(
-            "Kernel must be linux-libre, linux, zen or securityops."
-        )
+        raise InstallError("Kernel must be linux-libre, linux, zen or securityops.")
     if options.kernel_version and not kernels.VERSION_PATTERN.fullmatch(
         options.kernel_version
     ):
@@ -451,7 +449,9 @@ def kernel_disk_sequence(entry):
     if not re.fullmatch(r"[0-9]+:[0-9]+", major_minor):
         raise InstallError("Kernel disk identity unavailable; refusing writes.")
     try:
-        sequence = (Path("/sys/dev/block") / major_minor / "diskseq").read_text().strip()
+        sequence = (
+            (Path("/sys/dev/block") / major_minor / "diskseq").read_text().strip()
+        )
     except OSError as exc:
         raise InstallError(
             "Kernel disk sequence number unavailable; refusing writes."
@@ -602,7 +602,8 @@ def make_plan(options):
         kernel_line = f"Linux {version} (kernel.org, newest stable) + firmware."
     elif options.kernel == "zen":
         version = kernels.resolve(options.kernel_version)[0]
-        kernel_line = f"Zen {version} (kernel.org newest stable, low-latency tuning) + firmware."
+        revision = kernels.zen_patch(version)[0]
+        kernel_line = f"Zen {version}-zen{revision} (upstream Zen patches) + firmware."
     else:
         version = kernels.resolve(options.kernel_version)[0]
         kernel_line = (
@@ -644,9 +645,7 @@ def make_plan(options):
     ]
 
 
-def render_config(
-    options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PATH
-):
+def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PATH):
     validate_options(options)
     if not re.fullmatch(r"[0-9a-fA-F-]{36}", root_uuid) or not re.fullmatch(
         r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}", esp_uuid
@@ -700,19 +699,13 @@ def render_config(
                     f"    (source {source})))\n\n"
                 )
         elif kernel == "zen":
+            modules += "\n(use-modules (gnu packages compression) (gnu packages base))"
             name = "linux-zen"
-            config_line = ""
+            source = kernels.zen_source_origin(version, digest)
             if options.kernel_config:
                 defconfig_arg = f'(local-file "{defconfig_path}")'
             else:
                 defconfig_arg = '"nonguix_defconfig"'
-                escaped = (
-                    kernels.ZEN_KERNEL_CONFIGS
-                    .replace("\\", "\\\\")
-                    .replace('"', '\\"')
-                    .replace("\n", "\\n")
-                )
-                config_line = f'\n               #:configs "{escaped}"'
             definitions = (
                 f"(define {name}\n"
                 "  (package\n"
@@ -720,7 +713,7 @@ def render_config(
                 f'               #:name "{name}"\n'
                 "               #:linux linux\n"
                 f"               #:source {source}\n"
-                f"               #:defconfig {defconfig_arg}{config_line}))\n"
+                f"               #:defconfig {defconfig_arg}))\n"
                 f'    (version "{version}")))\n\n'
             )
         else:
@@ -871,6 +864,8 @@ def render_config(
                 "\n                    xlibre-input-mouse))))))"
             )
     services = "%base-services" if options.desktop == "minimal" else "%desktop-services"
+    if options.desktop == "xmonad-xlibre":
+        services = "(modify-services %desktop-services (delete gdm-service-type))"
     return f'''{modules}
 (use-service-modules desktop networking)
 {definitions}(define %kbd (keyboard-layout "{options.keyboard}"))
@@ -1073,6 +1068,32 @@ def install_system(options, confirmation, password_hash, expected_identity):
         channels.write_text(render_channels_file(options))
         try:
             run(["guix", "time-machine", "-C", str(channels), "--", "describe"])
+            defconfig = Path(temporary) / "kernel.defconfig"
+            content = check_kernel_defconfig(options)
+            if content is not None:
+                defconfig.write_text(content)
+            config = Path(temporary) / "config.scm"
+            config.write_text(
+                render_config(
+                    options,
+                    "11111111-1111-1111-1111-111111111111",
+                    "ABCD-1234",
+                    defconfig_path=str(defconfig),
+                )
+            )
+            run(
+                [
+                    "guix",
+                    "time-machine",
+                    "-C",
+                    str(channels),
+                    "--",
+                    "system",
+                    "build",
+                    "--dry-run",
+                    str(config),
+                ]
+            )
         except InstallError as exc:
             raise InstallError(
                 "Cannot prepare the pinned Guix environment. Check Guix updates, "

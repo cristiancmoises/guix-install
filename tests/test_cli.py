@@ -8,6 +8,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CliTests(unittest.TestCase):
+    def test_kernel_resolution_failure_is_actionable_without_traceback(self):
+        from unittest.mock import patch
+
+        from guix_installer import kernels
+        from guix_installer.__main__ import main
+
+        with (
+            patch.object(
+                kernels, "resolve", side_effect=kernels.KernelError("retry online")
+            ),
+            patch("sys.stderr") as error,
+        ):
+            status = main(
+                [
+                    "plan",
+                    "--mode",
+                    "system",
+                    "--disk",
+                    "/dev/example",
+                    "--kernel",
+                    "linux",
+                ]
+            )
+        self.assertEqual(status, 1)
+        output = "".join(call.args[0] for call in error.write.call_args_list)
+        self.assertIn("retry online", output)
+        self.assertNotIn("Traceback", output)
+
     def cli(self, *args, input_text=None):
         return subprocess.run(
             [sys.executable, "-m", "guix_installer", *args],

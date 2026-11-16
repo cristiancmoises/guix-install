@@ -11,8 +11,8 @@ Vcs-Browser: https://github.com/cristiancmoises/guix-install
 
 Package: guix-install
 Architecture: all
-Depends: ${misc:Depends}, python3 (>= 3.10)
-Recommends: python3-tk, sudo, curl, wget, gnupg, xz-utils
+Depends: ${misc:Depends}, python3 (>= 3.10), python3-tk
+Recommends: sudo, curl, wget, gnupg, xz-utils
 Description: install GNU Guix from any GNU/Linux distribution
  Native GUI and terminal installer for the Guix package manager and for
  Guix System. Plans are read-only and disk installation always requires

@@ -31,6 +31,10 @@ def terminal_command(options, language, theme="dark"):
         ("konsole", ["-e"]),
         ("xfce4-terminal", ["--disable-server", "--execute"]),
         ("mate-terminal", ["--disable-factory", "--"]),
+        ("wezterm", ["start", "--always-new-process", "--"]),
+        ("kitty", ["--"]),
+        ("foot", ["--"]),
+        ("alacritty", ["-e"]),
     ]:
         path = shutil.which(terminal)
         if path:

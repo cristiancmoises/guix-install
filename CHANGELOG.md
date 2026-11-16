@@ -2,8 +2,14 @@
 
 ## 0.5.3 — 2026-11-16
 
-- Prepare and authenticate the pinned Guix environment before partitioning, so bootstrap or channel failures leave the target disk untouched.
-- Use the current dhcpcd service in generated minimal systems. Guix checks now force service, package, kernel and bootloader fields to catch deferred configuration errors.
+- Prepare the authenticated pinned Guix environment and lower the planned system configuration before partitioning, so detected bootstrap, channel and configuration failures leave the target disk untouched.
+- Use the current dhcpcd service in generated minimal systems. Guix checks now force record fields, fold services and parse the bundled defconfig to catch deferred configuration errors.
+- Replace the existing desktop login service for XLibre instead of defining a conflicting second Xorg server.
+- Apply the matching upstream Zen patchset, currently 7.3.4-zen2, instead of presenting tuned mainline as Zen. Refuse unresolved latest versions or missing Zen patches instead of silently substituting older/mainline sources.
+- Correct ambiguous defconfig comments rejected by Guix configuration parsing.
+- Update obsolete SecurityOps settings and missing parent/Guix boot options against Linux 7.3.4 Kconfig, and retain integrity/BPF in the LSM boot override. The bundled profile passes Guix configuration verification; a full kernel build and boot remain separate qualification steps.
+- Ship the signed GNU Guix 1.5.0 image by default in the Windows migration tool, pinned by its verified SHA-256.
+- Include the native Tk GUI dependency in Linux packages and support launching installation through WezTerm, Kitty, Foot and Alacritty.
 - Run kernel version lookups in the GUI background worker and discard reviews when settings change, keeping the interface responsive during network requests.
 
 ## 0.5.2 — 2026-11-16

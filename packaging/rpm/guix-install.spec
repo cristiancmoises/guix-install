@@ -7,7 +7,7 @@ URL:            https://github.com/cristiancmoises/guix-install
 Source0:        guix-install-%{version}.tar.gz
 BuildArch:      noarch
 Requires:       python3 >= 3.10
-Recommends:     python3-tkinter
+Requires:       python3-tkinter
 Recommends:     sudo
 Recommends:     curl
 Recommends:     wget

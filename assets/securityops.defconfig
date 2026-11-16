@@ -1,21 +1,17 @@
 #
 # =========================
-#  securityops.defconfig   (Intel build)
+#  securityops.defconfig   (x86-64 profile)
 # =========================
-# Target: Intel Core i7-13700HX (Raptor Lake-HX, 8P+8E / 24T)
-#         + NVIDIA RTX 4060 Laptop (Ada) [proprietary] + Intel UHD iGPU
-# Storage: NVMe behind Intel VMD; LUKS2 (dm-crypt)
-# Profile: Production – Hardened, Modular (NVIDIA-capable), IMA measure-only, Guix
-# Kernel:  7.1.3 (stable). NOTE: 7.1.0 -> 7.1.3 is a stable point-release range —
-#          per Documentation/process/stable-kernel-rules.rst, stable trees only carry
-#          backported bugfixes, never new/removed Kconfig options. Nothing in this
-#          file needed adjusting for the version bump itself; only real fixes do.
+# Includes Intel graphics/thermal and NVMe/VMD drivers.
+# Profile: modular, NVIDIA-capable, IMA measure-only, GNU Guix
+# Kernel: Linux 7.3.4 Kconfig-qualified; compilation and hardware boot require
+# separate qualification. Uses stock generic x86-64 CPU support.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # READ THIS FIRST
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. This file is used ONLY by the custom `securityops` kernel package, which is
-#    COMMENTED OUT in config.scm. With nonguix `linux` (the default) it is ignored.
+# 1. The SecurityOps selection uses this profile. Other kernels can use it via
+#    the installer's custom-defconfig option.
 # 2. Proprietary NVIDIA is an out-of-tree LOADABLE module:
 #       - CONFIG_MODULES MUST be =y  (the old AMD config had it =n -> impossible here)
 #       - kernel lockdown must NOT be force-enabled, and module-sig must NOT be
@@ -34,18 +30,9 @@
 #   CONFIG_GCC_PLUGIN_RANDSTRUCT kept, but note (3): it changes struct layout, so a
 #     foreign-built nvidia module will mismatch. Set =n if you hit module-load errors.
 #
-# GAMING / FULL-HARDWARE additions (2026-06-08): NTSYNC (Proton), Intel thermal
-# stack for thermald, game-controller HID, CPU-freq governors, NO_HZ/PSI/THP
-# policy, DRM fbdev emulation. All KSPP/Clear/Xanmod hardening below is intact.
-# Reminder: this file is consumed ONLY by the custom `securityops` kernel, which
-# is disabled in config.scm. The system runs nonguix `linux` (required for the
-# prebuilt proprietary NVIDIA module). Use this kernel only with nouveau, or
-# after self-building the NVIDIA module against it (see notes 2-3 above).
-#
-# PERFORMANCE (2026-06-08): this kernel is DORMANT. The current desktop slowness
-# comes from the RUNNING nonguix `linux` + config.scm (cmdline + the CPU-pacing
-# service), NOT from this file. For parity with config.scm, init_on_free default
-# and NUMA balancing are turned OFF below.
+# Gaming additions include NTSYNC, Intel thermal support, controller HID,
+# CPU-frequency governors, NO_HZ/PSI/THP policy and DRM framebuffer emulation.
+# Guix runtime and inherited initrd-module prerequisites are explicit below.
 #
 
 # ─────────────────────────────── Architecture ───────────────────────────────
@@ -57,10 +44,11 @@ CONFIG_X86_MCE_INTEL=y
 CONFIG_X86_INTEL_LPSS=y
 CONFIG_X86_INTEL_PSTATE=y
 CONFIG_INTEL_IDLE=y
-# ADDED: makes `uname -r` read 7.1.3-securityops instead of a bare version number —
+# ADDED: makes `uname -r` read 7.3.4-securityops instead of a bare version number —
 # useful once this kernel and nonguix `linux` both show up in the boot menu.
 CONFIG_LOCALVERSION="-securityops"
-# CONFIG_LOCALVERSION_AUTO is not set   # source tree may not be a git checkout
+# Source tree may not be a git checkout.
+# CONFIG_LOCALVERSION_AUTO is not set
 
 # ─────────────────────────────── Timers & Scheduling ───────────────────────────────
 CONFIG_HIGH_RES_TIMERS=y
@@ -70,7 +58,7 @@ CONFIG_SCHED_HRTICK=y
 # (matches numa_balancing=disable on the config.scm cmdline)
 # CONFIG_NUMA_BALANCING is not set
 CONFIG_PREEMPT_DYNAMIC=y
-CONFIG_PREEMPT_VOLUNTARY=y
+CONFIG_PREEMPT_LAZY=y
 CONFIG_SCHED_STACK_END_CHECK=y
 # Hybrid P/E-core scheduling (Thread Director / ITMT) — important for Raptor Lake-HX
 CONFIG_SCHED_MC=y
@@ -82,13 +70,9 @@ CONFIG_PSI=y
 CONFIG_SCHED_AUTOGROUP=y
 
 # ─────────────────────────────── CPU Optimizations ───────────────────────────────
-# MNATIVE_INTEL requires the cpu-optimizations (graysky) patch, matching how the
-# AMD config used MNATIVE/MZEN. If you build a stock tree without that patch,
-# comment these two out and use CONFIG_GENERIC_CPU=y instead.
-CONFIG_MNATIVE_INTEL=y
-# CONFIG_GENERIC_CPU=y
+# Stock x86-64 uses generic CPU code without the optional native-CPU patch.
 CONFIG_CPU_SUP_INTEL=y
-CONFIG_X86_FEATURE_NAMES=y
+# X86_FEATURE_NAMES was removed upstream; no replacement switch.
 
 # ─────────────────────────────── CPU Frequency Scaling ───────────────────────────────
 # intel_pstate=active (cmdline) exposes performance/powersave; default powersave.
@@ -128,10 +112,8 @@ CONFIG_SECURITY_LANDLOCK=y
 CONFIG_SECURITY_LOCKDOWN_LSM=y
 # CONFIG_LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY is not set
 # "integrity" kept for IMA measurement; "lockdown" removed.
-# NOTE: config.scm passes lsm=landlock,yama,apparmor on the cmdline, which
-# OVERRIDES this list and drops "integrity"+"bpf". IMA needs the integrity LSM,
-# so if you boot THIS kernel, change the cmdline to
-# lsm=landlock,yama,integrity,apparmor,bpf to actually get IMA measurement.
+# Keep the kernel command-line lsm= override synchronized with this list.
+# IMA measurement needs integrity; the BPF LSM needs bpf.
 CONFIG_LSM="landlock,yama,integrity,apparmor,bpf"
 # ADDED: "bpf" above needs its own chain enabled or it's a silent no-op, same
 # failure mode as the cmdline note directly above, one level deeper.
@@ -188,7 +170,8 @@ CONFIG_GCC_PLUGIN_STACKLEAK=y
 # Measure-only: appraisal disabled so the proprietary blob + Guix store load.
 CONFIG_IMA=y
 CONFIG_IMA_DEFAULT_HASH_SHA256=y
-CONFIG_IMA_TRUSTED_KEYRING=y
+CONFIG_INTEGRITY_ASYMMETRIC_KEYS=y
+CONFIG_INTEGRITY_TRUSTED_KEYRING=y
 # CONFIG_IMA_APPRAISE is not set
 # CONFIG_EVM is not set
 CONFIG_KEYS=y
@@ -207,7 +190,8 @@ CONFIG_MODULE_UNLOAD=y
 CONFIG_MODULE_SIG=y
 CONFIG_MODULE_SIG_ALL=y
 CONFIG_MODULE_SIG_SHA512=y
-# CONFIG_MODULE_SIG_FORCE is not set      # flip on only after MOK-signing nvidia.ko
+# Flip on only after MOK-signing nvidia.ko.
+# CONFIG_MODULE_SIG_FORCE is not set
 CONFIG_MODVERSIONS=y
 
 # ─────────────────────────────── Memory Management ───────────────────────────────
@@ -237,7 +221,7 @@ CONFIG_DM_VERITY=y
 CONFIG_DM_INTEGRITY=y
 CONFIG_NVME_CORE=y
 CONFIG_BLK_DEV_NVME=y
-CONFIG_AHCI=y
+CONFIG_SATA_AHCI=y
 CONFIG_USB_STORAGE=y
 # Intel Volume Management Device — REQUIRED to see the encrypted NVMe (matches the
 # "vmd" initrd module in config.scm). Without this the box will not boot.
@@ -250,12 +234,10 @@ CONFIG_CRYPTO_AES_NI_INTEL=y
 CONFIG_CRYPTO_XTS=y
 CONFIG_CRYPTO_SHA256=y
 CONFIG_CRYPTO_SHA512=y
-CONFIG_CRYPTO_SHA256_SSSE3=y
-CONFIG_CRYPTO_SHA512_SSSE3=y
+# SHA acceleration is selected through the upstream SHA crypto libraries.
 CONFIG_CRYPTO_CHACHA20=y
-CONFIG_CRYPTO_CHACHA20_X86_64=y
-CONFIG_CRYPTO_POLY1305=y
-CONFIG_CRYPTO_POLY1305_X86_64=y
+# ChaCha/Poly1305 optimized primitives use the upstream crypto libraries.
+CONFIG_CRYPTO_LIB_POLY1305=y
 
 # ─────────────────────────────── Networking ───────────────────────────────
 CONFIG_NET=y
@@ -279,7 +261,7 @@ CONFIG_DRM=y
 CONFIG_DRM_FBDEV_EMULATION=y
 # Intel iGPU (Raptor Lake UHD)
 CONFIG_DRM_I915=y
-CONFIG_DRM_I915_GVT=n
+# CONFIG_DRM_I915_GVT is not set
 # NVIDIA proprietary supplies its own module. Disable in-tree nouveau so it can't
 # bind the RTX 4060 (mirrors modprobe.blacklist=nouveau on the cmdline).
 # CONFIG_DRM_NOUVEAU is not set
@@ -357,8 +339,7 @@ CONFIG_POWERCAP=y
 CONFIG_INTEL_RAPL=m
 CONFIG_INTEL_POWERCLAMP=m
 CONFIG_INT340X_THERMAL=m
-CONFIG_INT3400_THERMAL=m
-CONFIG_INT3403_THERMAL=m
+# INT340X_THERMAL now contains the INT3400 and INT3403 drivers.
 CONFIG_PROC_THERMAL_MMIO_RAPL=m
 # Hardware monitoring (lm-sensors coretemp)
 CONFIG_HWMON=y
@@ -385,10 +366,81 @@ CONFIG_USERFAULTFD=y
 # futex_waitv — fsync/esync path (on by default; explicit here).
 CONFIG_FUTEX=y
 
-# ─────────────────────────────── Debug (Disabled) ───────────────────────────────
-CONFIG_DEBUG_KERNEL=n
-CONFIG_KALLSYMS=n
-CONFIG_KGDB=n
-CONFIG_MAGIC_SYSRQ=n
+# Scheduler stack checks require DEBUG_KERNEL; BPF hardening selects KALLSYMS.
+CONFIG_DEBUG_KERNEL=y
+CONFIG_KALLSYMS=y
+# CONFIG_KGDB is not set
+# CONFIG_MAGIC_SYSRQ is not set
+
+# Required parent menus for the requested drivers and hardening.
+CONFIG_SMP=y
+CONFIG_PCI=y
+CONFIG_PCI_MSI=y
+CONFIG_SCSI=y
+CONFIG_BLK_DEV_SD=y
+CONFIG_ATA=y
+CONFIG_MD=y
+CONFIG_NETDEVICES=y
+CONFIG_WIRELESS=y
+CONFIG_NET_SCHED=y
+CONFIG_INPUT_JOYSTICK=y
+CONFIG_PCIEPORTBUS=y
+CONFIG_ACPI_WMI=y
+CONFIG_DRM_CLIENT_SELECTION=y
+CONFIG_KPROBES=y
+CONFIG_KPROBE_EVENTS=y
+CONFIG_PERF_EVENTS=y
+CONFIG_FTRACE=y
+CONFIG_ZRAM_BACKEND_ZSTD=y
+CONFIG_KSTACK_ERASE=y
+CONFIG_INTEGRITY_SIGNATURE=y
+CONFIG_CRYPTO_CHACHA20POLY1305=y
+CONFIG_TCP_CONG_ADVANCED=y
+CONFIG_NET_SCH_DEFAULT=y
+CONFIG_SND_SOC_SOF_PCI=m
+CONFIG_SND_SOC_SOF_HDA_LINK=y
+CONFIG_LEDS_CLASS_MULTICOLOR=y
+CONFIG_LEDS_CLASS=y
+
+# Guix initrd, UEFI, runtime and inherited initrd-module prerequisites.
+CONFIG_BLK_DEV_INITRD=y
+CONFIG_RD_GZIP=y
+CONFIG_RD_XZ=y
+CONFIG_RD_ZSTD=y
+CONFIG_EFI=y
+CONFIG_EFI_STUB=y
+CONFIG_EFIVAR_FS=y
+CONFIG_DEVTMPFS=y
+CONFIG_DEVTMPFS_MOUNT=y
+CONFIG_UNIX=y
+CONFIG_SYSVIPC=y
+CONFIG_POSIX_MQUEUE=y
+CONFIG_TMPFS_POSIX_ACL=y
+CONFIG_TMPFS_XATTR=y
+CONFIG_EXT4_FS_POSIX_ACL=y
+CONFIG_EXT4_FS_SECURITY=y
+CONFIG_NLS_CODEPAGE_437=y
+CONFIG_NLS_ISO8859_1=y
+CONFIG_NLS_UTF8=y
+CONFIG_VIRTIO_PCI=m
+CONFIG_VIRTIO_BLK=m
+CONFIG_VIRTIO_NET=m
+CONFIG_VIRTIO_BALLOON=m
+CONFIG_VIRTIO_CONSOLE=m
+CONFIG_VIRTIO_MMIO=m
+CONFIG_SCSI_VIRTIO=m
+CONFIG_HW_RANDOM=y
+CONFIG_HW_RANDOM_VIRTIO=m
+CONFIG_HID_APPLE=m
+CONFIG_PATA_ACPI=m
+CONFIG_PATA_ATIIXP=m
+CONFIG_SCSI_ISCI=m
+CONFIG_USB_UAS=m
+CONFIG_MMC=m
+CONFIG_MMC_BLOCK=m
+CONFIG_CRYPTO_SERPENT=m
+CONFIG_CRYPTO_WP512=m
+CONFIG_SERIAL_8250=y
+CONFIG_SERIAL_8250_CONSOLE=y
 
 # ─────────────────────────────── End ───────────────────────────────

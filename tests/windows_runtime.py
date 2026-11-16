@@ -62,8 +62,19 @@ class WindowsVirtualDiskTests(unittest.TestCase):
                 target = windows.inspect_writable_disk(number)
                 self.assertTrue(windows.volume_paths(number))
                 image = directory / "payload.img"
-                image.write_bytes(bytes(range(256)) * 8192)
-                windows.write_image(image, number, verify=True, expected_disk=target)
+                image.write_bytes(bytes(range(256)) * (20 * 4096 + 2))
+                progress = []
+                windows.write_image(
+                    image,
+                    number,
+                    verify=True,
+                    expected_disk=target,
+                    progress=lambda done, total: progress.append((done, total)),
+                )
+                self.assertGreater(len(progress), 1)
+                self.assertEqual(
+                    progress[-1], (image.stat().st_size, image.stat().st_size)
+                )
             finally:
                 windows.powershell_json(
                     "$ErrorActionPreference='Stop'; "

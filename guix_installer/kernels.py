@@ -32,7 +32,7 @@ SECURITYOPS_KERNEL_ARGUMENTS = (
     "page_alloc.shuffle=1",
     "init_on_alloc=1",
     "randomize_kstack_offset=on",
-    "lsm=landlock,yama,apparmor",
+    "lsm=landlock,yama,integrity,apparmor,bpf",
     "apparmor=1",
     "security=apparmor",
     "random.trust_cpu=off",
@@ -41,24 +41,14 @@ SECURITYOPS_KERNEL_ARGUMENTS = (
     "numa_balancing=disable",
 )
 
-# Zen flavour: the newest kernel.org source built on the Nonguix Linux base
-# with a low-latency, responsive desktop configuration. It is a tuned mainline
-# kernel, not the Arch `linux-zen` patchset, so it stays reproducible inside
-# the authenticated Nonguix channel.
-ZEN_KERNEL_CONFIGS = (
-    "CONFIG_HZ=1000\n"
-    "CONFIG_HZ_1000=y\n"
-    "# CONFIG_HZ_250 is not set\n"
-    "# CONFIG_HZ_300 is not set\n"
-    "CONFIG_SCHED_AUTOGROUP=y\n"
-    "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y\n"
+ZEN_RELEASES_URL = (
+    "https://api.github.com/repos/zen-kernel/zen-kernel/releases?per_page=100"
 )
-
-ZEN_KERNEL_ARGUMENTS = (
-    "preempt=full",
-    "transparent_hugepage=madvise",
-    "nowatchdog",
-)
+ZEN_PATCH_URL = "https://github.com/zen-kernel/zen-kernel/releases/download/v{version}-zen{revision}/linux-v{version}-zen{revision}.patch.zst"
+BUNDLED_ZEN_PATCHES = {
+    "7.3.4": (2, "3296823f5ad0bc93308630b7574614cd687889c42f72fda27d0e534ee843626d"),
+}
+ZEN_KERNEL_ARGUMENTS = ()
 
 VERSION_PATTERN = re.compile(r"^(?:latest|\d+\.\d+(?:\.\d+)?)$")
 
@@ -73,7 +63,7 @@ def fetch_json(url, timeout=15):
 
 
 def latest_stable_version(timeout=15):
-    """Resolve the newest non-EOL stable kernel.org version, offline-safe."""
+    """Resolve the newest stable version; never silently substitute an old pin."""
     try:
         releases = fetch_json(RELEASES_URL, timeout)["releases"]
         for release in releases:
@@ -81,9 +71,13 @@ def latest_stable_version(timeout=15):
                 version = str(release["version"])
                 if VERSION_PATTERN.fullmatch(version):
                     return version
-    except (OSError, ValueError, KeyError):
-        pass
-    return DEFAULT_LATEST
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise KernelError(
+            "Cannot determine the latest stable Linux release; retry online or choose an explicit kernel version."
+        ) from exc
+    raise KernelError(
+        "No current stable Linux release found; choose an explicit kernel version."
+    )
 
 
 def sha256_hex(version, timeout=15):
@@ -136,6 +130,63 @@ def source_origin(version, sha256_digest):
         f"              (method url-fetch)\n"
         f'              (uri "{SOURCE_URL.format(major=major, version=version)}")\n'
         f'              (sha256 (base32 "{nix_base32(sha256_digest)}")))\n'
+    )
+
+
+@functools.lru_cache(maxsize=16)
+def zen_patch(version, timeout=15):
+    """Return an exact upstream Zen revision and published asset digest."""
+    if version in BUNDLED_ZEN_PATCHES:
+        return BUNDLED_ZEN_PATCHES[version]
+    if not VERSION_PATTERN.fullmatch(version) or version == "latest":
+        raise KernelError(f"Invalid Zen kernel version: {version!r}")
+    try:
+        releases = fetch_json(ZEN_RELEASES_URL, timeout)
+        candidates = []
+        for release in releases:
+            tag = re.fullmatch(
+                r"v" + re.escape(version) + r"-zen([0-9]+)", release.get("tag_name", "")
+            )
+            if not tag or release.get("draft") or release.get("prerelease"):
+                continue
+            revision = int(tag.group(1))
+            expected_name = f"linux-v{version}-zen{revision}.patch.zst"
+            for asset in release.get("assets", []):
+                digest = asset.get("digest", "") or ""
+                if asset.get("name") == expected_name and re.fullmatch(
+                    r"sha256:[0-9a-f]{64}", digest
+                ):
+                    candidates.append((revision, digest[7:]))
+        if candidates:
+            return max(candidates)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise KernelError(
+            f"Cannot resolve the official Zen patch for Linux {version}; retry online."
+        ) from exc
+    raise KernelError(
+        f"No digest-pinned Zen patch is published for Linux {version}; choose a supported version."
+    )
+
+
+def zen_source_origin(version, sha256_digest):
+    revision, digest = zen_patch(version)
+    patch_url = ZEN_PATCH_URL.format(version=version, revision=revision)
+    source = source_origin(version, sha256_digest).rstrip()
+    return source[:-1] + (
+        "\n              (modules '((guix build utils)))\n"
+        "              (snippet\n"
+        "               #~(begin\n"
+        '                   (invoke #+(file-append zstd "/bin/zstd")\n'
+        '                           "--decompress" "--force"\n'
+        "                           #+(origin\n"
+        "                               (method url-fetch)\n"
+        f'                               (uri "{patch_url}")\n'
+        f'                               (sha256 (base32 "{nix_base32(digest)}")))\n'
+        '                           "-o" "guix-install-zen.patch")\n'
+        '                   (invoke #+(file-append patch "/bin/patch")\n'
+        '                           "--batch" "--forward" "-p1"\n'
+        '                           "--input" "guix-install-zen.patch")\n'
+        '                   (delete-file "guix-install-zen.patch"))))\n'
     )
 
 

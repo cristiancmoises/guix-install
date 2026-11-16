@@ -37,6 +37,9 @@ class DesktopWindowManagerTests(unittest.TestCase):
         self.assertIn("(xlibre-configuration", config)
         self.assertIn("gdm-service-type", config)
         self.assertIn("xlibre-video-amdgpu", config)
+        self.assertIn(
+            "(modify-services %desktop-services (delete gdm-service-type))", config
+        )
 
     def test_kde_uses_plasma_service(self):
         config = self.render(desktop="kde")

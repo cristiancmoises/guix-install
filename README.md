@@ -6,9 +6,9 @@
 
 ![Native GUI with the default black, gold and orange theme](docs/screenshots/gui-en.png)
 
-## What changed in 0.4.0
+## What changed in 0.5.3
 
-The system installer now offers three kernels, and the two non-free ones always
+The system installer now offers four kernels. By default, the three non-free choices
 track the newest stable release from kernel.org (resolved at plan time and
 pinned by SHA-256 in the generated configuration, currently 7.3.4):
 
@@ -16,11 +16,10 @@ pinned by SHA-256 in the generated configuration, currently 7.3.4):
 |---|---|---|---|
 | **linux-libre** | GNU Guix default | pinned by the Guix channel | none |
 | **linux** | Nonguix broad driver config | newest kernel.org stable | proprietary firmware |
+| **zen** | Nonguix + upstream Zen patches | newest kernel.org stable with a matching Zen release | proprietary firmware |
 | **securityops** | Nonguix + the maintainer's `/etc/securityops.defconfig` | newest kernel.org stable | hardened `kernel-arguments` |
 
-The securityops kernel reproduces the maintainer's in-use recipe
-(`inherit linux`, `#:defconfig` replaced by the bundled defconfig, nonguix
-extra options kept). `--kernel-version 7.3` pins an exact release; blank means
+The SecurityOps choice uses the maintainer's Linux kernel configuration and hardened boot arguments. Every kernel accepts an optional `--kernel-config` file. Zen applies the corresponding upstream patchset, currently 7.3.4-zen2, verified by SHA-256. A missing Zen release produces an error instead of substituting mainline Linux. `--kernel-version 7.3` pins an exact release; blank means
 newest stable. Optional channels from the maintainer's authenticated
 `channels.guix` (Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix,
 Radix, Rosenthal) are selectable in the GUI, the wizard and `--channel`, each
@@ -127,8 +126,10 @@ RAM-backed filesystem may need additional preparation before System mode.
 Initial system scope: unencrypted x86_64 UEFI with GNOME, XFCE, KDE Plasma,
 Sway, XMonad (XLibre), River + XMonad (Wayland) or a minimal system;
 Linux-libre by default. The `linux`, `zen` and `securityops` kernels are
-explicit opt-ins through authenticated pinned channels and always build the
-newest kernel.org stable release; `zen` adds low-latency desktop tuning.
+explicit opt-ins through authenticated pinned channels. They resolve the newest kernel.org stable release by default, or an explicitly selected version; `zen` applies the matching SHA-256-pinned upstream Zen patchset (currently 7.3.4-zen2). A missing matching Zen release is reported instead of substituting mainline Linux.
+Resolving the latest version requires network access; offline users must select an explicit supported version.
+The bundled SecurityOps profile passes Linux 7.3.4 Kconfig generation and Guix configuration verification. Full custom-kernel compilation and boot remain unqualified. Custom defconfigs must retain the boot, filesystem and hardware support needed by the selected system.
+
 Every kernel accepts an optional `--kernel-config` defconfig, so users can
 apply their own kernel configuration to Linux-libre, Linux, Zen or
 SecurityOps. BIOS boot, ARM system installation, automatic dual-boot
@@ -161,7 +162,7 @@ cd guix-install
 ./installer.sh gui --theme light
 ```
 
-`/dev/example` is a placeholder, never a suggested device. Use **Refresh disks** to inspect real disks and **Review installation** before continuing. For system settings, select System first. The GUI opens a terminal for sudo, private password entry, the exact `ERASE /dev/…` phrase and live progress. The GUI itself stays unprivileged. Supported terminal launchers: xterm, GNOME Terminal, Konsole, XFCE Terminal and MATE Terminal.
+`/dev/example` is a placeholder, never a suggested device. Use **Refresh disks** to inspect real disks and **Review installation** before continuing. For system settings, select System first. The GUI opens a terminal for sudo, private password entry, the exact `ERASE /dev/…` phrase and live progress. The GUI itself stays unprivileged. Supported terminal launchers: xterm, GNOME Terminal, Konsole, XFCE Terminal and MATE Terminal, WezTerm, Kitty, Foot and Alacritty.
 
 The default theme is **black, white text, golden yellow and orange**, inspired by Guix colors. Select **Light** for a white background and black text. The CLI accepts `--theme dark|light`, colors interactive plan output, and respects `NO_COLOR`; JSON and redirected output stay plain. English is the default; use the language selector or `--lang pt-BR`. The bundled upstream installer's own prompts and low-level system errors may remain English.
 
@@ -186,7 +187,7 @@ disks, locks each target volume, and asks you to type the disk number before wri
 Reboot from the USB disk and the official Guix installer takes over. The
 default image is the GNU Guix system installer from `ftp.gnu.org`. Its SHA-256
 is pinned from the release image verified with GNU Guix OpenPGP release key
-`3CE464558A84FDC69DB40CFB090B11993D9AEBB5`. Custom URLs require `--sha256`
+`A28BF40C3E551372662D14F741AAE7DCCA3D8351`. Custom URLs require `--sha256`
 from a trusted publisher source. Downloads must match before writing; disk
 read-back verification is always enabled by the Windows CLI. Local `--image`
 files are chosen and trusted by the user.
@@ -210,6 +211,8 @@ These are captures of the real application. The CLI screenshot shows a plan for 
 
 The system installer snapshots disk identity before consent, including kernel disk sequence, major/minor number, size and hardware identifiers, then rechecks before destructive commands. It uses a root-owned exclusive lock. These checks narrow races; they cannot defend against a malicious root process or concurrent privileged disk-management tools. Do not run other partitioning tools during installation.
 
+Before erasing a disk, the system installer prepares the authenticated pinned Guix environment and asks Guix to lower the planned configuration. This can download or build prerequisites and consume space in the host Guix store. A successful preflight does not prove that the subsequent build or boot will succeed.
+
 Administrator passwords are entered privately in the terminal, passed to OpenSSL through standard input, and never placed in arguments or command logs. The salted SHA-512 verifier is written atomically only to the target's mode-0600 `/etc/shadow` after Guix init succeeds. The declarative configuration keeps accounts locked and does not put the verifier in the store; Guix account activation preserves the protected entry on first boot. Root remains locked. No SSH service or automatic reboot is added.
 
 Command names and exit statuses are retained in a root-readable `/var/log/guix-install-*.log`; live subprocess output stays in the terminal. If a step fails, stop and inspect the log and disk. Only mounts created by that run are unmounted. A failed unmount preserves the recovery directory; cleanup never recursively removes a target filesystem. Partition changes cannot be undone by the tool. `install.sh` now forwards to the new launcher; it no longer rewrites an existing `/mnt/etc/config.scm`.
@@ -226,7 +229,7 @@ ruff check guix_installer tests scripts/prepare-bootstrap.py run.py
 ruff format --check guix_installer tests scripts/prepare-bootstrap.py run.py
 pyright guix_installer run.py scripts/prepare-bootstrap.py windows_main.py
 shellcheck installer.sh install.sh bootstrap.sh
-./scripts/check-guix.sh  # read-only expression checks; requires existing Guix
+./scripts/check-guix.sh  # record/service/defconfig checks; requires existing Guix
 ```
 
 

@@ -5,9 +5,8 @@ pkgdesc="Install GNU Guix from any GNU/Linux distribution"
 arch=('any')
 url="https://github.com/cristiancmoises/guix-install"
 license=('GPL3')
-depends=('python>=3.10')
+depends=('python>=3.10' 'tk')
 optdepends=(
-  'tk: native GUI'
   'sudo: privileged installation steps'
   'curl: download backend'
   'wget: download backend'

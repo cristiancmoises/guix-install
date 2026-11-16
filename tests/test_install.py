@@ -9,25 +9,38 @@ from guix_installer import core
 
 
 class InstallationBoundaryTests(unittest.TestCase):
-    def test_guix_bootstrap_failure_never_partitions(self):
-        def command(args, **kwargs):
-            if args[:2] == ["guix", "time-machine"]:
-                raise core.InstallError("bootstrap failed")
-            return ""
-
+    def test_guix_preparation_failure_never_partitions(self):
         expected = core.disk_identity(disk(), "14")
-        with (
-            patch.object(core, "doctor", return_value=[]),
-            patch.object(core, "run", side_effect=command) as run,
-            patch.object(core, "inspect_target", return_value=expected),
-            patch.object(core, "staging_directory", side_effect=AssertionError("Partitioning stage reached before bootstrap check")),
-            self.assertRaisesRegex(core.InstallError, "Guix environment"),
-        ):
-            core.install_system(
-                core.Options(mode="system", disk="/dev/testdisk"),
-                "ERASE /dev/testdisk", "$6$salt$hash", expected,
+        for stage in ("describe", "build"):
+
+            def command(args, stage=stage, **kwargs):
+                if args[:2] == ["guix", "time-machine"] and stage in args:
+                    raise core.InstallError("preparation failed")
+                return ""
+
+            with (
+                self.subTest(stage=stage),
+                patch.object(core, "doctor", return_value=[]),
+                patch.object(core, "run", side_effect=command) as run,
+                patch.object(core, "inspect_target", return_value=expected),
+                patch.object(
+                    core,
+                    "staging_directory",
+                    side_effect=AssertionError(
+                        "Partitioning stage reached before preparation"
+                    ),
+                ),
+                self.assertRaisesRegex(core.InstallError, "Guix environment"),
+            ):
+                core.install_system(
+                    core.Options(mode="system", disk="/dev/testdisk"),
+                    "ERASE /dev/testdisk",
+                    "$6$salt$hash",
+                    expected,
+                )
+            self.assertFalse(
+                any(call.args[0][0] == "parted" for call in run.call_args_list)
             )
-        self.assertFalse(any(call.args[0][0] == "parted" for call in run.call_args_list))
 
     def test_defconfig_preflight_rejects_conflicting_host_file(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -43,13 +56,24 @@ class InstallationBoundaryTests(unittest.TestCase):
     def test_conflicting_defconfig_is_refused_before_partitioning(self):
         with (
             patch.object(core, "doctor", return_value=[]),
-            patch.object(core, "check_kernel_defconfig", side_effect=core.InstallError("conflict")),
+            patch.object(
+                core,
+                "check_kernel_defconfig",
+                side_effect=core.InstallError("conflict"),
+            ),
             patch.object(core, "run") as run,
             self.assertRaisesRegex(core.InstallError, "conflict"),
         ):
             core.install_system(
-                core.Options(mode="system", disk="/dev/testdisk", kernel="securityops", kernel_version="7.3.4"),
-                "ERASE /dev/testdisk", "$6$salt$hash", core.disk_identity(disk(), "14"),
+                core.Options(
+                    mode="system",
+                    disk="/dev/testdisk",
+                    kernel="securityops",
+                    kernel_version="7.3.4",
+                ),
+                "ERASE /dev/testdisk",
+                "$6$salt$hash",
+                core.disk_identity(disk(), "14"),
             )
         run.assert_not_called()
 

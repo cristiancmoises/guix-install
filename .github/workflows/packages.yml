@@ -18,6 +18,7 @@ jobs:
       - name: Install and exercise Debian package
         run: |
           sudo apt-get install -y ../guix-install_*_all.deb
+          python3 -c 'import tkinter'
           guix-install --version
           guix-install plan --json > /tmp/guix-install-plan.json
           python3 -c 'import json; assert json.load(open("/tmp/guix-install-plan.json"))["executed"] is False'
@@ -49,6 +50,7 @@ jobs:
       - name: Install and exercise RPM package
         run: |
           dnf install -y --setopt=install_weak_deps=False rpmbuild/RPMS/noarch/guix-install-*.rpm
+          python3 -c 'import tkinter'
           guix-install --version
           guix-install plan --json > /tmp/guix-install-plan.json
           python3 -c 'import json; assert json.load(open("/tmp/guix-install-plan.json"))["executed"] is False'
@@ -71,6 +73,7 @@ jobs:
       - name: Install and exercise Arch package
         run: |
           pacman -U --noconfirm packaging/arch/guix-install-*.pkg.tar.zst
+          python -c 'import tkinter'
           guix-install --version
           guix-install plan --json > /tmp/guix-install-plan.json
           python -c 'import json; assert json.load(open("/tmp/guix-install-plan.json"))["executed"] is False'

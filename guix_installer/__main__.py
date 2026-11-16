@@ -10,7 +10,7 @@ import sys
 import tempfile
 from dataclasses import asdict
 
-from . import __version__, core
+from . import __version__, core, kernels
 from .branding import terminal_logo
 from .i18n import tr, translated_plan
 
@@ -74,7 +74,7 @@ def parser():
         "--kernel",
         choices=["linux-libre", "linux", "zen", "securityops"],
         default="linux-libre",
-        help="kernel to install (linux, zen and securityops always use the newest kernel.org release)",
+        help="kernel to install (latest stable by default; Zen requires a matching upstream patch release)",
     )
     result.add_argument(
         "--kernel-version",
@@ -403,7 +403,13 @@ def main(argv=None):
                     )
                 options = choose_options(options, args.lang)
             install(options, args.lang, args.theme, args.hold)
-    except (core.InstallError, OSError, ValueError, KeyError) as exc:
+    except (
+        core.InstallError,
+        kernels.KernelError,
+        OSError,
+        ValueError,
+        KeyError,
+    ) as exc:
         print(tr("error", args.lang) + ": " + str(exc), file=sys.stderr)
         status = 1
     except (KeyboardInterrupt, EOFError):

@@ -8,10 +8,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = re.search(
+version_match = re.search(
     r'__version__ = "([^"]+)"',
     (ROOT / "guix_installer/__init__.py").read_text(),
-).group(1)
+)
+if version_match is None:
+    raise SystemExit("Cannot find the runtime version")
+VERSION = version_match.group(1)
 FILES = [
     "installer.sh",
     "install.sh",

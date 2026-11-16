@@ -1,17 +1,27 @@
-;; Evaluate configuration records only. Never lower derivations or build systems.
+;; Evaluate records and service extensions; lowering is explicitly opt-in.
 ;; Command line: operating-system files first, then the two channels files.
-(use-modules (gnu) (gnu system shadow) (guix channels) (srfi srfi-1))
+(use-modules (gnu) (gnu system shadow) (gnu services)
+             (guix build kconfig) (guix channels) (guix store)
+             (guix monads) (guix grafts) (srfi srfi-1))
 (define arguments (cdr (command-line)))
 (define channels-files (take-right arguments 2))
 (define config-files (drop-right arguments 2))
+(define lower? (equal? (getenv "GUIX_INSTALL_CHECK_LOWER") "1"))
+(verify-config "assets/securityops.defconfig" "assets/securityops.defconfig")
+(display "PASS bundled defconfig parsed by Guix\n")
 (for-each
  (lambda (file)
    (let ((os (load file)))
      (unless (operating-system? os) (error "not an operating-system" file))
-     (operating-system-services os)
+     (fold-services (operating-system-services os))
      (operating-system-packages os)
      (operating-system-kernel os)
      (operating-system-bootloader os)
+     (when lower?
+       (parameterize ((%graft? #f))
+         (with-store store
+           (set-build-options store #:offload? #f #:max-build-jobs 1)
+           (run-with-store store (operating-system-derivation os)))))
      (let ((roots (filter (lambda (user) (string=? (user-account-name user) "root"))
                           (operating-system-users os))))
        (unless (and (= 1 (length roots))

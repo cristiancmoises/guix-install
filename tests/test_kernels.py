@@ -6,6 +6,19 @@ from guix_installer import core, kernels
 
 
 class KernelResolutionTests(unittest.TestCase):
+    def test_securityops_boot_keeps_configured_security_modules_enabled(self):
+        content = (core.ROOT / "assets/securityops.defconfig").read_text()
+        configured = next(
+            line for line in content.splitlines() if line.startswith("CONFIG_LSM=")
+        )
+        expected = configured.split('"')[1]
+        override = next(
+            arg
+            for arg in kernels.SECURITYOPS_KERNEL_ARGUMENTS
+            if arg.startswith("lsm=")
+        )
+        self.assertEqual(override, "lsm=" + expected)
+
     def test_nix_base32_matches_known_vectors(self):
         self.assertEqual(
             kernels.nix_base32(
@@ -32,13 +45,38 @@ class KernelResolutionTests(unittest.TestCase):
         with patch.object(kernels, "fetch_json", return_value=fixture):
             self.assertEqual(kernels.latest_stable_version(), "7.3.4")
 
-    def test_latest_stable_falls_back_offline(self):
-        with patch.object(kernels, "fetch_json", side_effect=OSError("offline")):
-            self.assertEqual(kernels.latest_stable_version(), kernels.DEFAULT_LATEST)
+    def test_latest_stable_fails_actionably_offline(self):
+        with (
+            patch.object(kernels, "fetch_json", side_effect=OSError("offline")),
+            self.assertRaisesRegex(kernels.KernelError, "explicit kernel version"),
+        ):
+            kernels.latest_stable_version()
 
     def test_bundled_hashes_work_offline(self):
         self.assertEqual(kernels.sha256_hex("7.3.4"), kernels.BUNDLED_SHA256["7.3.4"])
         self.assertEqual(kernels.sha256_hex("7.3"), kernels.BUNDLED_SHA256["7.3"])
+
+    def test_zen_revision_matches_exact_kernel_and_asset_digest(self):
+        releases = [
+            {"tag_name": "v7.3.5-lqx8", "assets": []},
+            {"tag_name": "v7.3.6-zen9", "assets": []},
+            {
+                "tag_name": "v7.3.5-zen3",
+                "assets": [
+                    {
+                        "name": "linux-v7.3.5-zen3.patch.zst",
+                        "digest": "sha256:" + "a" * 64,
+                    }
+                ],
+            },
+            {"tag_name": "v7.3.5-zen4", "prerelease": True, "assets": []},
+        ]
+        kernels.zen_patch.cache_clear()
+        try:
+            with patch.object(kernels, "fetch_json", return_value=releases):
+                self.assertEqual(kernels.zen_patch("7.3.5"), (3, "a" * 64))
+        finally:
+            kernels.zen_patch.cache_clear()
 
     def test_unknown_version_needs_network(self):
         with (
@@ -95,7 +133,7 @@ class KernelConfigTests(unittest.TestCase):
         self.assertIn('"slab_nomerge"', config)
         self.assertIn("(kernel securityops)", config)
 
-    def test_zen_config_is_tuned_mainline(self):
+    def test_zen_config_uses_upstream_patchset(self):
         options = core.Options(
             mode="system",
             disk="/dev/example",
@@ -104,11 +142,21 @@ class KernelConfigTests(unittest.TestCase):
         )
         config = core.render_config(options, self.UUID, "ABCD-1234")
         self.assertIn("(define linux-zen", config)
-        self.assertIn("#:defconfig \"nonguix_defconfig\"", config)
-        self.assertIn('"CONFIG_HZ=1000\\n', config)
+        self.assertIn('#:defconfig "nonguix_defconfig"', config)
+        self.assertIn("linux-v7.3.4-zen2.patch.zst", config)
+        self.assertIn("--decompress", config)
+        self.assertIn("--forward", config)
+        self.assertNotIn("#:configs", config)
         self.assertIn("(kernel linux-zen)", config)
         self.assertIn("(firmware (list linux-firmware))", config)
-        self.assertIn('(kernel-arguments \'("preempt=full"', config)
+        self.assertNotIn("nowatchdog", config)
+
+    def test_missing_zen_patch_fails_without_substituting_mainline(self):
+        with (
+            patch.object(kernels, "fetch_json", return_value=[]),
+            self.assertRaisesRegex(kernels.KernelError, "Zen patch"),
+        ):
+            kernels.zen_patch("9.9.9")
 
     def test_zen_accepts_custom_defconfig_without_tuning_overrides(self):
         options = core.Options(
@@ -120,15 +168,14 @@ class KernelConfigTests(unittest.TestCase):
         )
         with patch.object(Path, "is_file", return_value=True):
             config = core.render_config(options, self.UUID, "ABCD-1234")
-        self.assertIn(
-            '#:defconfig (local-file "/etc/guix-install.defconfig")', config
-        )
+        self.assertIn('#:defconfig (local-file "/etc/guix-install.defconfig")', config)
         self.assertNotIn("#:configs", config)
 
     def test_defconfig_applies_to_every_kernel(self):
         for kernel in ("linux-libre", "linux", "zen", "securityops"):
-            with self.subTest(kernel=kernel), patch.object(
-                Path, "is_file", return_value=True
+            with (
+                self.subTest(kernel=kernel),
+                patch.object(Path, "is_file", return_value=True),
             ):
                 config = core.render_config(
                     core.Options(
@@ -141,9 +188,7 @@ class KernelConfigTests(unittest.TestCase):
                     self.UUID,
                     "ABCD-1234",
                 )
-            self.assertIn(
-                '(local-file "/etc/guix-install.defconfig")', config
-            )
+            self.assertIn('(local-file "/etc/guix-install.defconfig")', config)
 
     def test_invalid_kernel_version_is_refused(self):
         with self.assertRaises(core.InstallError):

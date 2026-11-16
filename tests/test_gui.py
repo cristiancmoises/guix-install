@@ -7,6 +7,28 @@ from guix_installer.gui import terminal_command
 
 
 class GuiCommandTests(unittest.TestCase):
+    def test_selected_terminal_families_can_launch_installation(self):
+        for name, flags in (
+            ("wezterm", ["start", "--always-new-process", "--"]),
+            ("kitty", ["--"]),
+            ("foot", ["--"]),
+            ("alacritty", ["-e"]),
+        ):
+            with (
+                self.subTest(terminal=name),
+                patch(
+                    "shutil.which",
+                    side_effect=lambda candidate, name=name: (
+                        f"/usr/bin/{name}" if candidate == name else None
+                    ),
+                ),
+            ):
+                command = terminal_command(core.Options(), "en")
+                self.assertEqual(
+                    command[: 1 + len(flags)], [f"/usr/bin/{name}", *flags]
+                )
+                self.assertEqual(command[1 + len(flags)], sys.executable)
+
     def test_terminal_receives_arguments_without_shell(self):
         with patch(
             "shutil.which",

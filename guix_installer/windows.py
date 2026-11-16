@@ -28,14 +28,14 @@ FILE_SHARE_WRITE = 2
 OPEN_EXISTING = 3
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 DEFAULT_IMAGE_URL = (
-    "https://ftp.gnu.org/gnu/guix/guix-system-install-1.4.0.x86_64-linux.iso"
+    "https://ftp.gnu.org/gnu/guix/guix-system-install-1.5.0.x86_64-linux.iso"
 )
 DEFAULT_IMAGE_SHA256 = (
-    "087a97dba2319477185471a28812949cc165e60e58863403e4a606c1baa05f81"
+    "107e0a8082f03a10b15c1fb9383d2d752c1cdeda41b8db575a15550e1c2d8b4a"
 )
 DEFAULT_IMAGE_MIRRORS = (
     DEFAULT_IMAGE_URL,
-    "https://mirrors.nic.funet.fi/pub/gnu/gnu/guix/guix-system-install-1.4.0.x86_64-linux.iso",
+    "https://mirrors.nic.funet.fi/pub/gnu/gnu/guix/guix-system-install-1.5.0.x86_64-linux.iso",
 )
 WinDLL = getattr(ctypes, "WinDLL", None)
 WinError = getattr(ctypes, "WinError", None)

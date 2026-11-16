@@ -76,8 +76,8 @@ TEXT = {
         "Linux — última stable do kernel.org + firmware",
     ),
     "kernel_zen": (
-        "Zen — newest kernel.org stable, low-latency tuning + firmware",
-        "Zen — última stable do kernel.org, ajuste de baixa latência + firmware",
+        "Zen — upstream Zen patches + firmware",
+        "Zen — patches oficiais do Zen + firmware",
     ),
     "kernel_securityops": (
         "SecurityOps — newest kernel.org stable + hardened defconfig",
@@ -198,8 +198,9 @@ def translated_plan(options, language, english):
         kernel_line = f"Linux {version} (kernel.org, última stable) + firmware."
     elif options.kernel == "zen":
         version = kernels.resolve(options.kernel_version)[0]
+        revision = kernels.zen_patch(version)[0]
         kernel_line = (
-            f"Zen {version} (kernel.org última stable, baixa latência) + firmware."
+            f"Zen {version}-zen{revision} (patches oficiais do Zen) + firmware."
         )
     else:
         version = kernels.resolve(options.kernel_version)[0]
