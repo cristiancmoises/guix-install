@@ -55,6 +55,10 @@ configs = [
     Options(mode='system', disk='/dev/example', desktop='gnome',
             kernel='linux-libre', kernel_config=defconfig_path),
     Options(mode='system', disk='/dev/example', desktop='gnome',
+            kernel='zen', kernel_version='7.3.4', kernel_config=defconfig_path),
+    Options(mode='system', disk='/dev/example', desktop='minimal',
+            kernel='securityops', kernel_version='7.3.4', kernel_config=defconfig_path),
+    Options(mode='system', disk='/dev/example', desktop='gnome',
             browsers=('torbrowser', 'librewolf', 'chromium', 'zen-browser'),
             default_browser='zen-browser'),
 ]

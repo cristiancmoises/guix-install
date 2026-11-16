@@ -654,6 +654,7 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
     kernel_fields = ""
     definitions = ""
     kernel = options.kernel
+    custom_defconfig = bool(options.kernel_config) or kernel == "securityops"
     if kernel in NONGUIX_KERNELS:
         modules += (
             "\n(use-modules (guix download) (guix gexp) (guix packages)"
@@ -671,7 +672,7 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
                 "    #:linux linux-libre\n"
                 f'    #:defconfig (local-file "{defconfig_path}")))\n\n'
             )
-            kernel_fields = "\n  (kernel linux-libre-custom)"
+            kernel_fields = "\n  (kernel (kernel-with-gcc-plugins linux-libre-custom))"
     else:
         version, digest = kernels.resolve(options.kernel_version)
         source = kernels.source_origin(version, digest)
@@ -727,8 +728,11 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
                 f'               #:defconfig (local-file "{defconfig_path}")))\n'
                 f'    (version "{version}")))\n\n'
             )
+        selected_kernel = (
+            f"(kernel-with-gcc-plugins {name})" if custom_defconfig else name
+        )
         kernel_fields = (
-            f"\n  (kernel {name})"
+            f"\n  (kernel {selected_kernel})"
             "\n  (firmware (list linux-firmware))"
             "\n  (initrd microcode-initrd)"
         )
@@ -744,6 +748,18 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
                 + " ".join(f'"{argument}"' for argument in arguments)
                 + "))"
             )
+    if custom_defconfig:
+        modules += "\n(use-modules (guix packages) (gnu packages gcc))"
+        # The implicit bootstrap compiler disables GCC plugins. A complete
+        # compiler preserves requested RANDSTRUCT/STACKLEAK configurations.
+        definitions = (
+            "(define (kernel-with-gcc-plugins kernel)\n"
+            "  (package\n"
+            "    (inherit kernel)\n"
+            "    (native-inputs\n"
+            "      (modify-inputs (package-native-inputs kernel)\n"
+            "        (prepend gcc-14)))))\n\n" + definitions
+        )
     desktop_service = ""
     packages_field = ""
     skeletons_field = ""

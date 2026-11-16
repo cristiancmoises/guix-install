@@ -25,6 +25,30 @@ def disk(**changes):
 
 
 class SafetyTests(unittest.TestCase):
+    def test_custom_kernels_use_a_plugin_capable_compiler(self):
+        for kernel, name in (
+            ("linux-libre", "linux-libre-custom"),
+            ("linux", "linux-latest"),
+            ("zen", "linux-zen"),
+            ("securityops", "securityops"),
+        ):
+            with self.subTest(kernel=kernel):
+                options = core.Options(
+                    mode="system",
+                    disk="/dev/example",
+                    kernel=kernel,
+                    kernel_version="7.3.4",
+                    kernel_config=str(core.ROOT / "assets/securityops.defconfig"),
+                )
+                configuration = core.render_config(
+                    options, "11111111-1111-1111-1111-111111111111", "ABCD-1234"
+                )
+                self.assertIn("(gnu packages gcc)", configuration)
+                self.assertIn("(prepend gcc-14)", configuration)
+                self.assertIn(
+                    f"(kernel (kernel-with-gcc-plugins {name}))", configuration
+                )
+
     def test_sequence_uses_kernel_sysfs_without_blockdev(self):
         with (
             patch.object(core.Path, "read_text", return_value="14\n"),

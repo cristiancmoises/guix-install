@@ -4,6 +4,7 @@
 
 - Correct GUI and sudo forwarding of kernel versions, custom defconfigs and default applications.
 - Read selected defconfigs with the selecting account’s permissions, reject symlinks and changing or oversized files, and reuse one content snapshot throughout preparation and installation.
+- Select a complete GCC compiler for custom defconfigs and the bundled SecurityOps profile, preserving GCC plugin hardening options during Kconfig verification.
 - Bind manager archive signatures to the exact downloaded file and allowed release signing fingerprints in an ephemeral keyring; preserve upstream provenance.
 - Leave personal Bash configuration files untouched and match substitute ACL ownership to the selected daemon mode.
 - Verify Windows disk readback against the bytes actually written, including source replacement and size changes.

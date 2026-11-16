@@ -2,7 +2,8 @@
 ;; Command line: operating-system files first, then the two channels files.
 (use-modules (gnu) (gnu system shadow) (gnu services)
              (guix build kconfig) (guix channels) (guix store)
-             (guix monads) (guix grafts) (srfi srfi-1))
+             (guix monads) (guix grafts) (guix packages)
+             (gnu packages gcc) (srfi srfi-1))
 (define arguments (cdr (command-line)))
 (define channels-files (take-right arguments 2))
 (define config-files (drop-right arguments 2))
@@ -15,7 +16,12 @@
      (unless (operating-system? os) (error "not an operating-system" file))
      (fold-services (operating-system-services os))
      (operating-system-packages os)
-     (operating-system-kernel os)
+     (let ((kernel (operating-system-kernel os)))
+       (when (or (string-prefix? "securityops-" (basename file))
+                 (string-contains (basename file) "custom-defconfig"))
+         (let ((compiler (assoc-ref (package-native-inputs kernel) "gcc")))
+           (unless (and (pair? compiler) (eq? (car compiler) gcc-14))
+             (error "custom kernels require the plugin-capable GCC package" file)))))
      (operating-system-bootloader os)
      (when lower?
        (parameterize ((%graft? #f))

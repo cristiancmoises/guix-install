@@ -212,35 +212,40 @@ def qualify():
     if not guix.is_file() or not guix.resolve().is_relative_to("/gnu/store"):
         raise RuntimeError("the installed Guix executable is unavailable")
 
-    command = [
-        "useradd",
-        "--create-home",
-        "--user-group",
-        "--shell",
-        "/bin/sh",
-        USERNAME,
-    ]
-    try:
-        creation = subprocess.Popen(command, env=SYSTEM_ENV)
-    except OSError:
-        account_failure_diagnostics()
-        raise
-    try:
-        status = creation.wait(timeout=30)
-    except subprocess.TimeoutExpired:
+    # The dedicated account needs an empty home, independent of host SDKs or
+    # other content in /etc/skel. Root creates and retains this private fixture.
+    with tempfile.TemporaryDirectory(prefix="guix-manager-skel-") as skeleton:
+        command = [
+            "useradd",
+            "--create-home",
+            "--user-group",
+            "--skel",
+            skeleton,
+            "--shell",
+            "/bin/sh",
+            USERNAME,
+        ]
         try:
-            # Inspect the blocked process before termination removes its wchan.
-            account_failure_diagnostics(creation.pid)
-        finally:
-            creation.kill()
+            creation = subprocess.Popen(command, env=SYSTEM_ENV)
+        except OSError:
+            account_failure_diagnostics()
+            raise
+        try:
+            status = creation.wait(timeout=30)
+        except subprocess.TimeoutExpired:
             try:
-                creation.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                print("Timed-out useradd is still terminating", flush=True)
-        raise
-    if status:
-        account_failure_diagnostics(creation.pid)
-        raise subprocess.CalledProcessError(status, command)
+                # Inspect the blocked process before termination removes its wchan.
+                account_failure_diagnostics(creation.pid)
+            finally:
+                creation.kill()
+                try:
+                    creation.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    print("Timed-out useradd is still terminating", flush=True)
+            raise
+        if status:
+            account_failure_diagnostics(creation.pid)
+            raise subprocess.CalledProcessError(status, command)
     account = pwd.getpwnam(USERNAME)
     if account.pw_uid == 0 or account.pw_gid == 0:
         raise RuntimeError("the dummy account must be unprivileged")

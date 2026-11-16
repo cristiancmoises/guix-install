@@ -131,7 +131,7 @@ class KernelConfigTests(unittest.TestCase):
         )
         self.assertIn('(kernel-arguments \'("mitigations=on"', config)
         self.assertIn('"slab_nomerge"', config)
-        self.assertIn("(kernel securityops)", config)
+        self.assertIn("(kernel (kernel-with-gcc-plugins securityops))", config)
 
     def test_zen_config_uses_upstream_patchset(self):
         options = core.Options(
