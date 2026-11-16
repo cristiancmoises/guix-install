@@ -186,6 +186,8 @@ foi obtido da imagem validada com a chave OpenPGP de lançamento do GNU Guix
 `--sha256` de uma fonte confiável do publicador. Downloads precisam conferir
 antes da gravação; a CLI Windows sempre verifica a leitura do disco gravado.
 Arquivos locais com `--image` são escolhidos e considerados confiáveis pelo usuário.
+Se o FTP GNU estiver indisponível, o download padrão tenta um espelho GNU e
+continua exigindo o mesmo checksum fixado.
 
 A GUI exige a extensão Tk real do Python, normalmente `python3-tk` no Debian/Ubuntu ou `python3-tkinter` no Fedora. Verifique com `python3 -c 'import tkinter'`. No Guix, inclua a saída `tk` do Python no ambiente. A CLI e os planos não precisam de Tk. Use Tab/Shift+Tab, Espaço e Enter; Ctrl+Enter revisa o plano. Há rolagem para janelas menores. O suporte a leitores de tela do Tk no Linux depende do ambiente; não há declaração de certificação completa de acessibilidade.
 

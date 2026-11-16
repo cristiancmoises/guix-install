@@ -33,6 +33,10 @@ DEFAULT_IMAGE_URL = (
 DEFAULT_IMAGE_SHA256 = (
     "087a97dba2319477185471a28812949cc165e60e58863403e4a606c1baa05f81"
 )
+DEFAULT_IMAGE_MIRRORS = (
+    DEFAULT_IMAGE_URL,
+    "https://mirrors.nic.funet.fi/pub/gnu/gnu/guix/guix-system-install-1.4.0.x86_64-linux.iso",
+)
 WinDLL = getattr(ctypes, "WinDLL", None)
 WinError = getattr(ctypes, "WinError", None)
 get_last_error = getattr(ctypes, "get_last_error", None)
@@ -199,6 +203,23 @@ def download_image(url, destination, progress=None, expected_sha256=None):
     finally:
         Path(temporary).unlink(missing_ok=True)
     return total
+
+
+def download_default_image(destination, progress=None):
+    last_error = None
+    for url in DEFAULT_IMAGE_MIRRORS:
+        try:
+            return download_image(
+                url,
+                destination,
+                progress=progress,
+                expected_sha256=DEFAULT_IMAGE_SHA256,
+            )
+        except (OSError, WindowsError) as exc:
+            last_error = exc
+    raise WindowsError(
+        f"Cannot download a verified Guix image: {last_error}"
+    ) from last_error
 
 
 def _kernel32():

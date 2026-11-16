@@ -185,6 +185,8 @@ is pinned from the release image verified with GNU Guix OpenPGP release key
 from a trusted publisher source. Downloads must match before writing; disk
 read-back verification is always enabled by the Windows CLI. Local `--image`
 files are chosen and trusted by the user.
+If the GNU FTP server is unavailable, the default download retries a GNU mirror
+and still requires the identical pinned checksum.
 
 The GUI needs Python's actual Tk extension, usually `python3-tk` on Debian/Ubuntu or `python3-tkinter` on Fedora. Check with `python3 -c 'import tkinter'`. On Guix, include Python's `tk` output in your environment. CLI planning and the terminal wizard do not need Tk. Use Tab/Shift+Tab, Space and Enter; Ctrl+Enter reviews the plan. Content scrolls in smaller windows. Linux Tk screen-reader support depends on the desktop/toolkit; full accessibility certification is not claimed.
 

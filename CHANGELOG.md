@@ -5,6 +5,7 @@
 - Read disk sequence numbers directly from kernel sysfs, supporting live environments whose older blockdev lacks --getdiskseq.
 - Lock and dismount Windows volumes through their volume GUID handles, and refuse protected or changed disk identities before writes.
 - Verify downloaded images against a pinned SHA-256; reject empty, truncated or mismatching downloads. Custom image URLs require a publisher checksum.
+- Retry a GNU mirror if the default image server is unavailable, preserving the pinned checksum requirement.
 - Abort on failed disk seeks and invalid write counts; flush writes before read-back verification, which is enabled by default in the Windows CLI.
 - Qualify Windows raw writing on disposable virtual disks and install/remove MSI packages in CI.
 - Exercise installed Debian, RPM and Arch packages in CI; upgrade Arch build environments consistently.

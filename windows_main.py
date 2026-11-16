@@ -112,6 +112,7 @@ def main(argv=None):
         else:
             if args.disk is None:
                 raise windows.WindowsError("Pass --disk NUMBER to write an image.")
+            windows.require_admin()
             if args.image:
                 image_path = str(Path(args.image).resolve())
                 write(args.lang, args.disk, image_path, args.verify)
@@ -119,14 +120,21 @@ def main(argv=None):
                 with tempfile.TemporaryDirectory(prefix="guix-install-") as directory:
                     image_path = str(Path(directory) / "guix-system-install.iso")
                     print(tr("windows_download", args.lang))
-                    windows.download_image(
-                        args.image_url or windows.DEFAULT_IMAGE_URL,
-                        image_path,
-                        expected_sha256=args.sha256,
-                        progress=lambda done, final: progress(
-                            tr("windows_download", args.lang), done, final
-                        ),
-                    )
+
+                    def report_progress(done, final):
+                        progress(tr("windows_download", args.lang), done, final)
+
+                    if args.image_url:
+                        windows.download_image(
+                            args.image_url,
+                            image_path,
+                            expected_sha256=args.sha256,
+                            progress=report_progress,
+                        )
+                    else:
+                        windows.download_default_image(
+                            image_path, progress=report_progress
+                        )
                     print()
                     write(args.lang, args.disk, image_path, args.verify)
         return 0

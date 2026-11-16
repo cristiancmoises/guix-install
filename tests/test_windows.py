@@ -332,6 +332,19 @@ class WindowsImagerTests(unittest.TestCase):
 
 
 class WindowsTargetPolicyTests(unittest.TestCase):
+    def test_default_image_uses_verified_mirror_after_network_failure(self):
+        with patch.object(
+            windows, "download_image", side_effect=[OSError("offline"), 512]
+        ) as download:
+            self.assertEqual(windows.download_default_image("out.iso"), 512)
+        self.assertEqual(download.call_count, 2)
+        self.assertTrue(
+            all(
+                call.kwargs["expected_sha256"] == windows.DEFAULT_IMAGE_SHA256
+                for call in download.call_args_list
+            )
+        )
+
     def test_protected_and_unknown_disks_are_refused(self):
         target = {
             "Number": 1,

@@ -21,7 +21,9 @@ class WindowsVirtualDiskTests(unittest.TestCase):
 
     def write_and_verify(self, partition_style):
         windows.require_admin()
-        with tempfile.TemporaryDirectory(prefix="guix-install-vhd-test-", ignore_cleanup_errors=True) as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="guix-install-vhd-test-", ignore_cleanup_errors=True
+        ) as temporary:
             directory = Path(temporary)
             vhd = directory / "qualification.vhd"
             commands = directory / "create.txt"
