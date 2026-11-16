@@ -109,6 +109,7 @@ def parser():
 def option_args(options):
     args = []
     for field, value in asdict(options).items():
+        flag = "--" + field.replace("_", "-")
         if field == "channels":
             for name in value:
                 args.extend(["--channel", name])
@@ -117,9 +118,9 @@ def option_args(options):
                 args.extend(["--" + field[:-1], name])
         elif isinstance(value, bool):
             if value:
-                args.append("--" + field)
+                args.append(flag)
         elif value:
-            args.extend(["--" + field, value])
+            args.extend([flag, value])
     return args
 
 

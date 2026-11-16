@@ -34,6 +34,10 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with GNU Guix.  If not, see <http://www.gnu.org/licenses/>.
+#
+# Local changes: bind archive verification to the release signing keys and
+# selected archive; preserve users' shell files; follow the selected daemon
+# mode when assigning ACL ownership. See provenance.json for the upstream ref.
 
 # We require Bash but for portability we'd rather not use /bin/bash or
 # /usr/bin/env in the shebang, hence this hack.
@@ -94,6 +98,7 @@ SYSV_INIT_REQUIRE=(
 )
 
 # Unprivileged guix-daemon requires 'newgidmap'.
+# shellcheck disable=2034 # interpolated by add_init_sys_require
 SYSTEMD_REQUIRE=(
     "newgidmap"
 )
@@ -186,7 +191,7 @@ add_init_sys_require()
 
     # Convert the init system command name captured in INIT_SYS in
     # chk_init_sys to uppercase, with hyphens replaced by underscores.
-    local init_require=${INIT_SYS^^}_REQUIRE[@]
+    local init_require="${INIT_SYS^^}_REQUIRE[@]"
     init_require=${init_require//-/_}
 
     if [[ -n "$init_require" ]]; then
@@ -224,7 +229,7 @@ Would you like me to fetch it for you?"; then
             key_obtained=false
             # Try to fetch keys from an available keyserver
             for key_server in $PUBLIC_KEYSERVERS; do
-                if gpg --keyserver $key_server --recv-key $gpg_key_id; then
+                if gpg --keyserver "$key_server" --recv-key "$gpg_key_id"; then
                     key_obtained=true
                     break
                 fi
@@ -408,6 +413,36 @@ guix_get_bin_list()
     BIN_VER="${default_ver}"
 }
 
+guix_verify_release()
+{ # Verify the exact archive and require an explicitly allowed primary key.
+    local signature="$1"
+    local archive="$2"
+    local status prefix kind signer primary key authorized=1
+
+    status=$(gpg --no-options --batch --no-auto-key-retrieve --status-fd=1 \
+                 --verify "$signature" "$archive" 2>/dev/null) || return 1
+    while read -r prefix kind signer _ _ _ _ _ _ _ _ primary _; do
+        if [ "$prefix" != '[GNUPG:]' ]; then
+            continue
+        fi
+        case "$kind" in
+            BADSIG|ERRSIG|REVKEYSIG|EXPKEYSIG|EXPSIG|KEYREVOKED|SIGEXPIRED|FAILURE)
+                return 1 ;;
+            VALIDSIG) ;;
+            *) continue ;;
+        esac
+        # Older GnuPG versions omit the primary fingerprint for a primary-key
+        # signature. For a subkey signature it is the last required field.
+        primary=${primary:-$signer}
+        for key in "${GPG_SIGNING_KEYS[@]}"; do
+            if [ "$primary" = "$key" ]; then
+                authorized=0
+            fi
+        done
+    done <<< "$status"
+    return "$authorized"
+}
+
 guix_get_bin()
 { # Download and verify binary package.
     local url="$1"
@@ -430,7 +465,7 @@ guix_get_bin()
     fi
 
     pushd "${dl_path}" >/dev/null
-    if gpg --verify "${bin_ver}.tar.xz.sig" >/dev/null 2>&1; then
+    if guix_verify_release "${bin_ver}.tar.xz.sig" "${bin_ver}.tar.xz"; then
         _msg_pass "Signature is valid."
         popd >/dev/null
     else
@@ -547,7 +582,8 @@ sys_create_build_user()
 
 	if getent group kvm > /dev/null; then
 	    # Allow 'newgidmap' to map the "kvm" group.
-	    local kvmgid="$(getent group kvm | cut -f3 -d:)"
+	    local kvmgid
+	    kvmgid="$(getent group kvm | cut -f3 -d:)"
 	    _msg_info "allowing kvm mapping (GID $kvmgid) for unprivileged guix-daemon"
 	    echo "guix-daemon:$kvmgid:1" >> /etc/subgid
 	fi
@@ -763,7 +799,7 @@ project's build farms?"; then
 		&& guix archive --authorize < "$key" \
 		&& _msg_pass "Authorized public key for $host"
 	done
-	if id guix-daemon &>/dev/null; then
+	if install_unprivileged_daemon; then
 	    # /etc/guix/acl must be readable by the unprivileged guix-daemon.
 	    chown -R guix-daemon:guix-daemon /etc/guix
 	fi
@@ -873,28 +909,6 @@ sys_delete_shell_completion()
     rm -f "$bash_completion"/guix-daemon;
     rm -f "$zsh_completion"/_guix;
     rm -f "$fish_completion"/guix.fish;
-}
-
-sys_customize_bashrc()
-{
-    prompt_yes_no "Customize users Bash shell prompt for Guix?" || return 0
-
-    for bashrc in /home/*/.bashrc /root/.bashrc; do
-        test -f "$bashrc" || continue
-        # shellcheck disable=SC2016 # intended search for variable reference
-        grep -Fq '$GUIX_ENVIRONMENT' "$bashrc" && continue
-        cp "${bashrc}" "${bashrc}.bak"
-        # shellcheck disable=SC2016,SC2028 # intended literal shell output
-        echo '
-# Automatically added by the Guix install script.
-if [ -n "$GUIX_ENVIRONMENT" ]; then
-    if [[ $PS1 =~ (.*)"\\$" ]]; then
-        PS1="${BASH_REMATCH[1]} [env]\\\$ "
-    fi
-fi
-' >> "$bashrc"
-    done
-    _msg_pass "Bash shell prompt successfully customized for Guix"
 }
 
 sys_maybe_setup_selinux()
@@ -1086,7 +1100,6 @@ main_install()
     sys_authorize_build_farms
     sys_create_init_profile
     sys_create_shell_completion
-    sys_customize_bashrc
 
     _msg_info "cleaning up ${tmp_path}"
     rm -r "${tmp_path}"

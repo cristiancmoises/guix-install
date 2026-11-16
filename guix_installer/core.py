@@ -21,6 +21,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import channels as channels_catalog
+from . import defconfig as defconfig_reader
 from . import kernels
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -917,13 +918,18 @@ def install_manager():
     environment = {
         k: v
         for k, v in os.environ.items()
-        if not k.startswith(("GUIX_", "BASH_", "LD_"))
+        if not k.startswith(("GUIX_", "BASH_", "LD_", "GPG", "GNUPG"))
         and k not in {"ENV", "SHELLOPTS", "GLOBIGNORE"}
     }
-    run(["bash", str(script)], env=environment)
+    # Release keys must not share the operator's personal keyring or options.
+    with tempfile.TemporaryDirectory(prefix="guix-install-keyring-") as keyring:
+        environment["GNUPGHOME"] = keyring
+        run(["bash", str(script)], env=environment)
 
 
-def check_kernel_defconfig(options, defconfig_path=HOST_DEFCONFIG_PATH):
+def check_kernel_defconfig(
+    options, defconfig_path=HOST_DEFCONFIG_PATH, *, content=None
+):
     """Refuse host conflicts before the target disk can be changed."""
     if not options.kernel_config and options.kernel != "securityops":
         return None
@@ -932,9 +938,18 @@ def check_kernel_defconfig(options, defconfig_path=HOST_DEFCONFIG_PATH):
         if options.kernel_config
         else ROOT / "assets/securityops.defconfig"
     )
-    if not source.is_file():
-        raise InstallError(f"Defconfig not found: {source}")
-    content = source.read_text()
+    if content is None:
+        try:
+            content = (
+                defconfig_reader.read_selected(source)
+                if options.kernel_config
+                else defconfig_reader.read_file(source).decode("utf-8")
+            )
+        except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
+            raise InstallError(
+                "Cannot read defconfig: select a readable regular UTF-8 file "
+                "of at most 4 MiB. Symlinks are not accepted."
+            ) from exc
     host_path = Path(defconfig_path)
     if host_path.is_symlink():
         raise InstallError(f"Refusing symlink {host_path}.")
@@ -946,7 +961,9 @@ def check_kernel_defconfig(options, defconfig_path=HOST_DEFCONFIG_PATH):
     return content
 
 
-def stage_kernel_defconfig(options, target, defconfig_path=HOST_DEFCONFIG_PATH):
+def stage_kernel_defconfig(
+    options, target, defconfig_path=HOST_DEFCONFIG_PATH, *, content=None
+):
     """Stage the selected defconfig for any kernel that uses one.
 
     The generated config references the defconfig through `local-file`, so the
@@ -955,7 +972,7 @@ def stage_kernel_defconfig(options, target, defconfig_path=HOST_DEFCONFIG_PATH):
     kernel uses the bundled hardened defconfig; every other kernel uses the
     user-supplied defconfig when one is provided.
     """
-    content = check_kernel_defconfig(options, defconfig_path)
+    content = check_kernel_defconfig(options, defconfig_path, content=content)
     if content is None:
         return
     host_path = Path(defconfig_path)
@@ -1051,7 +1068,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
         raise InstallError("Prerequisites missing: " + ", ".join(failed))
     # Validate generated fields/password before the first disk write.
     render_config(options, "11111111-1111-1111-1111-111111111111", "ABCD-1234")
-    check_kernel_defconfig(options)
+    content = check_kernel_defconfig(options)
     validate_password_hash(password_hash)
     run(
         ["guix", "repl", "-q", "--", str(ROOT / "guix_installer/check-daemon.scm")],
@@ -1067,7 +1084,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
         try:
             run(["guix", "time-machine", "-C", str(channels), "--", "describe"])
             defconfig = Path(temporary) / Path(HOST_DEFCONFIG_PATH).name
-            content = check_kernel_defconfig(options)
+            check_kernel_defconfig(options, content=content)
             if content is not None:
                 defconfig.write_text(content)
             config = Path(temporary) / "config.scm"
@@ -1184,7 +1201,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
             channels = etc / "channels.scm"
             channels.write_text(render_channels_file(options))
             channels.chmod(0o600)
-            stage_kernel_defconfig(options, target)
+            stage_kernel_defconfig(options, target, content=content)
             mounted_target_is_current()
             run(
                 [

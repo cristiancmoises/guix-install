@@ -15,7 +15,7 @@ import subprocess
 import tempfile
 import urllib.request
 from contextlib import ExitStack, contextmanager
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 CHUNK = 8 * 1024 * 1024
 FSCTL_LOCK_VOLUME = 0x00090018
@@ -68,9 +68,40 @@ def require_admin():
         raise WindowsError("Run as Administrator to write a disk image.")
 
 
+def system_directory():
+    """Resolve the OS directory without consulting PATH or SystemRoot."""
+    if WinDLL is None:
+        raise WindowsError("Native Windows helpers are unavailable.")
+    kernel = WinDLL("kernel32", use_last_error=True)
+    kernel.GetSystemDirectoryW.argtypes = (ctypes.c_wchar_p, ctypes.c_uint32)
+    kernel.GetSystemDirectoryW.restype = ctypes.c_uint32
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = kernel.GetSystemDirectoryW(buffer, len(buffer))
+    if not 0 < length < len(buffer):
+        raise WindowsError("Cannot resolve the native Windows system directory.")
+    directory = PureWindowsPath(buffer.value)
+    if not directory.is_absolute():
+        raise WindowsError("Windows returned an invalid system directory.")
+    return directory
+
+
 def powershell_json(script):
+    directory = system_directory()
+    powershell = directory / "WindowsPowerShell/v1.0/powershell.exe"
+    environment = {
+        "SystemRoot": str(directory.parent),
+        "WINDIR": str(directory.parent),
+        "PATH": str(directory) + ";" + str(powershell.parent),
+    }
     result = subprocess.run(
-        ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
+        [
+            str(powershell),
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$env:PSModulePath = Join-Path $PSHOME 'Modules'; " + script,
+        ],
+        env=environment,
         capture_output=True,
         text=True,
         check=False,
@@ -245,13 +276,15 @@ def _kernel32():
         ctypes.POINTER(ctypes.c_uint32),
         ctypes.c_void_p,
     )
+    kernel.DeviceIoControl.restype = ctypes.c_int32
     kernel.SetFilePointerEx.argtypes = (
         ctypes.c_void_p,
         ctypes.c_longlong,
         ctypes.c_void_p,
         ctypes.c_uint32,
     )
-    kernel.WriteFile.restype = ctypes.c_bool
+    kernel.SetFilePointerEx.restype = ctypes.c_int32
+    kernel.WriteFile.restype = ctypes.c_int32
     kernel.WriteFile.argtypes = (
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -259,7 +292,7 @@ def _kernel32():
         ctypes.POINTER(ctypes.c_uint32),
         ctypes.c_void_p,
     )
-    kernel.ReadFile.restype = ctypes.c_bool
+    kernel.ReadFile.restype = ctypes.c_int32
     kernel.ReadFile.argtypes = (
         ctypes.c_void_p,
         ctypes.c_void_p,
@@ -267,9 +300,9 @@ def _kernel32():
         ctypes.POINTER(ctypes.c_uint32),
         ctypes.c_void_p,
     )
-    kernel.FlushFileBuffers.restype = ctypes.c_bool
+    kernel.FlushFileBuffers.restype = ctypes.c_int32
     kernel.FlushFileBuffers.argtypes = (ctypes.c_void_p,)
-    kernel.CloseHandle.restype = ctypes.c_bool
+    kernel.CloseHandle.restype = ctypes.c_int32
     kernel.CloseHandle.argtypes = (ctypes.c_void_p,)
     return kernel
 

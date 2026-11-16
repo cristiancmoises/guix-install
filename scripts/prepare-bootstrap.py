@@ -25,6 +25,7 @@ FILES = [
     "guix_installer/__init__.py",
     "guix_installer/__main__.py",
     "guix_installer/core.py",
+    "guix_installer/defconfig.py",
     "guix_installer/branding.py",
     "guix_installer/channels.py",
     "guix_installer/kernels.py",

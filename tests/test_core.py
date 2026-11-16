@@ -127,12 +127,8 @@ class SafetyTests(unittest.TestCase):
                 "11111111-1111-1111-1111-111111111111",
                 "ABCD-1234",
             )
-            self.assertEqual(
-                "(kernel linux-latest)" in config, kernel == "linux"
-            )
-            self.assertEqual(
-                "(kernel linux-zen)" in config, kernel == "zen"
-            )
+            self.assertEqual("(kernel linux-latest)" in config, kernel == "linux")
+            self.assertEqual("(kernel linux-zen)" in config, kernel == "zen")
             self.assertEqual(
                 "(nongnu packages linux)" in config, kernel != "linux-libre"
             )

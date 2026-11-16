@@ -575,7 +575,7 @@ class InstallerWindow:
                 widget.configure(state="normal" if enabled else "disabled")
         kernel = self.values["kernel"].get()
         if enabled:
-            nonguix_required = kernel in {"linux", "securityops"}
+            nonguix_required = kernel in {"linux", "securityops", "zen"}
             self.channel_vars["nonguix"].set(
                 self.channel_vars["nonguix"].get() or nonguix_required
             )

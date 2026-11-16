@@ -7,7 +7,7 @@ Este é um programa de instalação privilegiado. Revise antes de conceder sudo.
 ## Trust and privilege
 
 - The initial HTTPS launcher and its hosting account are trust anchors. Each payload file is additionally pinned by commit and SHA-256; hashes are not independent signatures of the launcher.
-- The unchanged bundled upstream installer retains OpenPGP archive verification. Ambient `GUIX_BINARY_FILE_NAME` and overwrite/bypass variables are stripped before it runs. Its support and policy decisions remain upstream behavior.
+- The bundled upstream installer includes local changes recorded in `vendor/provenance.json`. Archive verification checks the exact downloaded bytes and an allowed release signing fingerprint, using an ephemeral keyring. Ambient archive bypass and GnuPG settings are removed. Users' Bash files are left untouched.
 - System channels retain their published introductions and exact compatibility commits. No `--disable-authentication`, insecure TLS, sandbox relaxation, arbitrary key authorization, or custom substitute key is added.
 - The GUI runs as an ordinary user. A terminal invokes the same CLI, then sudo. There is no privileged GUI, listener, remote API, telemetry, paid service or passwordless sudo rule.
 - Source directories and executable search paths must be trusted by the installing user. Do not grant access to your checkout or install while another privileged program manages disks. Root can replace mounts or executables; this tool does not claim isolation from a malicious root process.

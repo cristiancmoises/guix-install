@@ -34,13 +34,18 @@ class InstallationBoundaryTests(unittest.TestCase):
                 )
                 captured = {}
 
-                def check(options, defconfig_path=core.HOST_DEFCONFIG_PATH, host=host):
+                def check(
+                    options,
+                    defconfig_path=core.HOST_DEFCONFIG_PATH,
+                    host=host,
+                    **kwargs,
+                ):
                     path = (
                         host
                         if defconfig_path == core.HOST_DEFCONFIG_PATH
                         else defconfig_path
                     )
-                    return original_check(options, str(path))
+                    return original_check(options, str(path), **kwargs)
 
                 def command(args, captured=captured, **kwargs):
                     if "--dry-run" in args:

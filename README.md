@@ -6,7 +6,9 @@
 
 ![Native GUI with the default black, gold and orange theme](docs/screenshots/gui-en.png)
 
-## What changed in 0.5.3
+## What changed in 0.5.4
+
+This update fixes GUI and sudo option forwarding, preserves the selected defconfig through installation, strengthens release-archive verification and Windows image readback, and checks native packaging failures. Users’ Bash files are preserved.
 
 The system installer now offers four kernels. By default, the three non-free choices
 track the newest stable release from kernel.org (resolved at plan time and
@@ -65,24 +67,24 @@ A downloaded launcher is executable code: inspect `bootstrap.sh` first if you ne
 
 ## Install a native package
 
-Prebuilt packages for 0.5.3 are attached to the release page on GitHub,
+Prebuilt packages for 0.5.4 are attached to the release page on GitHub,
 Codeberg and
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4),
 alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`. On the
 Security Ops host all six formats are available together in
-[`guix-install-0.5.3-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3), with original filenames
+[`guix-install-0.5.4-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4), with original filenames
 and SHA-256 checksums.
 
 Debian, Ubuntu and derivatives:
 
 ```sh
-sudo apt install ./guix-install_0.5.3-1_all.deb
+sudo apt install ./guix-install_0.5.4-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE and other RPM distributions:
 
 ```sh
-sudo dnf install ./guix-install-0.5.3-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.4-1.noarch.rpm
 ```
 
 Arch Linux and derivatives (build from the `packaging/arch` PKGBUILD):
@@ -96,8 +98,8 @@ Any other distribution: extract the portable tarball and add its `bin`
 directory to your `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.3-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.3-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.4-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.4-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -170,9 +172,9 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
 (WiX) on windows-latest. The CI-built artifacts are attached to the
-[v0.5.3 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.3)
-(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.3),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.3)).
+[v0.5.4 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.4)
+(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.4),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4)).
 Run as Administrator:
 
 ```bat
@@ -221,7 +223,7 @@ Command names and exit statuses are retained in a root-readable `/var/log/guix-i
 
 The installer carries forward **specific safeguards**, not the full Security Ops OS distribution: fail-closed target checks, swap/holder protection, disk identity rechecks, private state, authenticated pinned channels, explicit firmware choice and no automatic reboot. It does not copy the ISO's package set, hardening claims, custom substitute keys or build gate status.
 
-The upstream script is unchanged from [GNU Guix commit 94bbecec](https://codeberg.org/guix/guix/src/commit/94bbecec92475689df5b9056720795d40e0198a3/etc/guix-install.sh); its digest is in [vendor/provenance.json](vendor/provenance.json). The system-channel pins reproduce the maintainer's `securityops-iso/channels.guix` graph at the Security Ops OS v1.14.0 revisions (Guix `505ade83`, Nonguix `c241d19f`, Security Ops `017b9e3`, plus the signed Radix, Rosenthal and Small Guix checkpoints), with their published introductions retained. Pins are deliberate compatibility inputs, not a promise that they are the latest or security-qualified releases. No custom substitute key is authorized by this wrapper.
+The bundled installer is based on [GNU Guix commit 94bbecec](https://codeberg.org/guix/guix/src/commit/94bbecec92475689df5b9056720795d40e0198a3/etc/guix-install.sh); its original and local hashes and verification changes are in [vendor/provenance.json](vendor/provenance.json). The system-channel pins reproduce the maintainer's `securityops-iso/channels.guix` graph at the Security Ops OS v1.14.0 revisions (Guix `505ade83`, Nonguix `c241d19f`, Security Ops `017b9e3`, plus the signed Radix, Rosenthal and Small Guix checkpoints), with their published introductions retained. Pins are deliberate compatibility inputs, not a promise that they are the latest or security-qualified releases. No custom substitute key is authorized by this wrapper.
 
 ```sh
 python3 -m unittest discover -s tests -v

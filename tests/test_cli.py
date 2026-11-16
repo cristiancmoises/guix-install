@@ -8,6 +8,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CliTests(unittest.TestCase):
+    def test_all_selected_options_survive_gui_and_sudo_forwarding(self):
+        from guix_installer import core
+        from guix_installer.__main__ import option_args, parser
+
+        options = core.Options(
+            mode="system",
+            disk="/dev/example",
+            kernel="zen",
+            kernel_version="7.3.4",
+            kernel_config="/selected/config",
+            terminals=("kitty", "foot"),
+            default_terminal="foot",
+            browsers=("librewolf", "chromium"),
+            default_browser="chromium",
+            channels=("nonguix",),
+        )
+        args = parser().parse_args(["install", *option_args(options)])
+        for name in (
+            "kernel_version",
+            "kernel_config",
+            "default_terminal",
+            "default_browser",
+        ):
+            self.assertEqual(getattr(args, name), getattr(options, name))
+        self.assertEqual(args.terminal, list(options.terminals))
+        self.assertEqual(args.browser, list(options.browsers))
+        self.assertEqual(args.channel, list(options.channels))
+
     def test_kernel_resolution_failure_is_actionable_without_traceback(self):
         from unittest.mock import patch
 
@@ -52,7 +80,7 @@ class CliTests(unittest.TestCase):
         result = self.cli("--help")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("wizard", result.stdout)
-        self.assertIn("0.5.3", self.cli("--version").stdout)
+        self.assertIn("0.5.4", self.cli("--version").stdout)
 
     def test_plan_is_unprivileged_and_explicit(self):
         result = self.cli("plan", "--mode", "system", "--disk", "/dev/example")

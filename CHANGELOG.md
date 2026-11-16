@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.4 — 2026-11-16
+
+- Correct GUI and sudo forwarding of kernel versions, custom defconfigs and default applications.
+- Read selected defconfigs with the selecting account’s permissions, reject symlinks and changing or oversized files, and reuse one content snapshot throughout preparation and installation.
+- Bind manager archive signatures to the exact downloaded file and allowed release signing fingerprints in an ephemeral keyring; preserve upstream provenance.
+- Leave personal Bash configuration files untouched and match substitute ACL ownership to the selected daemon mode.
+- Verify Windows disk readback against the bytes actually written, including source replacement and size changes.
+- Resolve PowerShell through the native Windows system directory, restrict module loading to system modules and use the correct Win32 BOOL widths.
+- Fail Windows packaging immediately on native-tool failures or missing outputs, with a native regression gate.
+- Select Nonguix automatically for Zen in the GUI.
+
 ## 0.5.3 — 2026-11-16
 
 - Qualify complete installation and independent first boot in a disposable x86-64 UEFI VM with Linux-libre/minimal/Foot, including administrator login, sudo and DHCP.

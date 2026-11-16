@@ -3,9 +3,65 @@ import io
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from guix_installer import windows
+
+
+class WindowsHelperTests(unittest.TestCase):
+    def test_inventory_uses_native_system_directory_and_system_modules(self):
+        kernel = Mock()
+
+        def directory(buffer, capacity):
+            buffer.value = r"C:\NativeWindows\System32"
+            return len(buffer.value)
+
+        kernel.GetSystemDirectoryW.side_effect = directory
+        with (
+            patch.object(windows, "WinDLL", return_value=kernel),
+            patch.dict(
+                "os.environ", {"SystemRoot": r"X:\unused", "PSModulePath": r"X:\unused"}
+            ),
+            patch.object(windows.subprocess, "run") as command,
+        ):
+            command.return_value.returncode = 0
+            command.return_value.stdout = "[]"
+            self.assertEqual(windows.powershell_json("Get-Disk | ConvertTo-Json"), [])
+        self.assertEqual(
+            command.call_args.args[0][0],
+            r"C:\NativeWindows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        )
+        self.assertEqual(
+            command.call_args.kwargs["env"]["SystemRoot"], r"C:\NativeWindows"
+        )
+        self.assertIn(
+            "$env:PSModulePath = Join-Path $PSHOME 'Modules'",
+            command.call_args.args[0][-1],
+        )
+
+    def test_system_directory_error_stops_before_launching_helper(self):
+        kernel = Mock()
+        kernel.GetSystemDirectoryW.return_value = 32768
+        with (
+            patch.object(windows, "WinDLL", return_value=kernel),
+            patch.object(windows.subprocess, "run") as command,
+            self.assertRaises(windows.WindowsError),
+        ):
+            windows.powershell_json("Get-Disk")
+        command.assert_not_called()
+
+    def test_native_bool_results_have_win32_width(self):
+        with patch.object(windows, "WinDLL", return_value=Mock()):
+            kernel = windows._kernel32()
+        for name in (
+            "WriteFile",
+            "ReadFile",
+            "FlushFileBuffers",
+            "CloseHandle",
+            "DeviceIoControl",
+            "SetFilePointerEx",
+        ):
+            self.assertEqual(ctypes.sizeof(getattr(kernel, name).restype), 4)
 
 
 class FakeKernel:

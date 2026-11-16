@@ -1,3 +1,10 @@
+guix-install (0.5.4-1) unstable; urgency=medium
+
+  * Preserve kernel inputs and correct GUI and sudo option forwarding.
+  * Verify manager archives and Windows image and build outputs.
+
+ -- Security Ops <sac@securityops.co>  Mon, 16 Nov 2026 19:30:00 -0300
+
 guix-install (0.5.3-1) unstable; urgency=medium
 
   * Validate Guix readiness before partitioning and fix minimal networking.

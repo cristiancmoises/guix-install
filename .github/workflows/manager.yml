@@ -1,0 +1,35 @@
+name: Qualify native Guix manager
+on:
+  workflow_dispatch:
+    inputs:
+      disposable_host:
+        description: Install Guix and a dummy account on this disposable runner
+        required: true
+        default: false
+        type: boolean
+permissions:
+  contents: read
+jobs:
+  manager:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Require disposable host confirmation
+        env:
+          CONFIRMED: ${{ inputs.disposable_host }}
+        run: test "$CONFIRMED" = true
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install normal distribution dependencies
+        run: |
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            apparmor bash ca-certificates coreutils findutils gnupg nscd passwd \
+            procps python3 tar uidmap util-linux wget xz-utils
+          sudo systemctl start nscd
+      - name: Install manager and verify the ordinary daemon sandbox
+        run: |
+          sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/root \
+            LANG=C.UTF-8 LC_ALL=C.UTF-8 \
+            /usr/bin/python3 tests/manager_runtime.py --disposable-host
