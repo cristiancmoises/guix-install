@@ -14,6 +14,12 @@ from guix_installer import windows
 @unittest.skipUnless(os.name == "nt", "requires native Windows")
 class WindowsVirtualDiskTests(unittest.TestCase):
     def test_write_and_verify_disposable_vhd(self):
+        self.write_and_verify("MBR")
+
+    def test_write_and_verify_disposable_gpt_vhd(self):
+        self.write_and_verify("GPT")
+
+    def write_and_verify(self, partition_style):
         windows.require_admin()
         with tempfile.TemporaryDirectory(prefix="guix-install-vhd-test-", ignore_cleanup_errors=True) as temporary:
             directory = Path(temporary)
@@ -46,7 +52,7 @@ class WindowsVirtualDiskTests(unittest.TestCase):
                 windows.powershell_json(
                     "$ErrorActionPreference='Stop'; "
                     f"Set-Disk -Number {number} -IsOffline $false; "
-                    f"Initialize-Disk -Number {number} -PartitionStyle MBR; "
+                    f"Initialize-Disk -Number {number} -PartitionStyle {partition_style}; "
                     f"New-Partition -DiskNumber {number} -UseMaximumSize -AssignDriveLetter "
                     "| Format-Volume -FileSystem NTFS -Confirm:$false | Out-Null; "
                     "'true'"
