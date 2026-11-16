@@ -793,7 +793,7 @@ def render_config(
                 "(define river-xmonad-session-entry\n"
                 "  (package\n"
                 '    (name "river-xmonad-session-entry")\n'
-                '    (version "0.5.1")\n'
+                '    (version "0.5.2")\n'
                 "    (source #f)\n"
                 "    (build-system trivial-build-system)\n"
                 "    (arguments\n"

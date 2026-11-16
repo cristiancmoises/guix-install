@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from guix_installer import windows
+from guix_installer import __version__, windows
 from guix_installer.i18n import tr
 
 
@@ -20,6 +20,7 @@ def parser():
     result = argparse.ArgumentParser(
         description="GNU Guix Installer for Windows — bootable image writer"
     )
+    result.add_argument("--version", action="version", version=__version__)
     result.add_argument(
         "command",
         nargs="?",
@@ -30,7 +31,15 @@ def parser():
     result.add_argument("--disk", type=int, help="physical disk number to write")
     result.add_argument("--image", help="local image file to write")
     result.add_argument("--image-url", help="image URL (default: GNU FTP)")
-    result.add_argument("--verify", action="store_true", help="read back and compare")
+    result.add_argument(
+        "--sha256", help="publisher SHA-256 required for a custom image URL"
+    )
+    result.add_argument(
+        "--verify",
+        action="store_true",
+        default=True,
+        help="read back and compare (always enabled)",
+    )
     result.add_argument("--json", action="store_true", help="machine-readable output")
     return result
 
@@ -61,6 +70,7 @@ def write(language, disk_number, image_path, verify):
     target = next((disk for disk in disks if disk.get("Number") == disk_number), None)
     if target is None:
         raise windows.WindowsError(f"Disk {disk_number} not found. Re-run list.")
+    target = windows.inspect_writable_disk(disk_number)
     confirmation = input(tr("windows_disk_confirm", language)).strip()
     if confirmation != str(disk_number):
         raise windows.WindowsError("Cancelled. Nothing was written.")
@@ -69,6 +79,7 @@ def write(language, disk_number, image_path, verify):
         image_path,
         disk_number,
         verify=verify,
+        expected_disk=target,
         progress=lambda done, total: progress(
             tr("windows_writing", language), done, total
         ),
@@ -83,9 +94,10 @@ def main(argv=None):
     try:
         windows.require_windows()
         if args.command == "list":
-            payload = choose_disk(args.lang)
             if args.json:
-                print(json.dumps(payload, indent=2))
+                print(json.dumps(windows.list_disks(), indent=2))
+            else:
+                choose_disk(args.lang)
         elif args.command == "doctor":
             findings = {
                 "Windows": os.name == "nt",
@@ -102,19 +114,21 @@ def main(argv=None):
                 raise windows.WindowsError("Pass --disk NUMBER to write an image.")
             if args.image:
                 image_path = str(Path(args.image).resolve())
+                write(args.lang, args.disk, image_path, args.verify)
             else:
-                directory = Path(tempfile.mkdtemp(prefix="guix-install-"))
-                image_path = str(directory / "guix-system-install.iso")
-                print(tr("windows_download", args.lang))
-                windows.download_image(
-                    args.image_url or windows.DEFAULT_IMAGE_URL,
-                    image_path,
-                    progress=lambda done, final: progress(
-                        tr("windows_download", args.lang), done, final
-                    ),
-                )
-                print()
-            write(args.lang, args.disk, image_path, args.verify)
+                with tempfile.TemporaryDirectory(prefix="guix-install-") as directory:
+                    image_path = str(Path(directory) / "guix-system-install.iso")
+                    print(tr("windows_download", args.lang))
+                    windows.download_image(
+                        args.image_url or windows.DEFAULT_IMAGE_URL,
+                        image_path,
+                        expected_sha256=args.sha256,
+                        progress=lambda done, final: progress(
+                            tr("windows_download", args.lang), done, final
+                        ),
+                    )
+                    print()
+                    write(args.lang, args.disk, image_path, args.verify)
         return 0
     except (windows.WindowsError, OSError, ValueError) as exc:
         print(tr("error", args.lang) + ": " + str(exc), file=sys.stderr)

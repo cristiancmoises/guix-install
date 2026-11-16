@@ -66,24 +66,24 @@ A downloaded launcher is executable code: inspect `bootstrap.sh` first if you ne
 
 ## Install a native package
 
-Prebuilt packages for 0.5.1 are attached to the release page on GitHub,
+Prebuilt packages for 0.5.2 are attached to the release page on GitHub,
 Codeberg and
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2),
 alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`. On the
 Security Ops host the Debian, RPM, Arch and `.exe` binaries travel inside
-[`guix-install-0.5.1-all-linux-packages.tar.xz`](https://git.securityops.com.br/attachments/1c091d86-19bc-4baa-9176-4f87f400b0f9) with original filenames
+[`guix-install-0.5.2-all-linux-packages.tar.xz`](https://git.securityops.com.br/attachments/1c091d86-19bc-4baa-9176-4f87f400b0f9) with original filenames
 and SHA-256 checksums. The `.exe` and `.msi` are separate assets.
 
 Debian, Ubuntu and derivatives:
 
 ```sh
-sudo apt install ./guix-install_0.5.1-1_all.deb
+sudo apt install ./guix-install_0.5.2-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE and other RPM distributions:
 
 ```sh
-sudo dnf install ./guix-install-0.5.1-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.2-1.noarch.rpm
 ```
 
 Arch Linux and derivatives (build from the `packaging/arch` PKGBUILD):
@@ -97,8 +97,8 @@ Any other distribution: extract the portable tarball and add its `bin`
 directory to your `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.1-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.1-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.2-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.2-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -164,9 +164,9 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
 (WiX) on windows-latest. The CI-built artifacts are attached to the
-[v0.5.1 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.1)
-(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.1),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1)).
+[v0.5.2 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.2)
+(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.2),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2)).
 Run as Administrator:
 
 ```bat
@@ -176,11 +176,15 @@ GuixInstall.exe image --disk 2 --image D:\guix.iso
 GuixInstall.exe doctor
 ```
 
-The image writer refuses disks smaller than the image, holds a volume lock
-for the whole write, and asks you to type the disk number before writing.
+The image writer refuses boot/system, unknown, read-only, offline and undersized
+disks, locks each target volume, and asks you to type the disk number before writing.
 Reboot from the USB disk and the official Guix installer takes over. The
-default image is the GNU Guix system installer from `ftp.gnu.org`; inspect it
-and verify its signature separately if you need publisher authentication.
+default image is the GNU Guix system installer from `ftp.gnu.org`. Its SHA-256
+is pinned from the release image verified with GNU Guix OpenPGP release key
+`3CE464558A84FDC69DB40CFB090B11993D9AEBB5`. Custom URLs require `--sha256`
+from a trusted publisher source. Downloads must match before writing; disk
+read-back verification is always enabled by the Windows CLI. Local `--image`
+files are chosen and trusted by the user.
 
 The GUI needs Python's actual Tk extension, usually `python3-tk` on Debian/Ubuntu or `python3-tkinter` on Fedora. Check with `python3 -c 'import tkinter'`. On Guix, include Python's `tk` output in your environment. CLI planning and the terminal wizard do not need Tk. Use Tab/Shift+Tab, Space and Enter; Ctrl+Enter reviews the plan. Content scrolls in smaller windows. Linux Tk screen-reader support depends on the desktop/toolkit; full accessibility certification is not claimed.
 

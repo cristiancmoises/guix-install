@@ -15,6 +15,26 @@ jobs:
           python-version: '3.12'
       - name: Build GuixInstall.exe and GuixInstall.msi
         run: powershell -ExecutionPolicy Bypass -File windows/build-windows.ps1
+      - name: Native virtual disk write and verification
+        run: python tests/windows_runtime.py -v
+      - name: Packaged CLI and MSI installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & .\dist\GuixInstall.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Executable version failed' }
+          $inventory = & .\dist\GuixInstall.exe list --json | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not $inventory) { throw 'Executable inventory failed' }
+          $result = Start-Process msiexec.exe -ArgumentList '/i', "$PWD\dist\GuixInstall.msi", '/qn', '/norestart' -Wait -PassThru
+          if ($result.ExitCode -notin @(0, 3010)) { throw "MSI installation failed: $($result.ExitCode)" }
+          try {
+            $installed = Join-Path $env:ProgramFiles 'GNU Guix Installer\GuixInstall.exe'
+            & $installed --version
+            if ($LASTEXITCODE -ne 0) { throw 'Installed executable failed' }
+          } finally {
+            $result = Start-Process msiexec.exe -ArgumentList '/x', "$PWD\dist\GuixInstall.msi", '/qn', '/norestart' -Wait -PassThru
+            if ($result.ExitCode -notin @(0, 3010)) { throw "MSI removal failed: $($result.ExitCode)" }
+          }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: guix-install-windows

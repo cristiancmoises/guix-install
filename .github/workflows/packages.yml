@@ -15,6 +15,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y debhelper fakeroot build-essential
       - name: Build .deb
         run: dpkg-buildpackage -us -uc -b
+      - name: Install and exercise Debian package
+        run: |
+          sudo apt-get install -y ../guix-install_*_all.deb
+          guix-install --version
+          guix-install plan --json > /tmp/guix-install-plan.json
+          python3 -c 'import json; assert json.load(open("/tmp/guix-install-plan.json"))["executed"] is False'
       - name: Collect artifacts
         run: |
           mkdir -p dist
@@ -40,6 +46,12 @@ jobs:
           tar -C rpmbuild/SOURCES -czf rpmbuild/SOURCES/guix-install-${VERSION}.tar.gz \
             guix-install-${VERSION}
           rpmbuild --define "_topdir $PWD/rpmbuild" -ba packaging/rpm/guix-install.spec
+      - name: Install and exercise RPM package
+        run: |
+          dnf install -y --setopt=install_weak_deps=False rpmbuild/RPMS/noarch/guix-install-*.rpm
+          guix-install --version
+          guix-install plan --json > /tmp/guix-install-plan.json
+          python3 -c 'import json; assert json.load(open("/tmp/guix-install-plan.json"))["executed"] is False'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: guix-install-rpm
@@ -50,12 +62,18 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Install Arch tooling
-        run: pacman -Sy --noconfirm base-devel git
+        run: pacman -Syu --noconfirm base-devel git python
       - name: Build Arch package
         run: |
           useradd -m builder
           chown -R builder:builder .
           su builder -c 'cd packaging/arch && makepkg -f'
+      - name: Install and exercise Arch package
+        run: |
+          pacman -U --noconfirm packaging/arch/guix-install-*.pkg.tar.zst
+          guix-install --version
+          guix-install plan --json > /tmp/guix-install-plan.json
+          python -c 'import json; assert json.load(open("/tmp/guix-install-plan.json"))["executed"] is False'
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: guix-install-arch

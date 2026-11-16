@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2 — 2026-11-16
+
+- Lock and dismount Windows volumes through their volume GUID handles, and refuse protected or changed disk identities before writes.
+- Verify downloaded images against a pinned SHA-256; reject empty, truncated or mismatching downloads. Custom image URLs require a publisher checksum.
+- Abort on failed disk seeks and invalid write counts; flush writes before read-back verification, which is enabled by default in the Windows CLI.
+- Qualify Windows raw writing on disposable virtual disks and install/remove MSI packages in CI.
+- Exercise installed Debian, RPM and Arch packages in CI; upgrade Arch build environments consistently.
+
 ## 0.5.1 — 2026-11-15
 
 - Refuse conflicting host defconfig files before partitioning starts.

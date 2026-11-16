@@ -6,7 +6,7 @@
 
 ![GUI real em português, com tema preto, dourado e laranja](docs/screenshots/gui-pt-BR.png)
 
-## Novidades da versão 0.5.1
+## Novidades da versão 0.5.2
 
 O instalador System agora oferece quatro kernels, e os três com blobs sempre
 acompanham a última versão estável do kernel.org (resolvida ao montar o plano
@@ -68,24 +68,24 @@ O lançador baixado é código executável: inspecione `bootstrap.sh` antes de e
 
 ## Instale um pacote nativo
 
-Os pacotes pré-compilados da versão 0.5.1 ficam anexados à página da versão
+Os pacotes pré-compilados da versão 0.5.2 ficam anexados à página da versão
 no GitHub, no Codeberg e no
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2),
 junto com os `GuixInstall.exe` e `GuixInstall.msi` do Windows. No host da
 Security Ops os binários Debian, RPM, Arch e `.exe` seguem dentro de
-[`guix-install-0.5.1-all-linux-packages.tar.xz`](https://git.securityops.com.br/attachments/1c091d86-19bc-4baa-9176-4f87f400b0f9), com os nomes originais
+[`guix-install-0.5.2-all-linux-packages.tar.xz`](https://git.securityops.com.br/attachments/1c091d86-19bc-4baa-9176-4f87f400b0f9), com os nomes originais
 e os hashes SHA-256. O `.exe` e o `.msi` são anexos separados.
 
 Debian, Ubuntu e derivados:
 
 ```sh
-sudo apt install ./guix-install_0.5.1-1_all.deb
+sudo apt install ./guix-install_0.5.2-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE e demais distribuições RPM:
 
 ```sh
-sudo dnf install ./guix-install-0.5.1-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.2-1.noarch.rpm
 ```
 
 Arch Linux e derivados (compile a partir do PKGBUILD em `packaging/arch`):
@@ -99,8 +99,8 @@ Qualquer outra distribuição: extraia o tarball portátil e adicione o
 diretório `bin` ao `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.1-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.1-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.2-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.2-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -164,9 +164,9 @@ O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, ins
 
 O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
 `GuixInstall.msi` (WiX) em windows-latest. Os artefatos do CI ficam anexados
-à [release v0.5.1](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.1)
-(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.1),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.1)).
+à [release v0.5.2](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.2)
+(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.2),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2)).
 Execute como Administrador:
 
 ```bat
@@ -176,11 +176,16 @@ GuixInstall.exe image --disk 2 --image D:\guix.iso
 GuixInstall.exe doctor
 ```
 
-O gravador recusa discos menores que a imagem, mantém o volume bloqueado
+O gravador recusa discos de boot/sistema, desconhecidos, somente leitura,
+offline ou menores que a imagem e mantém cada volume bloqueado
 durante toda a gravação e pede para digitar o número do disco antes de
 escrever. Reinicie pelo disco USB e o instalador oficial do Guix assume. A
-imagem padrão é o instalador do Guix System em `ftp.gnu.org`; se precisar de
-autenticação do publicador, verifique a assinatura separadamente.
+imagem padrão é o instalador do Guix System em `ftp.gnu.org`. O SHA-256 fixado
+foi obtido da imagem validada com a chave OpenPGP de lançamento do GNU Guix
+`3CE464558A84FDC69DB40CFB090B11993D9AEBB5`. URLs personalizadas exigem
+`--sha256` de uma fonte confiável do publicador. Downloads precisam conferir
+antes da gravação; a CLI Windows sempre verifica a leitura do disco gravado.
+Arquivos locais com `--image` são escolhidos e considerados confiáveis pelo usuário.
 
 A GUI exige a extensão Tk real do Python, normalmente `python3-tk` no Debian/Ubuntu ou `python3-tkinter` no Fedora. Verifique com `python3 -c 'import tkinter'`. No Guix, inclua a saída `tk` do Python no ambiente. A CLI e os planos não precisam de Tk. Use Tab/Shift+Tab, Espaço e Enter; Ctrl+Enter revisa o plano. Há rolagem para janelas menores. O suporte a leitores de tela do Tk no Linux depende do ambiente; não há declaração de certificação completa de acessibilidade.
 

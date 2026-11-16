@@ -6,15 +6,21 @@ device with a volume lock held for the duration of the write.
 """
 
 import ctypes
+import hashlib
+import hmac
 import json
 import os
+import re
 import subprocess
+import tempfile
 import urllib.request
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 CHUNK = 8 * 1024 * 1024
 FSCTL_LOCK_VOLUME = 0x00090018
 FSCTL_UNLOCK_VOLUME = 0x0009001C
+FSCTL_DISMOUNT_VOLUME = 0x00090020
 GENERIC_READ = 0x80000000
 GENERIC_WRITE = 0x40000000
 FILE_SHARE_READ = 1
@@ -23,6 +29,9 @@ OPEN_EXISTING = 3
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 DEFAULT_IMAGE_URL = (
     "https://ftp.gnu.org/gnu/guix/guix-system-install-1.4.0.x86_64-linux.iso"
+)
+DEFAULT_IMAGE_SHA256 = (
+    "087a97dba2319477185471a28812949cc165e60e58863403e4a606c1baa05f81"
 )
 WinDLL = getattr(ctypes, "WinDLL", None)
 WinError = getattr(ctypes, "WinError", None)
@@ -65,7 +74,7 @@ def powershell_json(script):
     )
     if result.returncode:
         raise WindowsError("PowerShell query failed: " + (result.stderr or "").strip())
-    return json.loads(result.stdout)
+    return json.loads(result.stdout) if result.stdout.strip() else None
 
 
 def list_disks():
@@ -73,7 +82,8 @@ def list_disks():
     require_windows()
     script = (
         "Get-Disk | Select-Object Number,FriendlyName,SerialNumber,"
-        "Size,BusType,PartitionStyle | ConvertTo-Json -Compress"
+        "Size,BusType,PartitionStyle,UniqueId,IsBoot,IsSystem,IsReadOnly,IsOffline "
+        "| ConvertTo-Json -Compress"
     )
     payload = powershell_json(script)
     if isinstance(payload, dict):  # single disk serializes as an object
@@ -88,23 +98,106 @@ def disk_capacity(disk_number):
     raise WindowsError(f"Disk {disk_number} not found. Re-run list first.")
 
 
-def download_image(url, destination, progress=None):
-    """Stream a URL to a file with optional progress callbacks."""
+def inspect_writable_disk(disk_number):
+    if type(disk_number) is not int or disk_number < 0:
+        raise WindowsError("Select a non-negative physical disk number.")
+    for disk in list_disks():
+        if disk.get("Number") != disk_number:
+            continue
+        if any(
+            disk.get(field) is not False
+            for field in ("IsBoot", "IsSystem", "IsReadOnly", "IsOffline")
+        ):
+            raise WindowsError(
+                "Refusing a boot, system, read-only, offline or unknown disk."
+            )
+        if not disk.get("UniqueId") or int(disk.get("Size") or 0) <= 0:
+            raise WindowsError("Disk identity or capacity is unavailable.")
+        return disk
+    raise WindowsError(f"Disk {disk_number} not found. Re-run list first.")
+
+
+def volume_paths(disk_number):
+    if type(disk_number) is not int or disk_number < 0:
+        raise WindowsError("Invalid disk number.")
+    paths = powershell_json(
+        "$ErrorActionPreference='Stop'; @(Get-Partition -ErrorAction Stop "
+        f"| Where-Object {{ $_.DiskNumber -eq {disk_number} }} "
+        "| ForEach-Object { $_.AccessPaths } "
+        "| Where-Object { $_ -and $_.StartsWith('\\\\?\\Volume{') }) "
+        "| ConvertTo-Json -Compress"
+    )
+    if isinstance(paths, str):
+        paths = [paths]
+    result = []
+    for path in paths or []:
+        path = str(path).rstrip("\\")
+        if not re.fullmatch(r"\\\\\?\\Volume\{[0-9a-fA-F-]{36}\}", path):
+            raise WindowsError("Unexpected Windows volume path; refusing writes.")
+        result.append(path)
+    return tuple(sorted(set(result)))
+
+
+@contextmanager
+def locked_volumes(kernel, paths):
+    with ExitStack() as cleanup:
+        for path in paths:
+            handle = kernel.CreateFileW(
+                path,
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                0,
+                None,
+            )
+            if handle == INVALID_HANDLE_VALUE:
+                raise_win_error()
+            cleanup.callback(kernel.CloseHandle, handle)
+            _ioctl(kernel, handle, FSCTL_LOCK_VOLUME)
+            cleanup.callback(_ioctl, kernel, handle, FSCTL_UNLOCK_VOLUME)
+            _ioctl(kernel, handle, FSCTL_DISMOUNT_VOLUME)
+        yield
+
+
+def download_image(url, destination, progress=None, expected_sha256=None):
+    """Download and verify an image before atomically making it available."""
     require_windows()
+    if not url.startswith("https://"):
+        raise WindowsError("Image downloads require HTTPS.")
+    expected_sha256 = expected_sha256 or (
+        DEFAULT_IMAGE_SHA256 if url == DEFAULT_IMAGE_URL else ""
+    )
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        raise WindowsError("Provide the publisher's SHA-256 for a custom image URL.")
     request = urllib.request.Request(url, headers={"User-Agent": "guix-install"})
     total = 0
-    with urllib.request.urlopen(request, timeout=60) as response:
-        length = response.headers.get("Content-Length")
-        final = int(length) if length and length.isdigit() else None
-        with open(destination, "wb") as output:
-            while True:
-                block = response.read(CHUNK)
-                if not block:
-                    break
-                output.write(block)
-                total += len(block)
-                if progress:
-                    progress(total, final or total)
+    destination = Path(destination)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=".guix-image-", dir=destination.parent
+    )
+    digest = hashlib.sha256()
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                length = response.headers.get("Content-Length")
+                final = int(length) if length and length.isdigit() else None
+                while True:
+                    block = response.read(CHUNK)
+                    if not block:
+                        break
+                    output.write(block)
+                    digest.update(block)
+                    total += len(block)
+                    if progress:
+                        progress(total, final or total)
+            if not total or (final is not None and total != final):
+                raise WindowsError("Empty or incomplete image download.")
+            if not hmac.compare_digest(digest.hexdigest(), expected_sha256.lower()):
+                raise WindowsError("Image SHA-256 verification failed.")
+        os.replace(temporary, destination)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
     return total
 
 
@@ -168,12 +261,19 @@ def _ioctl(kernel, handle, code):
         raise_win_error()
 
 
-def write_image(image_path, disk_number, verify=False, progress=None):
+def write_image(
+    image_path, disk_number, verify=False, progress=None, expected_disk=None
+):
     """Write an image byte-for-byte to a physical disk under a volume lock."""
     require_windows()
     require_admin()
     image = Path(image_path)
     image_size = image.stat().st_size
+    if image_size <= 0:
+        raise WindowsError("Image must be nonempty.")
+    target = inspect_writable_disk(disk_number)
+    if expected_disk is not None and target != expected_disk:
+        raise WindowsError("Disk identity changed since confirmation; refusing writes.")
     capacity = disk_capacity(disk_number)
     if image_size > capacity:
         raise WindowsError(
@@ -193,9 +293,15 @@ def write_image(image_path, disk_number, verify=False, progress=None):
     if handle == INVALID_HANDLE_VALUE:
         raise_win_error()
     try:
-        _ioctl(kernel, handle, FSCTL_LOCK_VOLUME)
-        try:
-            kernel.SetFilePointerEx(handle, 0, None, 0)
+        paths = volume_paths(disk_number)
+        with locked_volumes(kernel, paths):
+            if (
+                inspect_writable_disk(disk_number) != target
+                or volume_paths(disk_number) != paths
+            ):
+                raise WindowsError("Disk or volume identity changed; refusing writes.")
+            if not kernel.SetFilePointerEx(handle, 0, None, 0):
+                raise_win_error()
             written = 0
             with open(image, "rb") as source:
                 while True:
@@ -216,6 +322,10 @@ def write_image(image_path, disk_number, verify=False, progress=None):
                             None,
                         ):
                             raise_win_error()
+                        if done.value == 0 or done.value > len(remaining):
+                            raise WindowsError(
+                                "Disk write returned an invalid byte count."
+                            )
                         written += done.value
                         remaining = remaining[done.value :]
                         if progress:
@@ -224,8 +334,11 @@ def write_image(image_path, disk_number, verify=False, progress=None):
                 raise WindowsError(
                     f"Incomplete write: {written} of {image_size} bytes."
                 )
+            if not kernel.FlushFileBuffers(handle):
+                raise_win_error()
             if verify:
-                kernel.SetFilePointerEx(handle, 0, None, 0)
+                if not kernel.SetFilePointerEx(handle, 0, None, 0):
+                    raise_win_error()
                 verified = 0
                 with open(image, "rb") as source:
                     while True:
@@ -249,7 +362,5 @@ def write_image(image_path, disk_number, verify=False, progress=None):
                             progress(verified, image_size)
             if not kernel.FlushFileBuffers(handle):
                 raise_win_error()
-        finally:
-            _ioctl(kernel, handle, FSCTL_UNLOCK_VOLUME)
     finally:
         kernel.CloseHandle(handle)
