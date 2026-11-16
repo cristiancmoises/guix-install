@@ -60,7 +60,7 @@ class WindowsVirtualDiskTests(unittest.TestCase):
                 windows.powershell_json(
                     "$ErrorActionPreference='Stop'; "
                     f"Get-DiskImage -ImagePath '{image_path_literal}' "
-                    "| Where-Object Attached | Dismount-DiskImage -ErrorAction Stop; 'true'"
+                    "| Where-Object Attached | Dismount-DiskImage -ErrorAction Stop | Out-Null; 'true'"
                 )
 
 
