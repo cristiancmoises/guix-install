@@ -31,7 +31,6 @@ SYSTEM_TOOLS = (
     "lsblk",
     "findmnt",
     "blkid",
-    "blockdev",
     "parted",
     "partprobe",
     "udevadm",
@@ -444,9 +443,22 @@ def inspect_target(path):
         for row in Path("/proc/swaps").read_text().splitlines()[1:]
     }
     validate_disk(entry, protected_disks(), swaps, holders)
-    return disk_identity(
-        entry, run(["blockdev", "--getdiskseq", entry["name"]], capture=True)
-    )
+    return disk_identity(entry, kernel_disk_sequence(entry))
+
+
+def kernel_disk_sequence(entry):
+    major_minor = entry.get("maj:min", "")
+    if not re.fullmatch(r"[0-9]+:[0-9]+", major_minor):
+        raise InstallError("Kernel disk identity unavailable; refusing writes.")
+    try:
+        sequence = (Path("/sys/dev/block") / major_minor / "diskseq").read_text().strip()
+    except OSError as exc:
+        raise InstallError(
+            "Kernel disk sequence number unavailable; refusing writes."
+        ) from exc
+    if not sequence.isdigit():
+        raise InstallError("Invalid kernel disk sequence number; refusing writes.")
+    return sequence
 
 
 def disk_identity(entry, sequence):
@@ -1115,14 +1127,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
                 current = find_disk(options.disk)
                 require_same_identity(
                     expected,
-                    disk_identity(
-                        current,
-                        run(
-                            ["blockdev", "--getdiskseq", options.disk],
-                            capture=True,
-                            timeout=10,
-                        ),
-                    ),
+                    disk_identity(current, kernel_disk_sequence(current)),
                 )
                 require_partition_layout(layout, partition_layout(current))
                 for path, major_minor, mount_identity in mounts:

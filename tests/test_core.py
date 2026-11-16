@@ -25,6 +25,21 @@ def disk(**changes):
 
 
 class SafetyTests(unittest.TestCase):
+    def test_sequence_uses_kernel_sysfs_without_blockdev(self):
+        with (
+            patch.object(core.Path, "read_text", return_value="14\n"),
+            patch.object(core, "run") as run,
+        ):
+            self.assertEqual(core.kernel_disk_sequence(disk()), "14")
+        run.assert_not_called()
+
+    def test_missing_disk_sequence_fails_closed(self):
+        with (
+            patch.object(core.Path, "read_text", side_effect=OSError),
+            self.assertRaises(core.InstallError),
+        ):
+            core.kernel_disk_sequence(disk())
+
     def test_rejects_busy_protected_readonly_and_small_disks(self):
         for entry, protected in [
             (
