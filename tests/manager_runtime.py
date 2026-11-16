@@ -33,6 +33,67 @@ KERNEL_CONTROLS = (
 )
 
 
+def account_failure_diagnostics(pid=None):
+    """Emit bounded public service diagnostics, never arguments or environment."""
+    processes = [
+        "ps",
+        "-C",
+        "useradd,nscd,guix-daemon",
+        "-o",
+        "pid=,ppid=,comm=,wchan:32=",
+    ]
+    if pid is not None:
+        processes.extend(["--pid", str(pid), "--ppid", str(pid)])
+    commands = [
+        ("process pid/ppid/comm/wchan", processes),
+        (
+            "selected service state",
+            [
+                "systemctl",
+                "show",
+                "nscd.service",
+                "guix-daemon.service",
+                "--property=Id,ActiveState,SubState,Result,MainPID,NRestarts",
+                "--no-pager",
+            ],
+        ),
+    ]
+    for service in ("nscd.service", "guix-daemon.service"):
+        commands.append(
+            (
+                f"recent {service} messages",
+                [
+                    "journalctl",
+                    "--unit=" + service,
+                    "--lines=12",
+                    "--output=cat",
+                    "--no-pager",
+                    "--quiet",
+                ],
+            )
+        )
+    for label, command in commands:
+        try:
+            result = subprocess.run(
+                command,
+                env=SYSTEM_ENV,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+                timeout=3,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            print(f"{label}: unavailable ({type(error).__name__})", flush=True)
+            continue
+        print(f"{label}: exit {result.returncode}", flush=True)
+        lines = result.stdout.splitlines()
+        for line in lines[:24]:
+            print(line[:240], flush=True)
+        if len(lines) > 24 or any(len(line) > 240 for line in lines[:24]):
+            print("[diagnostic output limited]", flush=True)
+
+
 def qualify():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -105,12 +166,35 @@ def qualify():
     if not guix.is_file() or not guix.resolve().is_relative_to("/gnu/store"):
         raise RuntimeError("the installed Guix executable is unavailable")
 
-    subprocess.run(
-        ["useradd", "--create-home", "--user-group", "--shell", "/bin/sh", USERNAME],
-        env=SYSTEM_ENV,
-        check=True,
-        timeout=30,
-    )
+    command = [
+        "useradd",
+        "--create-home",
+        "--user-group",
+        "--shell",
+        "/bin/sh",
+        USERNAME,
+    ]
+    try:
+        creation = subprocess.Popen(command, env=SYSTEM_ENV)
+    except OSError:
+        account_failure_diagnostics()
+        raise
+    try:
+        status = creation.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        try:
+            # Inspect the blocked process before termination removes its wchan.
+            account_failure_diagnostics(creation.pid)
+        finally:
+            creation.kill()
+            try:
+                creation.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print("Timed-out useradd is still terminating", flush=True)
+        raise
+    if status:
+        account_failure_diagnostics(creation.pid)
+        raise subprocess.CalledProcessError(status, command)
     account = pwd.getpwnam(USERNAME)
     if account.pw_uid == 0 or account.pw_gid == 0:
         raise RuntimeError("the dummy account must be unprivileged")

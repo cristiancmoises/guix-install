@@ -7,14 +7,19 @@ $stages = @('venv', 'pip-upgrade', 'pip-install', 'pyinstaller', 'choco', 'candl
 $runner = @'
 param([string]$FailureStage, [string]$OutputMode)
 $ErrorActionPreference = 'Stop'
-$script:FailureStage = $FailureStage
-$script:OutputMode = $OutputMode
-$script:LogPath = Join-Path $PSScriptRoot 'commands.txt'
+# Every case runs in a dedicated child process. Explicit global scope keeps
+# fixture state available when the unchanged builder invokes these functions
+# from its own script scope.
+$global:GuixBuildFailureFixtureState = @{
+    FailureStage = $FailureStage
+    OutputMode = $OutputMode
+    LogPath = Join-Path $PSScriptRoot 'commands.txt'
+}
 
 function Invoke-TestTool {
     param([string]$Stage)
-    [System.IO.File]::AppendAllLines($script:LogPath, [string[]]@($Stage))
-    if ($Stage -eq $script:FailureStage) {
+    [System.IO.File]::AppendAllLines($global:GuixBuildFailureFixtureState.LogPath, [string[]]@($Stage))
+    if ($Stage -eq $global:GuixBuildFailureFixtureState.FailureStage) {
         & $env:ComSpec /d /c 'exit 37'
         return
     }
@@ -29,9 +34,9 @@ function Invoke-TestTool {
             'candle' { 'object' }
             'light' { 'msi' }
         }
-        if ($script:OutputMode -ne "missing-$kind") {
+        if ($global:GuixBuildFailureFixtureState.OutputMode -ne "missing-$kind") {
             New-Item -ItemType Directory -Force -Path dist | Out-Null
-            $content = if ($script:OutputMode -eq "empty-$kind") { '' } else { "new-$Stage" }
+            $content = if ($global:GuixBuildFailureFixtureState.OutputMode -eq "empty-$kind") { '' } else { "new-$Stage" }
             [System.IO.File]::WriteAllText((Join-Path $PWD $output), $content)
         }
     }
@@ -89,7 +94,11 @@ function Invoke-BuildCase {
     } finally {
         $ErrorActionPreference = $previousPreference
     }
-    $calls = @(Get-Content -LiteralPath (Join-Path $root 'commands.txt'))
+    $logPath = Join-Path $root 'commands.txt'
+    if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) {
+        throw "Build fixture produced no command log (child exit code $exitCode).`n$output"
+    }
+    $calls = @(Get-Content -LiteralPath $logPath)
     return @{ Root = $root; ExitCode = $exitCode; Output = $output; Calls = $calls }
 }
 
