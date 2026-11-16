@@ -599,16 +599,14 @@ def make_plan(options):
         kernel_line = "Linux-libre (GNU Guix default; channel-pinned)."
     elif options.kernel == "linux":
         version = kernels.resolve(options.kernel_version)[0]
-        kernel_line = f"Linux {version} (kernel.org, newest stable) + firmware."
+        kernel_line = f"Linux {version} (kernel.org) + firmware."
     elif options.kernel == "zen":
         version = kernels.resolve(options.kernel_version)[0]
         revision = kernels.zen_patch(version)[0]
         kernel_line = f"Zen {version}-zen{revision} (upstream Zen patches) + firmware."
     else:
         version = kernels.resolve(options.kernel_version)[0]
-        kernel_line = (
-            f"SecurityOps {version} (kernel.org newest stable + hardened defconfig)."
-        )
+        kernel_line = f"SecurityOps {version} (kernel.org + hardened defconfig)."
     channel_names = ("guix",) + channels_catalog.normalize(
         options.channels,
         options.kernel,

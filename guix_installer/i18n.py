@@ -195,7 +195,7 @@ def translated_plan(options, language, english):
         kernel_line = "Linux-libre (padrão GNU Guix, fixado pelo canal)."
     elif options.kernel == "linux":
         version = kernels.resolve(options.kernel_version)[0]
-        kernel_line = f"Linux {version} (kernel.org, última stable) + firmware."
+        kernel_line = f"Linux {version} (kernel.org) + firmware."
     elif options.kernel == "zen":
         version = kernels.resolve(options.kernel_version)[0]
         revision = kernels.zen_patch(version)[0]
@@ -204,9 +204,7 @@ def translated_plan(options, language, english):
         )
     else:
         version = kernels.resolve(options.kernel_version)[0]
-        kernel_line = (
-            f"SecurityOps {version} (kernel.org última stable + defconfig endurecida)."
-        )
+        kernel_line = f"SecurityOps {version} (kernel.org + defconfig endurecida)."
     channel_names = ("guix",) + channels_catalog.normalize(
         options.channels, options.kernel, options.desktop, options.browsers
     )
