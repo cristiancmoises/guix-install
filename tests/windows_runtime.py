@@ -15,7 +15,7 @@ from guix_installer import windows
 class WindowsVirtualDiskTests(unittest.TestCase):
     def test_write_and_verify_disposable_vhd(self):
         windows.require_admin()
-        with tempfile.TemporaryDirectory(prefix="guix-install-vhd-test-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="guix-install-vhd-test-", ignore_cleanup_errors=True) as temporary:
             directory = Path(temporary)
             vhd = directory / "qualification.vhd"
             commands = directory / "create.txt"
@@ -31,8 +31,9 @@ class WindowsVirtualDiskTests(unittest.TestCase):
                     capture_output=True,
                     text=True,
                     timeout=60,
-                    check=True,
+                    check=False,
                 )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertTrue(vhd.is_file(), result.stdout + result.stderr)
                 disk = windows.powershell_json(
                     "$ErrorActionPreference='Stop'; "
@@ -56,11 +57,10 @@ class WindowsVirtualDiskTests(unittest.TestCase):
                 image.write_bytes(bytes(range(256)) * 8192)
                 windows.write_image(image, number, verify=True, expected_disk=target)
             finally:
-                commands.write_text(
-                    f'select vdisk file="{vhd}"\ndetach vdisk\n', encoding="ascii"
-                )
-                subprocess.run(
-                    ["diskpart", "/s", str(commands)], check=True, timeout=60
+                windows.powershell_json(
+                    "$ErrorActionPreference='Stop'; "
+                    f"Get-DiskImage -ImagePath '{image_path_literal}' "
+                    "| Where-Object Attached | Dismount-DiskImage -ErrorAction Stop; 'true'"
                 )
 
 
