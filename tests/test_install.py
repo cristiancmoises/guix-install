@@ -1,3 +1,4 @@
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,80 @@ from guix_installer import core
 
 
 class InstallationBoundaryTests(unittest.TestCase):
+    def test_preflight_and_staged_defconfig_have_identical_inputs(self):
+        expected = core.disk_identity(disk(), "14")
+        original_check = core.check_kernel_defconfig
+        for kernel in ("securityops", "linux", "zen", "linux-libre"):
+            with (
+                self.subTest(kernel=kernel),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                directory = Path(temporary)
+                host = directory / "host" / Path(core.HOST_DEFCONFIG_PATH).name
+                host.parent.mkdir()
+                target = directory / "target"
+                target.mkdir()
+                source = directory / "selected.defconfig"
+                source.write_text("CONFIG_MODULES=y\nCONFIG_BLK_DEV_INITRD=y\n")
+                options = core.Options(
+                    mode="system",
+                    disk="/dev/testdisk",
+                    kernel=kernel,
+                    kernel_version="7.3.4",
+                    kernel_config="" if kernel == "securityops" else str(source),
+                )
+                captured = {}
+
+                def check(options, defconfig_path=core.HOST_DEFCONFIG_PATH, host=host):
+                    path = (
+                        host
+                        if defconfig_path == core.HOST_DEFCONFIG_PATH
+                        else defconfig_path
+                    )
+                    return original_check(options, str(path))
+
+                def command(args, captured=captured, **kwargs):
+                    if "--dry-run" in args:
+                        configuration = Path(args[-1]).read_text()
+                        inputs = re.findall(r'\(local-file "([^"]+)"\)', configuration)
+                        self.assertEqual(len(inputs), 1)
+                        selected = Path(inputs[0])
+                        captured["name"] = selected.name
+                        captured["content"] = selected.read_bytes()
+                        raise core.InstallError("stop before partitioning")
+                    return ""
+
+                with (
+                    patch.object(core, "doctor", return_value=[]),
+                    patch.object(core, "inspect_target", return_value=expected),
+                    patch.object(core, "check_kernel_defconfig", side_effect=check),
+                    patch.object(core, "run", side_effect=command) as run,
+                    self.assertRaisesRegex(core.InstallError, "Guix environment"),
+                ):
+                    core.install_system(
+                        options,
+                        "ERASE /dev/testdisk",
+                        "$6$salt$hash",
+                        expected,
+                    )
+                self.assertFalse(
+                    any(call.args[0][0] == "parted" for call in run.call_args_list)
+                )
+                core.stage_kernel_defconfig(options, target, defconfig_path=str(host))
+                configuration = core.render_config(
+                    options,
+                    "11111111-1111-1111-1111-111111111111",
+                    "ABCD-1234",
+                )
+                final_input = Path(
+                    re.findall(r'\(local-file "([^"]+)"\)', configuration)[0]
+                )
+                staged = target / "etc" / final_input.name
+                self.assertEqual(captured["name"], final_input.name)
+                self.assertEqual(captured["name"], staged.name)
+                self.assertEqual(captured["content"], staged.read_bytes())
+                self.assertEqual(staged.read_bytes(), host.read_bytes())
+
     def test_guix_preparation_failure_never_partitions(self):
         expected = core.disk_identity(disk(), "14")
         for stage in ("describe", "build"):

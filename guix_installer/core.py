@@ -1068,7 +1068,7 @@ def install_system(options, confirmation, password_hash, expected_identity):
         channels.write_text(render_channels_file(options))
         try:
             run(["guix", "time-machine", "-C", str(channels), "--", "describe"])
-            defconfig = Path(temporary) / "kernel.defconfig"
+            defconfig = Path(temporary) / Path(HOST_DEFCONFIG_PATH).name
             content = check_kernel_defconfig(options)
             if content is not None:
                 defconfig.write_text(content)
