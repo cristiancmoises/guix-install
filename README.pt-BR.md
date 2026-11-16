@@ -72,9 +72,9 @@ Os pacotes pré-compilados da versão 0.5.2 ficam anexados à página da versão
 no GitHub, no Codeberg e no
 [git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.2),
 junto com os `GuixInstall.exe` e `GuixInstall.msi` do Windows. No host da
-Security Ops os binários Debian, RPM, Arch e `.exe` seguem dentro de
-[`guix-install-0.5.2-all-linux-packages.tar.xz`](https://git.securityops.com.br/attachments/1c091d86-19bc-4baa-9176-4f87f400b0f9), com os nomes originais
-e os hashes SHA-256. O `.exe` e o `.msi` são anexos separados.
+Security Ops os seis formatos estão disponíveis juntos em
+[`guix-install-0.5.2-all-platforms.tar.xz`](https://git.securityops.com.br/attachments/4f3a2903-4223-4c1f-a6bb-fb5e5aae298c), com os nomes originais
+e os hashes SHA-256.
 
 Debian, Ubuntu e derivados:
 
