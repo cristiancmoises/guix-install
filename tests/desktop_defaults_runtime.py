@@ -38,6 +38,8 @@ def command(argv, env, *, timeout=15):
             f"{argv[0]} exited {result.returncode}: "
             f"{result.stdout[-2000:]}{result.stderr[-2000:]}"
         )
+    if result.stderr:
+        print(result.stderr[-2000:], file=sys.stderr, flush=True)
     return result.stdout
 
 

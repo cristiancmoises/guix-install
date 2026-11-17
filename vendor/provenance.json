@@ -1,12 +1,13 @@
 {
   "url": "https://codeberg.org/guix/guix/raw/commit/94bbecec92475689df5b9056720795d40e0198a3/etc/guix-install.sh",
   "commit": "94bbecec92475689df5b9056720795d40e0198a3",
-  "sha256": "ee79f6e882a53c7e319b85110b0c1a59a4ab3d2107fac7e478b4eb93ebb492a1",
+  "sha256": "0e164a1cdc14703fcb141acaadbf08a6b10bed9c8f414e9ce2d0f87cc830ee3b",
   "upstream_sha256": "5d3a2617d48dfbd2bd8f544fae1c6c626729fcb8e6903b092aecf56ed428de26",
   "local_changes": [
     "Bind detached signatures to the selected archive and explicitly allowed release signing fingerprints.",
     "Use the selected daemon service mode for substitute ACL ownership.",
     "Leave users Bash configuration and backup files unchanged.",
-    "Quote dependency probes and check KVM group lookup failures."
+    "Quote dependency probes and check KVM group lookup failures.",
+    "Try a second HTTPS mirror on release index or archive transport failures, bound network retries and select the newest matching architecture; signature failures remain fatal."
   ]
 }

@@ -384,33 +384,27 @@ discover substitute servers on the local network?"; then
 #+MAIN
 
 guix_get_bin_list()
-{ # Scan GNU archive and save list of binaries
-    local gnu_url="$1"
-    local -a bin_ver_ls
-    local latest_ver
-    local default_ver
-
+{ # Select an architecture-matching release from an available HTTPS mirror.
+    local gnu_url index latest_ver
+    local primary="${1%/}"
+    local fallback="https://mirrors.kernel.org/gnu/guix"
+    [ "$primary" != "$fallback" ] || fallback="https://ftp.gnu.org/gnu/guix"
     _debug "--- [ ${FUNCNAME[0]} ] ---"
-
-    # Filter only version and architecture
-    bin_ver_ls=("$(wget "$gnu_url" --no-verbose -O- \
-        | sed -n -e 's/.*guix-binary-\([0-9.]*[a-z0-9]*\)\..*.tar.xz.*/\1/p' \
-        | sort -Vu)")
-
-    latest_ver="$(echo "${bin_ver_ls[0]}" \
-                       | grep -oE "([0-9]{1,2}\.){2}[0-9]{1,2}[a-z0-9]*" \
-                       | tail -n1)"
-
-    default_ver="guix-binary-${latest_ver}.${ARCH_OS}"
-
-    if [[ "${#bin_ver_ls}" -ne "0" ]]; then
-        _msg_pass "Release for your system: ${default_ver}"
-    else
-        die "Could not obtain list of Guix releases."
-    fi
-
-    # Use default to download according to the list and local ARCH_OS.
-    BIN_VER="${default_ver}"
+    for gnu_url in "$primary" "$fallback"; do
+        if index=$(wget "$gnu_url/" --timeout=15 --tries=1 --no-verbose -O-); then
+            latest_ver=$(printf '%s\n' "$index" \
+                | sed -n "s/.*guix-binary-\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*[a-z0-9]*\)\.${ARCH_OS}\.tar\.xz.*/\1/p" \
+                | sort -Vu | tail -n1)
+            if [ -n "$latest_ver" ]; then
+                BIN_VER="guix-binary-${latest_ver}.${ARCH_OS}"
+                GNU_URL="$gnu_url"
+                _msg_pass "Release for your system: ${BIN_VER}"
+                return 0
+            fi
+        fi
+        _msg_warn "Could not obtain matching releases from $gnu_url; trying another mirror."
+    done
+    die "Could not obtain list of Guix releases."
 }
 
 guix_verify_release()
@@ -457,12 +451,23 @@ guix_get_bin()
     wget --help | grep -q '\--show-progress' \
         && wget_args=("--no-verbose" "--show-progress")
 
-    if wget "${wget_args[@]}" -P "$dl_path" \
-            "${url}/${bin_ver}.tar.xz" "${url}/${bin_ver}.tar.xz.sig"; then
-        _msg_pass "download completed."
-    else
-        die "could not download ${url}/${bin_ver}.tar.xz."
-    fi
+    local primary="${url%/}"
+    local fallback="https://mirrors.kernel.org/gnu/guix"
+    local downloaded=0
+    [ "$primary" != "$fallback" ] || fallback="https://ftp.gnu.org/gnu/guix"
+    for url in "$primary" "$fallback"; do
+        if wget "${wget_args[@]}" --timeout=30 --tries=1 \
+                -O "$dl_path/${bin_ver}.tar.xz" "${url}/${bin_ver}.tar.xz" \
+            && wget "${wget_args[@]}" --timeout=30 --tries=1 \
+                -O "$dl_path/${bin_ver}.tar.xz.sig" "${url}/${bin_ver}.tar.xz.sig"; then
+            downloaded=1
+            _msg_pass "download completed."
+            break
+        fi
+        rm -f -- "$dl_path/${bin_ver}.tar.xz" "$dl_path/${bin_ver}.tar.xz.sig"
+        _msg_warn "Download failed from $url; trying another mirror."
+    done
+    [ "$downloaded" -eq 1 ] || die "could not download ${bin_ver}.tar.xz."
 
     pushd "${dl_path}" >/dev/null
     if guix_verify_release "${bin_ver}.tar.xz.sig" "${bin_ver}.tar.xz"; then
