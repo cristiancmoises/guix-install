@@ -99,11 +99,14 @@ def powershell_json(script):
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            "$env:PSModulePath = Join-Path $PSHOME 'Modules'; " + script,
+            "$env:PSModulePath = Join-Path $PSHOME 'Modules'; "
+            "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); "
+            + script,
         ],
         env=environment,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
         timeout=60,
     )

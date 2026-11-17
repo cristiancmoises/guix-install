@@ -9,6 +9,7 @@
 - Leave personal Bash configuration files untouched and match substitute ACL ownership to the selected daemon mode.
 - Verify Windows disk readback against the bytes actually written, including source replacement and size changes.
 - Resolve PowerShell through the native Windows system directory, restrict module loading to system modules and use the correct Win32 BOOL widths.
+- Exchange PowerShell JSON as UTF-8 so localized disk names and other Unicode values survive native queries.
 - Fail Windows packaging immediately on native-tool failures or missing outputs, with a native regression gate.
 - Use a Windows Installer advertised shortcut compatible with per-machine installation and validate its creation and removal.
 - Select Nonguix automatically for Zen in the GUI.

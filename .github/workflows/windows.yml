@@ -19,7 +19,7 @@ jobs:
       - name: Build GuixInstall.exe and GuixInstall.msi
         run: powershell -ExecutionPolicy Bypass -File windows/build-windows.ps1
       - name: Native virtual disk write and verification
-        run: python tests/windows_runtime.py -v
+        run: python tests/windows_runtime.py -f -v
       - name: Packaged CLI and MSI installation
         shell: pwsh
         run: |
