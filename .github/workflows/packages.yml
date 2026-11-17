@@ -18,7 +18,7 @@ jobs:
       - name: Install and exercise Debian package
         run: |
           sudo apt-get install -y ../guix-install_*_all.deb
-          grep -q '17. Interpretation' /usr/share/doc/guix-install/COPYING
+          zgrep -q '17\. Interpretation' /usr/share/doc/guix-install/COPYING*
           python3 -c 'import tkinter'
           guix-install --version
           guix-install plan --json > /tmp/guix-install-plan.json
