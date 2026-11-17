@@ -22,6 +22,9 @@ def parser():
     )
     result.add_argument("--version", action="version", version=__version__)
     result.add_argument(
+        "--license", action="store_true", help="show copyright and GPLv3 terms"
+    )
+    result.add_argument(
         "command",
         nargs="?",
         default="list",
@@ -92,6 +95,11 @@ def write(language, disk_number, image_path, verify):
 def main(argv=None):
     args = parser().parse_args(argv)
     try:
+        if args.license:
+            directory = Path(__file__).resolve().parent
+            for name in ("LICENSE", "COPYING"):
+                print((directory / name).read_text(encoding="utf-8"))
+            return 0
         windows.require_windows()
         if args.command == "list":
             if args.json:

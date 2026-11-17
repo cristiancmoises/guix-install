@@ -244,4 +244,4 @@ Referências oficiais: [Guix em outra distribuição](https://guix.gnu.org/manua
 
 [Codeberg](https://codeberg.org/berkeley/guix-install) · [GitHub](https://github.com/cristiancmoises/guix-install) · [Security Ops BR](https://git.securityops.com.br/cristiancmoises/guix-install) · [Security Ops CO](https://git.securityops.co/cristiancmoises/guix-install)
 
-GNU GPL; veja [LICENSE](LICENSE). O arquivo oficial incluído preserva seu aviso GPL-3.0-or-later. Este projeto comunitário não é uma versão oficial do instalador GNU Guix.
+GNU GPL; veja [LICENSE](LICENSE) e os termos completos em [COPYING](COPYING). Os avisos acompanham todos os pacotes; o executável Windows avulso também oferece `--license`. O arquivo oficial incluído preserva seu aviso GPL-3.0-or-later. Este projeto comunitário não é uma versão oficial do instalador GNU Guix.

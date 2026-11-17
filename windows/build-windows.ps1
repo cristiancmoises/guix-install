@@ -37,6 +37,8 @@ Assert-NativeSuccess 'PyInstaller installation'
     --name GuixInstall `
     --icon assets\guix-logo.ico `
     --add-data "assets\guix-logo.txt;assets" `
+    --add-data "LICENSE;." `
+    --add-data "COPYING;." `
     windows_main.py
 Assert-NativeSuccess 'PyInstaller executable build'
 Assert-BuildOutput 'dist\GuixInstall.exe'

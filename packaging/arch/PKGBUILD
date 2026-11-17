@@ -21,6 +21,7 @@ prepare() {
   cp -a "$repo/guix_installer" "$repo/run.py" "$repo/vendor" "$repo/assets" \
     "$srcdir/$pkgname-$pkgver/"
   cp -a "$repo/packaging/linux" "$srcdir/$pkgname-$pkgver/packaging/"
+  cp -a "$repo/LICENSE" "$repo/COPYING" "$srcdir/$pkgname-$pkgver/"
 }
 
 package() {
@@ -33,4 +34,6 @@ package() {
     "$pkgdir/usr/share/applications/guix-install.desktop"
   install -Dm644 assets/guix-logo.png \
     "$pkgdir/usr/share/pixmaps/guix-logo.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 COPYING "$pkgdir/usr/share/licenses/$pkgname/COPYING"
 }

@@ -26,6 +26,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           & .\dist\GuixInstall.exe --version
           if ($LASTEXITCODE -ne 0) { throw 'Executable version failed' }
+          $license = & .\dist\GuixInstall.exe --license | Out-String
+          if ($LASTEXITCODE -ne 0 -or $license -notmatch '17\. Interpretation') { throw 'Bundled license is incomplete' }
           $inventory = & .\dist\GuixInstall.exe list --json | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or -not $inventory) { throw 'Executable inventory failed' }
           $result = Start-Process msiexec.exe -ArgumentList '/i', "$PWD\dist\GuixInstall.msi", '/qn', '/norestart' -Wait -PassThru
@@ -34,6 +36,8 @@ jobs:
             $installed = Join-Path $env:ProgramFiles 'GNU Guix Installer\GuixInstall.exe'
             & $installed --version
             if ($LASTEXITCODE -ne 0) { throw 'Installed executable failed' }
+            $licenseFile = Join-Path (Split-Path $installed) 'COPYING'
+            if (-not (Test-Path -LiteralPath $licenseFile) -or (Get-Content -Raw $licenseFile) -notmatch '17\. Interpretation') { throw 'Installed license is incomplete' }
             $shortcut = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'GNU Guix Installer.lnk'
             if (-not (Test-Path -LiteralPath $shortcut)) { throw 'Machine-wide shortcut is missing' }
             $link = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)

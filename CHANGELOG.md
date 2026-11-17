@@ -12,6 +12,7 @@
 - Fail Windows packaging immediately on native-tool failures or missing outputs, with a native regression gate.
 - Use a Windows Installer advertised shortcut compatible with per-machine installation and validate its creation and removal.
 - Select Nonguix automatically for Zen in the GUI.
+- Include project notices and the complete GPLv3 terms in every package; expose the bundled license with `GuixInstall.exe --license`.
 
 ## 0.5.3 — 2026-11-16
 

@@ -9,6 +9,25 @@ from guix_installer import windows
 
 
 class WindowsHelperTests(unittest.TestCase):
+    def test_license_is_available_without_windows_or_disk_access(self):
+        import contextlib
+
+        import windows_main
+
+        output = io.StringIO()
+        with (
+            patch.object(
+                windows, "require_windows", side_effect=AssertionError("OS query")
+            ),
+            patch.object(
+                windows, "list_disks", side_effect=AssertionError("disk query")
+            ),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(windows_main.main(["--license"]), 0)
+        self.assertIn("GNU GENERAL PUBLIC LICENSE", output.getvalue())
+        self.assertIn("17. Interpretation", output.getvalue())
+
     def test_inventory_uses_native_system_directory_and_system_modules(self):
         kernel = Mock()
 

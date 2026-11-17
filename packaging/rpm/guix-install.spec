@@ -34,6 +34,7 @@ install -Dm644 packaging/linux/guix-install.desktop %{buildroot}%{_datadir}/appl
 install -Dm644 assets/guix-logo.png %{buildroot}%{_datadir}/pixmaps/guix-logo.png
 
 %files
+%license LICENSE COPYING
 %{_bindir}/guix-install
 %{_prefix}/lib/guix-install/
 %{_datadir}/applications/guix-install.desktop

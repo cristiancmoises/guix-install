@@ -11,3 +11,5 @@ override_dh_auto_install:
 	install -Dm755 packaging/linux/guix-install debian/guix-install/usr/bin/guix-install
 	install -Dm644 packaging/linux/guix-install.desktop debian/guix-install/usr/share/applications/guix-install.desktop
 	install -Dm644 assets/guix-logo.png debian/guix-install/usr/share/pixmaps/guix-logo.png
+	install -Dm644 LICENSE debian/guix-install/usr/share/doc/guix-install/copyright
+	install -Dm644 COPYING debian/guix-install/usr/share/doc/guix-install/COPYING

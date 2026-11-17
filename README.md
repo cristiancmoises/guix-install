@@ -241,4 +241,4 @@ Upstream reference: [installing Guix on another distribution](https://guix.gnu.o
 
 [Codeberg](https://codeberg.org/berkeley/guix-install) · [GitHub](https://github.com/cristiancmoises/guix-install) · [Security Ops BR](https://git.securityops.com.br/cristiancmoises/guix-install) · [Security Ops CO](https://git.securityops.co/cristiancmoises/guix-install)
 
-GNU GPL; see [LICENSE](LICENSE). The vendored upstream file retains its own GPL-3.0-or-later copyright notice. This community project is not an official GNU Guix installer release.
+GNU GPL; see [LICENSE](LICENSE) and the complete terms in [COPYING](COPYING). Notices accompany every package; the standalone Windows executable also provides `--license`. The vendored upstream file retains its own GPL-3.0-or-later copyright notice. This community project is not an official GNU Guix installer release.

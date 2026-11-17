@@ -18,6 +18,7 @@ jobs:
       - name: Install and exercise Debian package
         run: |
           sudo apt-get install -y ../guix-install_*_all.deb
+          grep -q '17. Interpretation' /usr/share/doc/guix-install/COPYING
           python3 -c 'import tkinter'
           guix-install --version
           guix-install plan --json > /tmp/guix-install-plan.json
@@ -42,7 +43,7 @@ jobs:
           VERSION="$(sed -n 's/^__version__ = "\([^"]*\)"$/\1/p' guix_installer/__init__.py)"
           mkdir -p rpmbuild/BUILD rpmbuild/RPMS rpmbuild/SOURCES \
             rpmbuild/SPECS rpmbuild/SRPMS rpmbuild/SOURCES/guix-install-${VERSION}
-          cp -r guix_installer run.py vendor assets packaging \
+          cp -r guix_installer run.py vendor assets packaging LICENSE COPYING \
             rpmbuild/SOURCES/guix-install-${VERSION}/
           tar -C rpmbuild/SOURCES -czf rpmbuild/SOURCES/guix-install-${VERSION}.tar.gz \
             guix-install-${VERSION}
@@ -50,6 +51,8 @@ jobs:
       - name: Install and exercise RPM package
         run: |
           dnf install -y --setopt=install_weak_deps=False rpmbuild/RPMS/noarch/guix-install-*.rpm
+          license_path="$(rpm -ql guix-install | grep '/COPYING$')"
+          grep -q '17. Interpretation' "$license_path"
           python3 -c 'import tkinter'
           guix-install --version
           guix-install plan --json > /tmp/guix-install-plan.json
@@ -73,6 +76,7 @@ jobs:
       - name: Install and exercise Arch package
         run: |
           pacman -U --noconfirm packaging/arch/guix-install-*.pkg.tar.zst
+          grep -q '17. Interpretation' /usr/share/licenses/guix-install/COPYING
           python -c 'import tkinter'
           guix-install --version
           guix-install plan --json > /tmp/guix-install-plan.json
@@ -93,6 +97,7 @@ jobs:
           tar -xzf dist/guix-install-*-linux-x86_64.tar.gz -C /tmp/gi-smoke
           bundle_dir="$(find /tmp/gi-smoke -maxdepth 1 -type d -name 'guix-install-*-linux-x86_64' | head -1)"
           "${bundle_dir}/bin/guix-install" --version
+          grep -q '17. Interpretation' "${bundle_dir}/COPYING"
           "${bundle_dir}/bin/guix-install" plan --help >/dev/null
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

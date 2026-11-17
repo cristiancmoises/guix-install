@@ -20,6 +20,7 @@ find "$staging/$rel/lib/guix-install" -type d -name '__pycache__' -prune -exec r
 cp "$repo_root/packaging/linux/guix-install.desktop" \
   "$staging/$rel/share/applications/"
 cp "$repo_root/assets/guix-logo.png" "$staging/$rel/share/pixmaps/"
+cp "$repo_root/LICENSE" "$repo_root/COPYING" "$staging/$rel/"
 
 cat > "$staging/$rel/bin/guix-install" <<'EOF'
 #!/bin/sh

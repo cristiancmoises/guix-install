@@ -22,6 +22,7 @@ FILES = [
     "channel.scm",
     "channels.scm",
     "LICENSE",
+    "COPYING",
     "guix_installer/__init__.py",
     "guix_installer/__main__.py",
     "guix_installer/core.py",
