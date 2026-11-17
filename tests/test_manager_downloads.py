@@ -14,9 +14,11 @@ class ManagerDownloadTests(unittest.TestCase):
     def shell(self, function_name, body):
         script = (core.ROOT / "vendor/guix-install.sh").read_text()
         function = re.search(rf"(?ms)^{function_name}\(\)\n\{{.*?^\}}\n", script)
-        self.assertIsNotNone(function)
+        if function is None:
+            self.fail(f"Missing installer function: {function_name}")
         bash = shutil.which("bash")
-        self.assertIsNotNone(bash)
+        if bash is None:
+            self.fail("Bash is required for manager download acceptance.")
         with tempfile.TemporaryDirectory() as temporary:
             return subprocess.run(
                 [
