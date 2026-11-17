@@ -7,6 +7,7 @@ This is deliberately outside unittest discovery and leaves Guix installed.
 import argparse
 import os
 import pwd
+import shutil
 import stat
 import subprocess
 import sys
@@ -333,14 +334,37 @@ def qualify():
         print(
             "PASS: real manager install, active daemon, and unprivileged sandbox build"
         )
-        as_user(
-            [
-                "/usr/bin/python3",
-                str(Path(__file__).resolve().with_name("terminal_helper_runtime.py")),
-                "--guix",
-                str(guix),
-            ]
-        )
+        # The runner's checkout ancestors may be private to its own account.
+        # Export only these public runtime inputs, preserving those permissions.
+        with tempfile.TemporaryDirectory(
+            prefix="terminal-helper-source-", dir=account.pw_dir
+        ) as temporary:
+            source = Path(__file__).resolve().parents[1]
+            directory = Path(temporary)
+            os.chown(directory, account.pw_uid, account.pw_gid)
+            for child in ("guix_installer", "tests"):
+                (directory / child).mkdir(mode=0o755)
+                (directory / child).chmod(0o755)
+            names = (
+                "guix_installer/__init__.py",
+                "guix_installer/core.py",
+                "guix_installer/channels.py",
+                "guix_installer/defconfig.py",
+                "guix_installer/kernels.py",
+                "tests/terminal_helper_runtime.py",
+            )
+            for name in names:
+                target = directory / name
+                shutil.copyfile(source / name, target)
+                target.chmod(0o644)
+            as_user(
+                [
+                    "/usr/bin/python3",
+                    str(directory / "tests/terminal_helper_runtime.py"),
+                    "--guix",
+                    str(guix),
+                ]
+            )
     finally:
         sentinel.unlink(missing_ok=True)
 
