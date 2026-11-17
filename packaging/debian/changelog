@@ -1,3 +1,10 @@
+guix-install (0.5.5-1) unstable; urgency=medium
+
+  * Configure native browser and terminal preferences and executable River startup.
+  * Retry release downloads through an HTTPS mirror on transport failures.
+
+ -- Security Ops <sac@securityops.co>  Tue, 17 Nov 2026 10:44:25 +0000
+
 guix-install (0.5.4-1) unstable; urgency=medium
 
   * Preserve kernel inputs and correct GUI and sudo option forwarding.

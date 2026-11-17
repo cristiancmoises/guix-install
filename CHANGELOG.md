@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.5.5 — 2026-11-17
+
+- Retry a second HTTPS mirror on manager release transport failures, select the newest matching architecture, and keep signature failures fatal.
+- Build and rebuild the generated terminal helper with a normal Guix daemon and exercise its installed wrapper.
 
 - Generate browser defaults for HTTP, HTTPS and HTML, including desktop entries without a declared MIME type.
 - Configure selected terminal defaults for GNOME, XFCE, KDE and XMonad while preserving Sway and River keybindings.

@@ -6,13 +6,13 @@
 
 ![Native GUI with the default black, gold and orange theme](docs/screenshots/gui-en.png)
 
-## What changed in 0.5.4
+## What changed in 0.5.5
 
-This update fixes GUI and sudo option forwarding, preserves the selected defconfig through installation, strengthens release-archive verification and Windows image readback, and checks native packaging failures. Users’ Bash files are preserved.
+This update applies selected browser and terminal defaults to new user homes, makes River startup executable, and retries a second HTTPS mirror when manager release downloads fail. Release signatures remain mandatory.
 
 The system installer now offers four kernels. By default, the three non-free choices
 track the newest stable release from kernel.org (resolved at plan time and
-pinned by SHA-256 in the generated configuration, currently 7.3.4):
+pinned by SHA-256 in the generated configuration, 7.3.4 at this release):
 
 | Kernel | Base | Source | Extra |
 |---|---|---|---|
@@ -21,7 +21,7 @@ pinned by SHA-256 in the generated configuration, currently 7.3.4):
 | **zen** | Nonguix + upstream Zen patches | newest kernel.org stable with a matching Zen release | proprietary firmware |
 | **securityops** | Nonguix + the maintainer's `/etc/securityops.defconfig` | newest kernel.org stable | hardened `kernel-arguments` |
 
-The SecurityOps choice uses the maintainer's Linux kernel configuration and hardened boot arguments. Every kernel accepts an optional `--kernel-config` file. Zen applies the corresponding upstream patchset, currently 7.3.4-zen2, verified by SHA-256. A missing Zen release produces an error instead of substituting mainline Linux. `--kernel-version 7.3` pins an exact release; blank means
+The SecurityOps choice uses the maintainer's Linux kernel configuration and hardened boot arguments. Every kernel accepts an optional `--kernel-config` file. Zen applies the corresponding upstream patchset, 7.3.4 at this release-zen2, verified by SHA-256. A missing Zen release produces an error instead of substituting mainline Linux. `--kernel-version 7.3` pins an exact release; blank means
 newest stable. Optional channels from the maintainer's authenticated
 `channels.guix` (Nonguix, Security Ops, Small Guix, Sops-Guix, Gocix,
 Radix, Rosenthal) are selectable in the GUI, the wizard and `--channel`, each
@@ -72,24 +72,24 @@ A downloaded launcher is executable code: inspect `bootstrap.sh` first if you ne
 
 ## Install a native package
 
-Prebuilt packages for 0.5.4 are attached to the release page on GitHub,
+Prebuilt packages for 0.5.5 are attached to the release page on GitHub,
 Codeberg and
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.5),
 alongside the Windows `GuixInstall.exe` and `GuixInstall.msi`. On the
 Security Ops host all six formats are available together in
-[`guix-install-0.5.4-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4), with original filenames
+[`guix-install-0.5.5-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.5), with original filenames
 and SHA-256 checksums.
 
 Debian, Ubuntu and derivatives:
 
 ```sh
-sudo apt install ./guix-install_0.5.4-1_all.deb
+sudo apt install ./guix-install_0.5.5-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE and other RPM distributions:
 
 ```sh
-sudo dnf install ./guix-install-0.5.4-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.5-1.noarch.rpm
 ```
 
 Arch Linux and derivatives (build from the `packaging/arch` PKGBUILD):
@@ -103,8 +103,8 @@ Any other distribution: extract the portable tarball and add its `bin`
 directory to your `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.4-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.4-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.5-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.5-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -133,7 +133,7 @@ RAM-backed filesystem may need additional preparation before System mode.
 Initial system scope: unencrypted x86_64 UEFI with GNOME, XFCE, KDE Plasma,
 Sway, XMonad (XLibre), River + XMonad (Wayland) or a minimal system;
 Linux-libre by default. The `linux`, `zen` and `securityops` kernels are
-explicit opt-ins through authenticated pinned channels. They resolve the newest kernel.org stable release by default, or an explicitly selected version; `zen` applies the matching SHA-256-pinned upstream Zen patchset (currently 7.3.4-zen2). A missing matching Zen release is reported instead of substituting mainline Linux.
+explicit opt-ins through authenticated pinned channels. They resolve the newest kernel.org stable release by default, or an explicitly selected version; `zen` applies the matching SHA-256-pinned upstream Zen patchset (7.3.4 at this release-zen2). A missing matching Zen release is reported instead of substituting mainline Linux.
 Resolving the latest version requires network access; offline users must select an explicit supported version.
 The bundled SecurityOps profile passes Linux 7.3.4 Kconfig generation and Guix configuration verification. Full custom-kernel compilation and boot remain unqualified. Custom defconfigs must retain the boot, filesystem and hardware support needed by the selected system.
 
@@ -177,9 +177,9 @@ The default theme is **black, white text, golden yellow and orange**, inspired b
 
 CI builds `GuixInstall.exe` (PyInstaller one-file) and `GuixInstall.msi`
 (WiX) on windows-latest. The CI-built artifacts are attached to the
-[v0.5.4 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.4)
-(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.4),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4)).
+[v0.5.5 release](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.5)
+(mirrors: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.5),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.5)).
 Run as Administrator:
 
 ```bat

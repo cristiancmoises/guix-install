@@ -1,5 +1,5 @@
 Name:           guix-install
-Version:        0.5.4
+Version:        0.5.5
 Release:        1
 Summary:        Install GNU Guix from any GNU/Linux distribution
 License:        GPL-3.0-or-later
@@ -41,6 +41,8 @@ install -Dm644 assets/guix-logo.png %{buildroot}%{_datadir}/pixmaps/guix-logo.pn
 %{_datadir}/pixmaps/guix-logo.png
 
 %changelog
+* Tue Nov 17 2026 Security Ops <sac@securityops.co> - 0.5.5-1
+- Configure native desktop defaults and retry release download transport failures.
 * Mon Nov 16 2026 Security Ops <sac@securityops.co> - 0.5.4-1
 - Preserve kernel inputs and verify manager archives and Windows builds.
 * Mon Nov 16 2026 Security Ops <sac@securityops.co> - 0.5.3-1

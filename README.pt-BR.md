@@ -6,12 +6,12 @@
 
 ![GUI real em português, com tema preto, dourado e laranja](docs/screenshots/gui-pt-BR.png)
 
-## Novidades da versão 0.5.4
+## Novidades da versão 0.5.5
 
-Esta atualização corrige o repasse de opções da GUI e do sudo, preserva a defconfig selecionada até a instalação, reforça a verificação dos arquivos de release e a leitura de retorno de imagens no Windows e verifica falhas das ferramentas de empacotamento. Os arquivos Bash dos usuários são preservados.
+Esta atualização aplica os padrões escolhidos de navegador e terminal aos novos diretórios pessoais, torna a inicialização do River executável e tenta um segundo espelho HTTPS quando o download do gerenciador falha. A verificação de assinatura continua obrigatória.
 
 O instalador System agora oferece quatro kernels. Por padrão, os três com blobs acompanham a última versão estável do kernel.org (resolvida ao montar o plano
-e fixada por SHA-256 na configuração gerada; hoje 7.3.4):
+e fixada por SHA-256 na configuração gerada; 7.3.4 nesta versão):
 
 | Kernel | Base | Fonte | Extras |
 |---|---|---|---|
@@ -77,24 +77,24 @@ O lançador baixado é código executável: inspecione `bootstrap.sh` antes de e
 
 ## Instale um pacote nativo
 
-Os pacotes pré-compilados da versão 0.5.4 ficam anexados à página da versão
+Os pacotes pré-compilados da versão 0.5.5 ficam anexados à página da versão
 no GitHub, no Codeberg e no
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.5),
 junto com os `GuixInstall.exe` e `GuixInstall.msi` do Windows. No host da
 Security Ops os seis formatos estão disponíveis juntos em
-[`guix-install-0.5.4-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4), com os nomes originais
+[`guix-install-0.5.5-all-platforms.tar.xz`](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.5), com os nomes originais
 e os hashes SHA-256.
 
 Debian, Ubuntu e derivados:
 
 ```sh
-sudo apt install ./guix-install_0.5.4-1_all.deb
+sudo apt install ./guix-install_0.5.5-1_all.deb
 ```
 
 Fedora, RHEL, openSUSE e demais distribuições RPM:
 
 ```sh
-sudo dnf install ./guix-install-0.5.4-1.noarch.rpm
+sudo dnf install ./guix-install-0.5.5-1.noarch.rpm
 ```
 
 Arch Linux e derivados (compile a partir do PKGBUILD em `packaging/arch`):
@@ -108,8 +108,8 @@ Qualquer outra distribuição: extraia o tarball portátil e adicione o
 diretório `bin` ao `PATH`:
 
 ```sh
-tar -xzf guix-install-0.5.4-linux-x86_64.tar.gz
-export PATH="$PWD/guix-install-0.5.4-linux-x86_64/bin:$PATH"
+tar -xzf guix-install-0.5.5-linux-x86_64.tar.gz
+export PATH="$PWD/guix-install-0.5.5-linux-x86_64/bin:$PATH"
 guix-install gui
 ```
 
@@ -180,9 +180,9 @@ O tema padrão usa **fundo preto, texto branco, amarelo dourado e laranja**, ins
 
 O CI gera `GuixInstall.exe` (arquivo único via PyInstaller) e
 `GuixInstall.msi` (WiX) em windows-latest. Os artefatos do CI ficam anexados
-à [release v0.5.4](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.4)
-(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.4),
-[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.4)).
+à [release v0.5.5](https://github.com/cristiancmoises/guix-install/releases/tag/v0.5.5)
+(espelhos: [Codeberg](https://codeberg.org/berkeley/guix-install/releases/tag/v0.5.5),
+[git.securityops.com.br](https://git.securityops.com.br/cristiancmoises/guix-install/releases/tag/v0.5.5)).
 Execute como Administrador:
 
 ```bat
