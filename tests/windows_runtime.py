@@ -19,6 +19,13 @@ class WindowsVirtualDiskTests(unittest.TestCase):
     def test_write_and_verify_disposable_gpt_vhd(self):
         self.write_and_verify("GPT")
 
+    def test_powershell_json_preserves_unicode(self):
+        message = "Guix instalação — 日本語"
+        self.assertEqual(
+            windows.powershell_json(f"'{message}' | ConvertTo-Json -Compress"),
+            message,
+        )
+
     def write_and_verify(self, partition_style):
         windows.require_admin()
         with tempfile.TemporaryDirectory(
