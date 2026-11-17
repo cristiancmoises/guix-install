@@ -1,11 +1,12 @@
 name: Qualify native Guix manager
 on:
   push:
-    branches: [main, fix/windows-image-verification]
+    branches: [main, fix/windows-image-verification, fix/desktop-defaults]
     paths:
       - guix_installer/core.py
       - vendor/**
       - tests/manager_runtime.py
+      - tests/terminal_helper_runtime.py
       - .github/workflows/manager.yml
   workflow_dispatch:
     inputs:
@@ -34,7 +35,7 @@ jobs:
           sudo apt-get update
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             apparmor bash ca-certificates coreutils findutils gnupg nscd passwd \
-            procps python3 tar uidmap util-linux wget xz-utils
+            procps python3 tar uidmap util-linux wget xz-utils zstd
           sudo systemctl start nscd
       - name: Install manager and verify the ordinary daemon sandbox
         run: |

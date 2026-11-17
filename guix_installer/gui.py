@@ -324,7 +324,7 @@ class InstallerWindow:
         for name in core.TERMINAL_CHOICES:
             checkbox = ttk.Checkbutton(
                 terminal_line,
-                text=name,
+                text="foot (Wayland)" if name == "foot" else name,
                 variable=self.terminal_vars[name],
                 command=lambda: (
                     self.sync_terminal_defaults(),

@@ -178,6 +178,197 @@ BROWSER_BINARIES = {
     "zen-browser": "zen-browser",
 }
 
+BROWSER_DESKTOP_IDS = {
+    "torbrowser": "torbrowser.desktop",
+    "librewolf": "librewolf.desktop",
+    "chromium": "chromium.desktop",
+    "zen-browser": "zen-browser.desktop",
+}
+TERMINAL_DESKTOP_IDS = {
+    "wezterm": "wezterm.desktop",
+    "kitty": "kitty.desktop",
+    "foot": "foot.desktop",
+    "alacritty": "Alacritty.desktop",
+}
+TERMINAL_COMMANDS = {
+    "wezterm": "wezterm start",
+    "kitty": "kitty",
+    "foot": "foot",
+    "alacritty": "alacritty",
+}
+
+
+def _application_skeletons(options):
+    """Preferences for a newly installed account, using native desktop formats."""
+    files = []
+    if options.default_browser:
+        desktop_id = BROWSER_DESKTOP_IDS[options.default_browser]
+        associations = "".join(
+            f"{mime}={desktop_id};\n"
+            for mime in (
+                "x-scheme-handler/http",
+                "x-scheme-handler/https",
+                "text/html",
+                "application/xhtml+xml",
+            )
+        )
+        files.append(
+            (
+                ".config/mimeapps.list",
+                "[Default Applications]\n"
+                + associations
+                + "\n[Added Associations]\n"
+                + associations,
+            )
+        )
+    if options.desktop == "minimal":
+        return files
+
+    terminal = options.default_terminal
+    command = TERMINAL_COMMANDS[terminal]
+    terminal_ids = [
+        TERMINAL_DESKTOP_IDS[name]
+        for name in (
+            terminal,
+            *(name for name in options.terminals if name != terminal),
+        )
+        if not (name == "foot" and options.desktop in {"xfce", "xmonad-xlibre"})
+    ]
+    preference = [
+        "/execarg_compat",
+        "/execarg_default:wezterm.desktop:--",
+        "/execarg_default:kitty.desktop:--",
+        "/execarg_default:foot.desktop:--",
+        "/execarg_default:Alacritty.desktop:-e",
+    ]
+    if options.desktop in {"xfce", "xmonad-xlibre"}:
+        preference.append("-foot.desktop")
+    files.append(
+        (".config/xdg-terminals.list", "\n".join(preference + terminal_ids) + "\n")
+    )
+    if options.desktop == "xmonad-xlibre":
+        files.append(
+            (
+                ".xmonad/xmonad.hs",
+                f'import XMonad\nmain = xmonad def {{ terminal = "{command}" }}\n',
+            )
+        )
+    elif options.desktop == "kde":
+        files.append(
+            (
+                ".config/kdeglobals",
+                (
+                    "[General]\n"
+                    f"TerminalApplication={command}\n"
+                    f"TerminalService={TERMINAL_DESKTOP_IDS[terminal]}\n"
+                ),
+            )
+        )
+    elif options.desktop == "xfce":
+        separator = " -- " if terminal in {"wezterm", "kitty"} else " -e "
+        files.append(
+            (
+                ".local/share/xfce4/helpers/guix-install-terminal.desktop",
+                (
+                    "[Desktop Entry]\nType=X-XFCE-Helper\nName=Selected terminal\n"
+                    "Name[pt_BR]=Terminal selecionado\nIcon=utilities-terminal\n"
+                    "X-XFCE-Category=TerminalEmulator\n"
+                    f"X-XFCE-Commands={command};\n"
+                    f"X-XFCE-CommandsWithParameter={command}{separator}%s;\n"
+                ),
+            )
+        )
+        helpers = "TerminalEmulator=guix-install-terminal\n"
+        if options.default_browser:
+            browser = BROWSER_BINARIES[options.default_browser]
+            helpers += "WebBrowser=guix-install-browser\n"
+            files.append(
+                (
+                    ".local/share/xfce4/helpers/guix-install-browser.desktop",
+                    (
+                        "[Desktop Entry]\nType=X-XFCE-Helper\nName=Selected web browser\n"
+                        "Name[pt_BR]=Navegador selecionado\nIcon=web-browser\n"
+                        "X-XFCE-Category=WebBrowser\n"
+                        f"X-XFCE-Commands={browser};\n"
+                        f'X-XFCE-CommandsWithParameter={browser} "%s";\n'
+                    ),
+                )
+            )
+        files.append((".config/xfce4/helpers.rc", helpers))
+    return files
+
+
+def _skeletons_field(files):
+    if not files:
+        return ""
+    entries = []
+    for target, content in files:
+        escaped = content.replace("\\", "\\\\").replace('"', '\\"')
+        name = Path(target).name
+        if target == ".config/river/init":
+            source = (
+                f'(computed-file "{name}" #~(begin '
+                f'(call-with-output-file #$output (lambda (port) (display "{escaped}" port))) '
+                "(chmod #$output #o555)))"
+            )
+        else:
+            source = f'(plain-file "{name}" "{escaped}")'
+        entries.append(f'(list "{target}" {source})')
+    return (
+        "\n  (skeletons (append (list "
+        + "\n    ".join(entries)
+        + ") (default-skeletons)))"
+    )
+
+
+def _terminal_helper_definition():
+    digest = kernels.nix_base32(
+        "da3fad18686c784bc6c72f2571410ae2382115988f33824eed04f26a1fb7151f"
+    )
+    return f"""
+(define guix-install-xdg-terminal-exec
+  (package
+    (name "xdg-terminal-exec")
+    (version "0.14.4")
+    (source
+      (origin
+        (method url-fetch)
+        (uri "https://codeload.github.com/Vladimir-csp/xdg-terminal-exec/tar.gz/80d6ea72054089b59356919e0391a1395460788d")
+        (file-name "xdg-terminal-exec-0.14.4.tar.gz")
+        (sha256 (base32 "{digest}"))))
+    (build-system gnu-build-system)
+    (arguments
+      (list
+        #:make-flags #~(list (string-append "prefix=" #$output))
+        #:test-target "test"
+        #:phases
+        #~(modify-phases %standard-phases
+            (delete 'configure)
+            (add-before 'check 'private-test-cache
+              (lambda _
+                (setenv "XDG_CACHE_HOME"
+                        (string-append (getcwd) "/.test-cache"))
+                (mkdir-p (getenv "XDG_CACHE_HOME"))))
+            (add-after 'install 'wrap-runtime-tools
+              (lambda* (#:key inputs outputs #:allow-other-keys)
+                (wrap-program
+                  (string-append (assoc-ref outputs "out")
+                                 "/bin/xdg-terminal-exec")
+                  (list "PATH" ":" 'prefix
+                        (map (lambda (name)
+                               (string-append (assoc-ref inputs name) "/bin"))
+                             '("coreutils" "findutils" "gawk")))))))))
+    (native-inputs (list scdoc bats))
+    (inputs (list coreutils findutils gawk))
+    (home-page "https://github.com/Vladimir-csp/xdg-terminal-exec")
+    (synopsis "Launch the preferred desktop terminal")
+    (description
+      "This freedesktop terminal launcher preserves desktop entry arguments
+and uses the user's configured terminal preference.")
+    (license license:gpl3+)))
+
+"""
+
 
 def validate_options(options):
     if options.mode not in {"manager", "system"}:
@@ -228,6 +419,14 @@ def validate_options(options):
         raise InstallError("Unknown terminals: " + ", ".join(sorted(unknown_terminals)))
     if options.default_terminal not in options.terminals:
         raise InstallError("Default terminal must be one of the selected terminals.")
+    if (
+        options.mode == "system"
+        and options.desktop in {"xfce", "xmonad-xlibre"}
+        and options.default_terminal == "foot"
+    ):
+        raise InstallError(
+            "Foot requires Wayland. Choose another default terminal for this X11 desktop."
+        )
     unknown_browsers = set(options.browsers) - set(BROWSER_CHOICES)
     if unknown_browsers:
         raise InstallError("Unknown browsers: " + ", ".join(sorted(unknown_browsers)))
@@ -650,7 +849,9 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
         r"[0-9a-fA-F]{4}-[0-9a-fA-F]{4}", esp_uuid
     ):
         raise InstallError("Invalid filesystem UUID returned by blkid.")
-    modules = "(use-modules (gnu) (gnu services desktop) (gnu system shadow))"
+    modules = (
+        "(use-modules (gnu) (gnu services desktop) (gnu system shadow) (guix gexp))"
+    )
     kernel_fields = ""
     definitions = ""
     kernel = options.kernel
@@ -762,7 +963,17 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
         )
     desktop_service = ""
     packages_field = ""
-    skeletons_field = ""
+    skeletons = _application_skeletons(options)
+    helper_packages = ()
+    if options.desktop != "minimal":
+        modules += (
+            "\n(use-modules (guix packages) (guix download)"
+            " (guix build-system gnu) (gnu packages base)"
+            " (gnu packages bash) (gnu packages gawk) (gnu packages man)"
+            " ((guix licenses) #:prefix license:))"
+        )
+        definitions += _terminal_helper_definition()
+        helper_packages = ("guix-install-xdg-terminal-exec",)
     browser_symbols = tuple(BROWSER_CHOICES[name][0] for name in options.browsers)
     browser_bin = BROWSER_BINARIES.get(options.default_browser, "")
     if options.browsers:
@@ -771,7 +982,9 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
             + " ".join(sorted({BROWSER_CHOICES[name][1] for name in options.browsers}))
             + ")"
         )
-    extra_packages = " ".join(tuple(options.terminals) + browser_symbols)
+    extra_packages = " ".join(
+        tuple(options.terminals) + browser_symbols + helper_packages
+    )
     if options.desktop in {"gnome", "xfce"}:
         desktop_service = f"\n    (service {options.desktop}-desktop-service-type)"
         if extra_packages:
@@ -840,6 +1053,7 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
                 WM_PACKAGES[options.desktop]
                 + tuple(options.terminals)
                 + browser_symbols
+                + helper_packages
             )
             + session_entry
             + ") %base-packages))"
@@ -857,12 +1071,7 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
                         options.default_terminal, browser_bin, manager="xmonad-wayland"
                     ),
                 )
-            escaped = content.replace("\\", "\\\\").replace('"', '\\"')
-            skeletons_field = (
-                f'\n  (skeletons (cons (list "{target}" '
-                f'(plain-file "{target.split("/")[-1]}" "{escaped}")) '
-                "(default-skeletons)))"
-            )
+            skeletons.append((target, content))
         if options.desktop == "xmonad-xlibre":
             modules += "\n(use-modules (gnu services xorg) (xlibre))"
             desktop_service = (
@@ -893,7 +1102,7 @@ def render_config(options, root_uuid, esp_uuid, defconfig_path=HOST_DEFCONFIG_PA
     (bootloader grub-efi-bootloader)
     (targets '("/boot/efi"))
     (keyboard-layout keyboard-layout)))
-{skeletons_field}{packages_field}
+{_skeletons_field(skeletons)}{packages_field}
   (users (cons*
     (user-account
       (name "{options.username}")

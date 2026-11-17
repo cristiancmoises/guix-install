@@ -333,6 +333,14 @@ def qualify():
         print(
             "PASS: real manager install, active daemon, and unprivileged sandbox build"
         )
+        as_user(
+            [
+                "/usr/bin/python3",
+                str(Path(__file__).resolve().with_name("terminal_helper_runtime.py")),
+                "--guix",
+                str(guix),
+            ]
+        )
     finally:
         sentinel.unlink(missing_ok=True)
 

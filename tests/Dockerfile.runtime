@@ -1,0 +1,13 @@
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       bats dbus desktop-file-utils gawk ghc libghc-xmonad-dev \
+       libglib2.0-bin libkf6config-bin libtk8.6 locales make scdoc \
+       xauth xfce4-settings xvfb \
+    && localedef -i tr_TR -f UTF-8 tr_TR.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONDONTWRITEBYTECODE=1 LANG=C.UTF-8
+USER 65534:65534
+WORKDIR /scratch

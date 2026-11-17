@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Generate browser defaults for HTTP, HTTPS and HTML, including desktop entries without a declared MIME type.
+- Configure selected terminal defaults for GNOME, XFCE, KDE and XMonad while preserving Sway and River keybindings.
+- Refuse Foot as the default terminal on X11-only desktop profiles while permitting it as an additional package.
+- Generate an executable River init file and preserve all application preferences in the account skeleton.
+- Pin the standard terminal launcher source and verify that Guix recognizes its archive before building.
+- Add native desktop launch acceptance checks for isolated test environments.
+
 ## 0.5.4 — 2026-11-16
 
 - Correct GUI and sudo forwarding of kernel versions, custom defconfigs and default applications.

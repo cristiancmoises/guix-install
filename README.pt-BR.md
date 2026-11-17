@@ -34,10 +34,16 @@ vem dentro do canal Security Ops.
 Os ambientes agora incluem KDE Plasma, Sway, XMonad com XLibre e
 River + XMonad no Wayland, além de GNOME, XFCE e mínimo. Os terminais são
 selecionáveis em conjunto entre Wezterm, Kitty, Foot e Alacritty, com um
-definido como padrão (usado nos atalhos do Sway e do River). Os navegadores
+definido como padrão. As preferências geradas cobrem GNOME, XFCE, KDE e
+XMonad, além dos atalhos do Sway e do River. O Foot exige Wayland e não pode
+ser o padrão nos perfis XFCE e XMonad/XLibre, que usam X11; ele pode ser
+instalado como terminal adicional. Os navegadores
 também permitem múltipla seleção (Tor Browser, LibreWolf, Chromium e Zen
 Browser) com um padrão; eles vêm do canal autenticado Security Ops, que é
 adicionado automaticamente.
+O navegador escolhido recebe os links da web e os arquivos HTML. Essas
+preferências são criadas nos novos diretórios pessoais durante a instalação
+do sistema.
 
 Usuários de Windows podem baixar os artefatos de compilação deste repositório
 (`GuixInstall.exe` e `GuixInstall.msi`, gerados pelo CI em windows-latest): o

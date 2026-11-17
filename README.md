@@ -30,10 +30,15 @@ inside the Security Ops channel.
 
 Desktops now cover KDE Plasma, Sway, XMonad on XLibre and River + XMonad on
 Wayland, alongside GNOME, XFCE and minimal. Terminals are multi-select from
-Wezterm, Kitty, Foot and Alacritty with one chosen as the default, which the
-Sway and River skeletons bind to `$term`. Browsers are also multi-select
+Wezterm, Kitty, Foot and Alacritty with one chosen as the default. Generated
+preferences cover GNOME, XFCE, KDE and XMonad, as well as Sway and River
+keybindings. Foot requires Wayland and cannot be the default for the X11-only
+XFCE and XMonad/XLibre profiles; it can still be installed as an additional
+terminal. Browsers are also multi-select
 (Tor Browser, LibreWolf, Chromium, Zen Browser) with one default; they come
 from the authenticated Security Ops channel, which is added automatically.
+The chosen browser handles web links and HTML files. These preferences are
+created for new user homes during system installation.
 
 Windows users can download the build artifacts of this repository
 (`GuixInstall.exe` and `GuixInstall.msi`, built by CI on windows-latest):

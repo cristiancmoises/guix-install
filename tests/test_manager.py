@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import shutil
 import subprocess
 import unittest
 from pathlib import Path
@@ -11,6 +12,9 @@ from guix_installer import core
 
 class ManagerVerificationTests(unittest.TestCase):
     def test_release_verification_binds_archive_and_release_signer(self):
+        bash = shutil.which("bash")
+        if bash is None:
+            self.fail("Bash is required for release signature verification tests.")
         script = (core.ROOT / "vendor/guix-install.sh").read_text()
         function = re.search(r"(?ms)^guix_verify_release\(\)\n\{.*?^\}\n", script)
         self.assertIsNotNone(function)
@@ -45,7 +49,7 @@ gpg() {{
 guix_verify_release release.sig release.tar.xz
 """
                 result = subprocess.run(
-                    ["bash", "--noprofile", "--norc", "-c", harness],
+                    [bash, "--noprofile", "--norc", "-c", harness],
                     env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
                     capture_output=True,
                     check=False,
