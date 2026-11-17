@@ -17,8 +17,12 @@
                         Name="GNU Guix Installer" WorkingDirectory="INSTALLFOLDER"
                         Icon="GuixInstall.exe" Advertise="yes" />
             </File>
-            <File Id="ProjectLicense" Source="LICENSE" KeyPath="no" />
-            <File Id="GplTerms" Source="COPYING" KeyPath="no" />
+          </Component>
+          <Component Id="ProjectLicenseComponent" Guid="*">
+            <File Id="ProjectLicense" Source="LICENSE" KeyPath="yes" />
+          </Component>
+          <Component Id="GplTermsComponent" Guid="*">
+            <File Id="GplTerms" Source="COPYING" KeyPath="yes" />
           </Component>
         </Directory>
       </Directory>
@@ -26,6 +30,8 @@
     </Directory>
     <Feature Id="MainFeature" Level="1">
       <ComponentRef Id="MainExecutable" />
+      <ComponentRef Id="ProjectLicenseComponent" />
+      <ComponentRef Id="GplTermsComponent" />
     </Feature>
   </Product>
 </Wix>
