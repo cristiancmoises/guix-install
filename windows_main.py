@@ -96,6 +96,9 @@ def main(argv=None):
     args = parser().parse_args(argv)
     try:
         if args.license:
+            reconfigure = getattr(sys.stdout, "reconfigure", None)
+            if reconfigure is not None:
+                reconfigure(encoding="utf-8")
             directory = Path(__file__).resolve().parent
             for name in ("LICENSE", "COPYING"):
                 print((directory / name).read_text(encoding="utf-8"))

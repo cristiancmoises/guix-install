@@ -9,6 +9,24 @@ from guix_installer import windows
 
 
 class WindowsHelperTests(unittest.TestCase):
+    def test_redirected_license_is_utf8_with_nonwestern_default_encoding(self):
+        import contextlib
+
+        import windows_main
+
+        for encoding in ("cp932", "cp949"):
+            with self.subTest(encoding=encoding):
+                raw = io.BytesIO()
+                with (
+                    io.TextIOWrapper(raw, encoding=encoding, errors="strict") as output,
+                    contextlib.redirect_stdout(output),
+                ):
+                    self.assertEqual(windows_main.main(["--license"]), 0)
+                    output.flush()
+                    text = raw.getvalue().decode("utf-8")
+                self.assertIn("Moisés", text)
+                self.assertIn("17. Interpretation", text)
+
     def test_license_is_available_without_windows_or_disk_access(self):
         import contextlib
 
